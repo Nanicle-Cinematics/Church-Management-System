@@ -1,19 +1,22 @@
 name: Production availability monitor
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Check health and database readiness
+      # Liveness only. /readyz runs SELECT 1 against Neon, which suspends after
+      # five idle minutes — so checking it on a timer is a keep-alive that burns
+      # the compute allowance (see fly.toml for the August 2026 incident). Real
+      # users wake the database; a monitor must not.
+      - name: Check health
         id: health
         continue-on-error: true
         run: |
           curl --fail --silent --show-error --retry 2 --max-time 15 https://church-management-system.fly.dev/healthz
-          curl --fail --silent --show-error --retry 2 --max-time 15 https://church-management-system.fly.dev/readyz
       - name: Send failure alert
         if: steps.health.outcome == 'failure'
         env:
@@ -21,7 +24,7 @@ jobs:
         run: |
           test -n "$ALERT_WEBHOOK_URL"
           curl --fail --silent --show-error -X POST -H 'Content-Type: application/json' \
-            --data '{"text":"CRITICAL: Church Manager health/readiness check failed. Inspect Fly.io immediately."}' \
+            --data '{"text":"CRITICAL: Church Manager health check failed. Inspect Fly.io immediately."}' \
             "$ALERT_WEBHOOK_URL"
       - name: Fail workflow when unhealthy
         if: steps.health.outcome == 'failure'

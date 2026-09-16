@@ -42,7 +42,7 @@ primary_region = "lhr"
   # unreachable. Omit or clear it and the page simply drops that line rather
   # than promising a date we cannot keep — so it must be corrected or removed
   # once service is restored, not left to go stale.
-  MAINTENANCE_EXPECTED_BACK = "1 September 2026"
+  # MAINTENANCE_EXPECTED_BACK = "<date>"   (set only during a known outage)
   # SUPPORT_EMAIL is deliberately unset. The maintenance page is public and
   # unauthenticated, so anything put here is scrapeable; set it only if you
   # want a contact button on that page.
@@ -61,7 +61,9 @@ primary_region = "lhr"
   # this scale to zero would trade the church's backups for compute we do not
   # actually need to save: an idle machine costs the database nothing, because
   # Neon suspends on query inactivity, not on whether a client is running.
-  # Removing the /readyz poll below is what lets it sleep.
+  # Removing the /readyz poll below is what lets it sleep — together with
+  # lib/tenant-http.js turning off connect-pg-simple's 15-minute session prune,
+  # which on its own kept the compute awake a third of the month.
   auto_stop_machines  = false
   auto_start_machines = true
   min_machines_running = 1
