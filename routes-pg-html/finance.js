@@ -303,6 +303,16 @@ function pledgePaymentReceiptNo(paymentId) {
 // ledger. Sequential awaits, not a hard $transaction wrapper — matches
 // this file's established convention for other multi-step postCashIncome
 // flows (postCashIncome already wraps its own posting in a transaction).
+// Recording routes create their row and then post to the ledger, which throws
+// on a LOCKED period. Check first so nothing is created and the user gets a
+// plain explanation instead of a 500 plus an orphaned row.
+async function refuseIfPeriodLocked(req, res, db, dateStr, back) {
+  if (!(await ledger.isPeriodLocked(db, dateStr))) return false;
+  flash(req, `The financial period for ${String(dateStr).slice(0, 7)} is locked. Use a date in an open period, or ask an admin to reopen it.`);
+  res.redirect(back);
+  return true;
+}
+
 async function recordPledgePayment(db, churchId, pledgeId, amount, paidOn, userId) {
   const pledge = await db.pledge.findFirst({ where: { id: pledgeId }, include: { harvest: { select: { harvestName: true } } } });
   if (!pledge) return null;
@@ -999,6 +1009,7 @@ function register(app) {
     const b = req.body || {};
     if (!isValidDate(b.transactionDate)) { flash(req, 'Enter a valid income date.'); return res.redirect('/finance/income'); }
     if (!isMoneyPositive(b.amount)) { flash(req, 'Amount must be greater than 0.'); return res.redirect('/finance/income'); }
+    if (await refuseIfPeriodLocked(req, res, db, b.transactionDate, '/finance/income')) return;
 
     const member = b.memberId ? await db.member.findUnique({ where: { id: Number(b.memberId) } }) : null;
     const receivedFrom = (member && `${member.firstName} ${member.lastName}`) || String(b.receivedFrom || '').trim() || 'Anonymous';
@@ -1122,6 +1133,7 @@ function register(app) {
     const dayBorn = String(b.dayBorn || '').toUpperCase();
     if (!DAY_BORN_VALUES.includes(dayBorn)) { flash(req, 'Pick a valid day-born.'); return res.redirect('/finance/day-borns'); }
     if (!isMoneyPositive(b.amount)) { flash(req, 'Amount must be greater than 0.'); return res.redirect('/finance/day-borns'); }
+    if (await refuseIfPeriodLocked(req, res, db, b.collectionDate, '/finance/day-borns')) return;
 
     const fundCheck = await checkFundId(db, b.fundId);
     if (!fundCheck.ok) { flash(req, 'Fund not found.'); return res.redirect('/finance/day-borns'); }
@@ -1234,6 +1246,7 @@ function register(app) {
     if (!specialCatId) { flash(req, 'Pick a special offering category.'); return res.redirect('/finance/special'); }
     if (!isValidDate(b.offeringDate)) { flash(req, 'Enter a valid offering date.'); return res.redirect('/finance/special'); }
     if (!isMoneyPositive(b.amount)) { flash(req, 'Amount must be greater than 0.'); return res.redirect('/finance/special'); }
+    if (await refuseIfPeriodLocked(req, res, db, b.offeringDate, '/finance/special')) return;
 
     const cat = await db.specialCategory.findUnique({ where: { id: specialCatId } });
     if (!cat) { flash(req, 'Special category not found.'); return res.redirect('/finance/special'); }
@@ -1351,6 +1364,7 @@ function register(app) {
     // Matches the original exactly: looser validation than day-borns/special
     // (no isValidDate/isMoneyPositive calls there either, silent redirect).
     if (!memberId || !b.amount || !b.titheDate) return res.redirect('/finance/tithes');
+    if (await refuseIfPeriodLocked(req, res, db, b.titheDate, '/finance/tithes')) return;
 
     const member = await db.member.findUnique({ where: { id: memberId } });
     if (!member) return res.redirect('/finance/tithes');
@@ -1425,6 +1439,7 @@ function register(app) {
     const serviceTypeCheck = await checkServiceTypeId(db, b.serviceTypeId);
     if (!serviceTypeCheck.ok) { flash(req, 'Service type not found.'); return res.redirect('/finance/services'); }
     const serviceTypeId = serviceTypeCheck.serviceTypeId;
+    if (Number(b.totalAmount) > 0 && await refuseIfPeriodLocked(req, res, db, b.serviceDate, '/finance/services')) return;
 
     const service = await db.service.create({
       data: { serviceTypeId, serviceDate: new Date(b.serviceDate), totalAmount: Number(b.totalAmount) || 0, notes: b.notes || null, recordedBy: res.locals.user.id },
@@ -1574,6 +1589,7 @@ function register(app) {
     if (!isMoneyNonNeg(b.totalCollected || 0)) { flash(req, 'Total collected must be 0 or more.'); return res.redirect('/finance/harvests'); }
     const orgCheck = await checkOrgId(db, b.orgId);
     if (!orgCheck.ok) { flash(req, 'Organization not found.'); return res.redirect('/finance/harvests'); }
+    if (Number(b.totalCollected) > 0 && await refuseIfPeriodLocked(req, res, db, b.harvestDate || `${harvestYear}-01-01`, '/finance/harvests')) return;
 
     const harvest = await db.harvest.create({
       data: {
@@ -1762,6 +1778,7 @@ function register(app) {
     const id = Number(req.params.id);
     const add = Number(req.body.add || 0);
     if (add <= 0) return res.redirect('/finance/pledges');
+    if (await refuseIfPeriodLocked(req, res, db, todayISO(), '/finance/pledges')) return;
     const receipt = await recordPledgePayment(db, churchId, id, add, todayISO(), res.locals.user.id);
     if (!receipt) return res.redirect('/finance/pledges');
     await logActivity(db, 'pledge_payment', `Recorded ${fmtMoney(add)} pledge payment · receipt ${receipt.receiptNumber}`, `/finance/pledges/payments/${receipt.paymentId}/receipt`, res.locals.user.id);
@@ -2542,6 +2559,7 @@ function register(app) {
     if (expense.recordedBy === res.locals.user.id) { flash(req, 'You cannot approve an expense you recorded yourself — ask another fund manager.'); return res.redirect('/finance/expenses'); }
     const tier = checkApprovalTier(res.locals.user, expense.amount, await db.financeSetting.findFirst());
     if (!tier.ok) { flash(req, `An expense of ${fmtMoney(expense.amount)} must be approved by ${tier.needs}.`); return res.redirect('/finance/expenses'); }
+    if (await refuseIfPeriodLocked(req, res, db, expense.spentOn.toISOString().slice(0, 10), '/finance/expenses')) return;
 
     const entryId = await ledger.postExpensePayment(db, churchId, {
       date: expense.spentOn.toISOString().slice(0, 10), amount: Number(expense.amount), expenseAccount: ledger.expenseAccountFor(expense.category),

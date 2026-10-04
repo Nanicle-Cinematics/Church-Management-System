@@ -196,7 +196,9 @@ test('period locking: a locked period blocks further income recording into it', 
   assert.strictEqual(lock.body.status, 'LOCKED');
 
   const blocked = await client.post('/api/finance/income', { transactionDate: '2026-05-15', amount: 50, category: 'Tithe', fundId: fund.body.id });
-  assert.strictEqual(blocked.status, 500, 'ledger throws for a locked period; surfaced as a 500 by the generic error handler');
+  assert.strictEqual(blocked.status, 409, 'a locked period is refused up front, before anything is created');
+  assert.match(blocked.body.error, /locked/);
+  // That nothing is left behind is asserted in test/finance-locked-period.test.js.
 
   const unlock = await client.post('/api/finance/periods/unlock', { year: 2026, month: 5, reason: 'correction needed' });
   assert.strictEqual(unlock.status, 200);
