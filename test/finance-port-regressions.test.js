@@ -245,3 +245,41 @@ test('harvest detail shows each pledge\'s outstanding balance', async () => {
   assert.match(html, /Outstanding/);
   assert.match(html, /375\.00/, 'outstanding = 500 - 125');
 });
+
+test('expense notes: captured on create, shown escaped, editable (also once paid), and accepted by the JSON API', async () => {
+  const { client: c, churchId } = await signedInChurch('exp-notes');
+  const admin = await db.user.findFirst({ where: { churchId } });
+  const fund = await db.fund.create({ data: { churchId, name: 'General', fundType: 'GENERAL', code: 'GEN' } });
+  const cat = await db.expenseCategory.findFirst({ where: { churchId, categoryName: 'Utilities' } });
+
+  let csrf = await csrfFrom(c, '/finance/expenses');
+  await c.postForm('/finance/expenses', { spentOn: '2026-06-01', expenseCatId: String(cat.id), amount: '60', fundId: String(fund.id), description: 'Notes test', notes: '  Paid in two instalments <b>x</b>  ', _csrf: csrf });
+  const e = await db.expense.findFirst({ where: { churchId } });
+  assert.strictEqual(e.notes, 'Paid in two instalments <b>x</b>', 'trimmed and stored as typed');
+  const list = (await c.getHtml('/finance/expenses')).text;
+  assert.ok(list.includes('Paid in two instalments &lt;b&gt;x&lt;/b&gt;'), 'shown in the list');
+  assert.ok(!list.includes('<b>x</b>'), 'and HTML-escaped');
+
+  await c.postForm('/finance/expenses', { spentOn: '2026-06-02', expenseCatId: String(cat.id), amount: '70', fundId: String(fund.id), description: 'Long note', notes: 'n'.repeat(900), _csrf: csrf });
+  const long = await db.expense.findFirst({ where: { churchId, description: 'Long note' } });
+  assert.strictEqual(long.notes.length, 500, 'capped at 500 characters');
+  await c.postForm('/finance/expenses', { spentOn: '2026-06-03', expenseCatId: String(cat.id), amount: '80', fundId: String(fund.id), description: 'Blank note', notes: '   ', _csrf: csrf });
+  assert.strictEqual((await db.expense.findFirst({ where: { churchId, description: 'Blank note' } })).notes, null, 'a blank note is stored as null');
+
+  csrf = await csrfFrom(c, `/finance/expenses/${e.id}/edit`);
+  assert.ok((await c.getHtml(`/finance/expenses/${e.id}/edit`)).text.includes('Paid in two instalments'), 'the edit form is prefilled');
+  await c.postForm(`/finance/expenses/${e.id}/edit`, { spentOn: '2026-06-01', expenseCatId: String(cat.id), amount: '60', fundId: String(fund.id), description: 'Notes test', notes: 'Updated note', _csrf: csrf });
+  assert.strictEqual((await db.expense.findUnique({ where: { id: e.id } })).notes, 'Updated note');
+
+  // Once paid the money fields lock, but notes stay editable (descriptive).
+  await db.expense.update({ where: { id: e.id }, data: { approvalStatus: 'PAID', approvedBy: admin.id } });
+  csrf = await csrfFrom(c, `/finance/expenses/${e.id}/edit`);
+  await c.postForm(`/finance/expenses/${e.id}/edit`, { description: 'Notes test', notes: 'Note added after payment', amount: '9999', _csrf: csrf });
+  const paid = await db.expense.findUnique({ where: { id: e.id } });
+  assert.strictEqual(paid.notes, 'Note added after payment');
+  assert.strictEqual(paid.amount, 60, 'the amount is still locked');
+
+  const api = await c.postJson('/api/finance/expenses', { spentOn: '2026-06-04', expenseCatId: cat.id, amount: 15, fundId: fund.id, description: 'API', notes: 'from the API' });
+  assert.strictEqual(api.status, 201);
+  assert.strictEqual((await db.expense.findFirst({ where: { churchId, description: 'API' } })).notes, 'from the API');
+});
