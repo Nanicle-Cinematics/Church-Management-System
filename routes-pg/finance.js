@@ -31,6 +31,14 @@ const { amountInWords } = require('../lib/money');
 const { logActivity } = require('../lib/tenant-activity');
 const { checkApprovalTier } = require('../lib/expense-approval');
 
+// Recording routes create their row and then post to the ledger, which throws
+// on a LOCKED period. Refuse first so nothing is created (409, not a 500).
+async function periodLockedResponse(res, db, dateStr) {
+  if (!(await ledger.isPeriodLocked(db, dateStr))) return false;
+  res.status(409).json({ error: `The financial period for ${String(dateStr).slice(0, 7)} is locked.` });
+  return true;
+}
+
 function requireFinanceWrite(req, res, next) {
   const u = res.locals.user;
   if (u && (u.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(u.financeRole))) return next();
@@ -249,6 +257,7 @@ function register(app) {
     const b = req.body || {};
     if (!isValidDate(b.transactionDate)) return res.status(400).json({ error: 'Enter a valid income date.' });
     if (!isMoneyPositive(b.amount)) return res.status(400).json({ error: 'Amount must be greater than 0.' });
+    if (await periodLockedResponse(res, db, b.transactionDate)) return;
 
     const member = b.memberId ? await db.member.findUnique({ where: { id: Number(b.memberId) } }) : null;
     const receivedFrom = (member && `${member.firstName} ${member.lastName}`) || String(b.receivedFrom || '').trim() || 'Anonymous';
@@ -256,6 +265,8 @@ function register(app) {
     const fundCheck = await checkFundId(db, b.fundId);
     if (!fundCheck.ok) return res.status(400).json({ error: 'Fund not found' });
     const fundId = fundCheck.fundId ?? await defaultFundId(db);
+    const projectCheck = await checkProjectId(db, b.projectId);
+    if (!projectCheck.ok) return res.status(400).json({ error: 'Project not found' });
 
     const income = await db.incomeRecord.create({
       data: {
@@ -266,7 +277,7 @@ function register(app) {
         memberId: member ? member.id : null,
         amount: Number(b.amount),
         paymentMethod: b.paymentMethod || 'Cash',
-        fundId,
+        fundId, projectId: projectCheck.projectId,
         referenceNumber: b.referenceNumber || null,
         description: b.description || null,
         recordedBy: res.locals.user.id,
@@ -336,6 +347,7 @@ function register(app) {
     if (!isValidDate(b.collectionDate)) return res.status(400).json({ error: 'Enter a valid collection date.' });
     if (!DAY_BORN_VALUES.includes(String(b.dayBorn || '').toUpperCase())) return res.status(400).json({ error: 'Enter a valid day-born.' });
     if (!isMoneyPositive(b.amount)) return res.status(400).json({ error: 'Amount must be greater than 0.' });
+    if (await periodLockedResponse(res, db, b.collectionDate)) return;
 
     const dayBorn = String(b.dayBorn).toUpperCase();
     const fundCheck = await checkFundId(db, b.fundId);
@@ -398,6 +410,7 @@ function register(app) {
     if (!specialCatId) return res.status(400).json({ error: 'specialCatId is required' });
     if (!isValidDate(b.offeringDate)) return res.status(400).json({ error: 'Enter a valid offering date.' });
     if (!isMoneyPositive(b.amount)) return res.status(400).json({ error: 'Amount must be greater than 0.' });
+    if (await periodLockedResponse(res, db, b.offeringDate)) return;
 
     const cat = await db.specialCategory.findUnique({ where: { id: specialCatId } });
     if (!cat) return res.status(404).json({ error: 'Special category not found' });
@@ -440,6 +453,7 @@ function register(app) {
     // Matches the original exactly: looser validation than the other two
     // finance features (no isValidDate/isMoneyPositive calls there either).
     if (!memberId || !b.amount || !b.titheDate) return res.status(400).json({ error: 'memberId, amount and titheDate are required' });
+    if (await periodLockedResponse(res, db, b.titheDate)) return;
 
     const member = await db.member.findUnique({ where: { id: memberId } });
     if (!member) return res.status(404).json({ error: 'Member not found' });
@@ -485,6 +499,7 @@ function register(app) {
     if (!Number(b.serviceTypeId)) return res.status(400).json({ error: 'serviceTypeId is required' });
     if (!isValidDate(b.serviceDate)) return res.status(400).json({ error: 'Enter a valid service date.' });
     if (!isMoneyNonNeg(b.totalAmount)) return res.status(400).json({ error: 'Total amount must be 0 or more.' });
+    if (Number(b.totalAmount) > 0 && await periodLockedResponse(res, db, b.serviceDate)) return;
     const serviceTypeCheck = await checkServiceTypeId(db, b.serviceTypeId);
     if (!serviceTypeCheck.ok) return res.status(404).json({ error: 'Service type not found' });
 
@@ -564,6 +579,7 @@ function register(app) {
     if (!b.harvestName || !String(b.harvestName).trim()) return res.status(400).json({ error: 'harvestName is required' });
     if (b.harvestDate && !isValidDate(b.harvestDate)) return res.status(400).json({ error: 'Enter a valid harvest date.' });
     if (!isMoneyNonNeg(b.totalCollected || 0)) return res.status(400).json({ error: 'Total collected must be 0 or more.' });
+    if (Number(b.totalCollected) > 0 && await periodLockedResponse(res, db, b.harvestDate || `${harvestYear}-01-01`)) return;
     const orgCheck = await checkOrgId(db, b.orgId);
     if (!orgCheck.ok) return res.status(404).json({ error: 'Organization not found' });
 
@@ -671,6 +687,7 @@ function register(app) {
     const id = Number(req.params.id);
     const add = Number(req.body.add || 0);
     if (!isMoneyPositive(add)) return res.status(400).json({ error: 'add must be greater than 0' });
+    if (await periodLockedResponse(res, db, new Date().toISOString().slice(0, 10))) return;
     const pledge = await db.pledge.findFirst({ where: { id }, include: { harvest: { select: { harvestName: true } } } });
     if (!pledge) return res.status(404).json({ error: 'Not found' });
 
