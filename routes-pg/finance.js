@@ -265,6 +265,8 @@ function register(app) {
     const fundCheck = await checkFundId(db, b.fundId);
     if (!fundCheck.ok) return res.status(400).json({ error: 'Fund not found' });
     const fundId = fundCheck.fundId ?? await defaultFundId(db);
+    const projectCheck = await checkProjectId(db, b.projectId);
+    if (!projectCheck.ok) return res.status(400).json({ error: 'Project not found' });
 
     const income = await db.incomeRecord.create({
       data: {
@@ -275,7 +277,7 @@ function register(app) {
         memberId: member ? member.id : null,
         amount: Number(b.amount),
         paymentMethod: b.paymentMethod || 'Cash',
-        fundId,
+        fundId, projectId: projectCheck.projectId,
         referenceNumber: b.referenceNumber || null,
         description: b.description || null,
         recordedBy: res.locals.user.id,
