@@ -162,6 +162,15 @@ test('accounting is gated: anonymous redirected, user without a finance role is 
   }
 });
 
+test('manager-only edit pages send a signed-out visitor to /login rather than a bare 403', async () => {
+  const { churchId } = await signedInChurch('edit-anon');
+  const fund = await db.fund.create({ data: { churchId, name: 'F', fundType: 'GENERAL' } });
+  const anon = client();
+  for (const p of [`/finance/funds/${fund.id}/edit`, '/finance/expenses/1/edit', '/finance/budgets/1/lines/1/edit']) {
+    assert.strictEqual((await anon.getHtml(p)).status, 302, p);
+  }
+});
+
 test('fund edit and restriction toggle update the fund and are audited; duplicate name is rejected', async () => {
   const { client: c, churchId } = await signedInChurch('fund-edit');
   const fund = await db.fund.create({ data: { churchId, name: 'Welfare', fundType: 'WELFARE', code: 'WEL' } });

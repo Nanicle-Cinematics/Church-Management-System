@@ -35,11 +35,15 @@ const { icon } = require('../lib/icons');
 
 function requireFinanceWrite(req, res, next) {
   const u = res.locals.user;
+  // Pages (GET) send a signed-out visitor to /login; writes just get the 403.
+  if (!u && req.method === 'GET') return res.redirect('/login');
   if (u && (u.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(u.financeRole))) return next();
   return res.status(403).send('Forbidden');
 }
 function requireFundManager(req, res, next) {
   const u = res.locals.user;
+  // Pages (GET) send a signed-out visitor to /login; writes just get the 403.
+  if (!u && req.method === 'GET') return res.redirect('/login');
   if (u && (u.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(u.financeRole))) return next();
   return res.status(403).send('Forbidden');
 }
@@ -2460,21 +2464,21 @@ function register(app) {
            </form>
          </details>` : '';
     const body = `${addForm}
-      ${rows.length ? table(['Date', 'Amount', 'Status', 'Category', 'Description', 'Fund', 'Project', 'Paid to', 'Method', 'Voucher', ...(canWrite ? [''] : []), ...(canApprove ? ['Approval'] : [])],
+      ${rows.length ? table(['Date', 'Amount', 'Status', 'Category', 'Description', 'Fund', 'Project', 'Paid to', 'Method', 'Voucher', ...(canWrite || canApprove ? ['Actions'] : [])],
         rows.map((e) => [esc(e.spentOn.toISOString().slice(0, 10)),
           fmtMoney(e.amount), `<span class="pill pill-${esc(e.approvalStatus.toLowerCase())}">${esc(e.approvalStatus)}</span>`,
           esc((e.expenseCategory && e.expenseCategory.categoryName) || e.category),
           esc(e.description), esc((e.fund && e.fund.name) || '—'), esc((e.project && e.project.name) || '—'), esc(e.paidTo) || '—', esc(e.paymentMethod) || '—',
           e.paymentVoucher ? `<a class="btn-link" href="/finance/vouchers/${e.paymentVoucher.id}/print">${esc(e.paymentVoucher.voucherNo)}</a>` : '—',
-          ...(canWrite ? [`<a class="btn-link" href="/finance/expenses/${e.id}/edit">Edit</a>`] : []),
-          ...(canApprove ? [
-            e.approvalStatus === 'SUBMITTED'
+          ...(canWrite || canApprove ? [[
+            canWrite ? `<a class="btn-link" href="/finance/expenses/${e.id}/edit">Edit</a>` : '',
+            canApprove && e.approvalStatus === 'SUBMITTED'
               ? (e.recordedBy === res.locals.user.id
                 ? '<span class="muted-text">Awaiting another fund manager</span>'
                 : `<form method="post" action="/finance/expenses/${e.id}/approve" style="display:inline" onsubmit="return confirm('Approve and pay this expense?')"><button type="submit" class="btn-link">Approve</button></form>
                    <form method="post" action="/finance/expenses/${e.id}/reject" style="display:inline" onsubmit="return confirm('Reject this expense?')"><button type="submit" class="btn-link">Reject</button></form>`)
-              : '—',
-          ] : [])]), { keyCols: 3 })
+              : '',
+          ].filter(Boolean).join(' ')] : [])]), { keyCols: 3 })
         : '<p class="muted-text">No expenses recorded yet.</p>'}`;
     res.page({ title: 'Finance · Expenses', active: '/finance', noHeader: true, body: `${pageHero('Expenses', '')}${body}` });
   }));
