@@ -291,6 +291,12 @@ test('budget line edit updates the line; closed budget refuses; other church\'s 
   await a.client.postForm(`/finance/budgets/${budget.id}/lines/${line.id}/edit`, { lineType: 'EXPENSE', category: 'Nope', amount: '1', _csrf: editCsrf });
   assert.strictEqual((await db.financeBudgetLine.findUnique({ where: { id: line.id } })).category, 'Utilities & fuel');
 
+  // The per-budget CSV used to 500: '/finance/budgets/:id' matched '57.csv' first and Number('57.csv') is NaN.
+  const one = await a.client.getCsv(`/finance/budgets/${budget.id}.csv`);
+  assert.strictEqual(one.status, 200);
+  assert.match(one.text, /^Type,Category,Fund,Budgeted,Actual,Variance/);
+  assert.match(one.text, /Nope|Utilities & fuel/);
+
   const csv = await a.client.getCsv('/finance/budgets.csv');
   assert.strictEqual(csv.status, 200);
   assert.match(csv.text, /2026 Budget/);
