@@ -462,6 +462,29 @@ function sendCsv(res, filename, header, rows) {
   res.send(lines.join('\r\n'));
 }
 
+// The expenses list's Actions cell: buttons in one wrapping row, and the reason
+// an expense can't be approved by this user on its own line underneath (a long
+// note beside stacked buttons wrapped badly).
+function expenseActions(e, { canWrite, canApprove, user, limitSettings }) {
+  const reject = `<form method="post" action="/finance/expenses/${e.id}/reject" style="display:inline" onsubmit="return confirm('Reject this expense?')"><button type="submit" class="btn-link">Reject</button></form>`;
+  const approve = `<form method="post" action="/finance/expenses/${e.id}/approve" style="display:inline" onsubmit="return confirm('Approve and pay this expense?')"><button type="submit" class="btn-link">Approve</button></form>`;
+  const buttons = [];
+  let note = '';
+  if (canWrite) buttons.push(`<a class="btn-link" href="/finance/expenses/${e.id}/edit">Edit</a>`);
+  if (canApprove && e.approvalStatus === 'SUBMITTED') {
+    if (e.recordedBy === user.id) {
+      note = 'Awaiting another fund manager';
+    } else if (!checkApprovalTier(user, e.amount, limitSettings).ok) {
+      note = `Needs ${TIER_LABELS[requiredTier(e.amount, limitSettings)]}`;
+      buttons.push(reject);
+    } else {
+      buttons.push(approve, reject);
+    }
+  }
+  return `<div style="display:flex;flex-wrap:wrap;gap:0.35rem;align-items:center">${buttons.join('')}</div>` +
+    (note ? `<div class="muted-text" style="margin-top:0.35rem;font-size:0.8rem;line-height:1.3">${esc(note)}</div>` : '');
+}
+
 const FINANCE_ACTIVITY_KINDS = [
   'income_recorded', 'contribution_recorded', 'finance_reversal', 'journal_reversed', 'finance_splits_updated',
   'pledge_created', 'pledge_edited', 'pledge_payment', 'receipt_sent', 'statement_sent',
@@ -2472,18 +2495,7 @@ function register(app) {
           esc((e.expenseCategory && e.expenseCategory.categoryName) || e.category),
           esc(e.description), esc((e.fund && e.fund.name) || '—'), esc((e.project && e.project.name) || '—'), esc(e.paidTo) || '—', esc(e.paymentMethod) || '—',
           e.paymentVoucher ? `<a class="btn-link" href="/finance/vouchers/${e.paymentVoucher.id}/print">${esc(e.paymentVoucher.voucherNo)}</a>` : '—',
-          ...(canWrite || canApprove ? [[
-            canWrite ? `<a class="btn-link" href="/finance/expenses/${e.id}/edit">Edit</a>` : '',
-            canApprove && e.approvalStatus === 'SUBMITTED'
-              ? (e.recordedBy === res.locals.user.id
-                ? '<span class="muted-text">Awaiting another fund manager</span>'
-                : !checkApprovalTier(res.locals.user, e.amount, limitSettings).ok
-                ? `<span class="muted-text">Needs ${esc(TIER_LABELS[requiredTier(e.amount, limitSettings)])}</span>
-                   <form method="post" action="/finance/expenses/${e.id}/reject" style="display:inline" onsubmit="return confirm('Reject this expense?')"><button type="submit" class="btn-link">Reject</button></form>`
-                : `<form method="post" action="/finance/expenses/${e.id}/approve" style="display:inline" onsubmit="return confirm('Approve and pay this expense?')"><button type="submit" class="btn-link">Approve</button></form>
-                   <form method="post" action="/finance/expenses/${e.id}/reject" style="display:inline" onsubmit="return confirm('Reject this expense?')"><button type="submit" class="btn-link">Reject</button></form>`)
-              : '',
-          ].filter(Boolean).join(' ')] : [])]), { keyCols: 3 })
+          ...(canWrite || canApprove ? [expenseActions(e, { canWrite, canApprove, user: res.locals.user, limitSettings })] : [])]), { keyCols: 3 })
         : '<p class="muted-text">No expenses recorded yet.</p>'}`;
     res.page({ title: 'Finance · Expenses', active: '/finance', noHeader: true, body: `${pageHero('Expenses', '')}${body}` });
   }));
