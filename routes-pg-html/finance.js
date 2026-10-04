@@ -19,8 +19,9 @@
 // (RCT-##### off the payment id, stored on PledgePayment.receiptNumber),
 // separate from the FinanceReceipt-based scheme used by generic income/
 // day-borns — matches the original's real (slightly inconsistent) design,
-// not a cleaned-up version. STILL DEFERRED: vouchers/budgets/projects/
-// settings UI.
+// not a cleaned-up version. Since then: vouchers/budgets/projects, plus
+// accounting (trial balance + ledger), fund/expense/budget-line edit, finance
+// settings and the finance audit trail.
 
 const asyncHandler = require('../lib/async-handler');
 const { esc, fmtMoney, fmtOutstanding, todayISO, isMoneyPositive, isMoneyNonNeg, isValidDate, DAYS_OF_WEEK } = require('../lib/format');
@@ -34,11 +35,15 @@ const { icon } = require('../lib/icons');
 
 function requireFinanceWrite(req, res, next) {
   const u = res.locals.user;
+  // Pages (GET) send a signed-out visitor to /login; writes just get the 403.
+  if (!u && req.method === 'GET') return res.redirect('/login');
   if (u && (u.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(u.financeRole))) return next();
   return res.status(403).send('Forbidden');
 }
 function requireFundManager(req, res, next) {
   const u = res.locals.user;
+  // Pages (GET) send a signed-out visitor to /login; writes just get the 403.
+  if (!u && req.method === 'GET') return res.redirect('/login');
   if (u && (u.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(u.financeRole))) return next();
   return res.status(403).send('Forbidden');
 }
@@ -456,6 +461,16 @@ function sendCsv(res, filename, header, rows) {
   res.send(lines.join('\r\n'));
 }
 
+const FINANCE_ACTIVITY_KINDS = [
+  'income_recorded', 'contribution_recorded', 'finance_reversal', 'journal_reversed', 'finance_splits_updated',
+  'pledge_created', 'pledge_edited', 'pledge_payment', 'receipt_sent', 'statement_sent',
+  'expense_submitted', 'expense_approved', 'expense_rejected', 'expense_edited',
+  'fund_created', 'fund_updated', 'fund_restriction_updated', 'finance_settings_updated',
+  'project_created', 'project_edited',
+  'budget_created', 'budget_line_added', 'budget_line_edited', 'budget_line_removed', 'budget_status_changed',
+  'period_locked', 'period_reopened',
+];
+
 const FINANCE_REPORTS = [
   ['overview', 'Financial Overview'],
   ['income-expense', 'Income & Expenses'],
@@ -578,6 +593,8 @@ function register(app) {
       ['Reports & records', [
         ['/finance/reports', icon('reports'), 'Finance reports'], ['/finance/receipts', icon('receipt'), 'Receipts'],
         ['/finance/statements', icon('ledger'), 'Giving statements'],
+        ['/finance/accounting', icon('ledger'), 'Accounting'], ['/finance/audit', icon('clock'), 'Audit trail'],
+        ['/finance/settings', icon('settings'), 'Finance settings'],
       ]],
     ];
     const recentRows = recentEntries.map((entry) => {
@@ -868,6 +885,8 @@ function register(app) {
       esc(f.code) || '—', esc(f.name), esc((f.fundType || 'GENERAL').replace(/_/g, ' ')),
       f.restricted ? '<span class="pill pill-pending">Restricted</span>' : '<span class="pill pill-fulfilled">Unrestricted</span>',
       esc(f.responsibleOfficer || '—'), fmtMoney(f.raised), fmtMoney(f.spent), `<strong>${fmtMoney(f.balance)}</strong>`,
+      ...(canManage ? [`<a class="btn-link" href="/finance/funds/${f.id}/edit">Edit</a>
+        <form method="post" action="/finance/funds/${f.id}/restriction" style="display:inline"><input type="hidden" name="restricted" value="${f.restricted ? '0' : '1'}"><button type="submit" class="btn-link">${f.restricted ? 'Unrestrict' : 'Restrict'}</button></form>`] : []),
     ]);
     const body = `
       ${statsRow([
@@ -878,7 +897,7 @@ function register(app) {
       ${addForm}
       <section class="card">
         <div class="card-head"><h2>Funds</h2><span class="meta">Restricted and unrestricted church money</span></div>
-        ${tableRows.length ? table(['Code', 'Fund', 'Type', 'Restriction', 'Officer', 'Raised', 'Spent', 'Balance'], tableRows) : '<p class="muted-text">No funds configured yet.</p>'}
+        ${tableRows.length ? table(['Code', 'Fund', 'Type', 'Restriction', 'Officer', 'Raised', 'Spent', 'Balance', ...(canManage ? [''] : [])], tableRows) : '<p class="muted-text">No funds configured yet.</p>'}
       </section>`;
     res.page({ title: 'Finance · Funds', active: '/finance', noHeader: true, body: `${pageHero('Funds', '')}${body}` });
   }));
@@ -2258,6 +2277,7 @@ function register(app) {
            </form>
          </details>` : '';
     const body = `${addForm}
+      <p><a class="btn ghost" href="/finance/budgets.csv">⬇ Export CSV</a></p>
       <section class="card">
         <div class="card-head"><h2>Budgets</h2></div>
         ${budgets.length ? table(['Name', 'Year', 'Scope', 'Status', ''],
@@ -2338,7 +2358,7 @@ function register(app) {
         ${lines.length ? table(['Type', 'Category', 'Account', 'Fund', 'Budgeted', 'Actual', 'Variance', canEditLines ? '' : null].filter(Boolean),
           lines.map((l) => [l.lineType, esc(l.category), esc(l.accountLabel), esc((l.fund && l.fund.name) || 'All funds'), fmtMoney(l.amount), fmtMoney(l.actual),
             fmtOutstanding(-l.variance),
-            ...(canEditLines ? [`<form method="post" action="/finance/budgets/${id}/lines/${l.id}/delete" onsubmit="return confirm('Remove this budget line?')"><button class="link" type="submit">Remove</button></form>`] : [])]))
+            ...(canEditLines ? [`<a class="btn-link" href="/finance/budgets/${id}/lines/${l.id}/edit">Edit</a> <form style="display:inline" method="post" action="/finance/budgets/${id}/lines/${l.id}/delete" onsubmit="return confirm('Remove this budget line?')"><button class="link" type="submit">Remove</button></form>`] : [])]))
           : '<p class="muted-text">No budget lines yet.</p>'}
       </section>
       ${addLineForm}`;
@@ -2444,20 +2464,21 @@ function register(app) {
            </form>
          </details>` : '';
     const body = `${addForm}
-      ${rows.length ? table(['Date', 'Amount', 'Status', 'Category', 'Description', 'Fund', 'Project', 'Paid to', 'Method', 'Voucher', ...(canApprove ? ['Approval'] : [])],
+      ${rows.length ? table(['Date', 'Amount', 'Status', 'Category', 'Description', 'Fund', 'Project', 'Paid to', 'Method', 'Voucher', ...(canWrite || canApprove ? ['Actions'] : [])],
         rows.map((e) => [esc(e.spentOn.toISOString().slice(0, 10)),
           fmtMoney(e.amount), `<span class="pill pill-${esc(e.approvalStatus.toLowerCase())}">${esc(e.approvalStatus)}</span>`,
           esc((e.expenseCategory && e.expenseCategory.categoryName) || e.category),
           esc(e.description), esc((e.fund && e.fund.name) || '—'), esc((e.project && e.project.name) || '—'), esc(e.paidTo) || '—', esc(e.paymentMethod) || '—',
           e.paymentVoucher ? `<a class="btn-link" href="/finance/vouchers/${e.paymentVoucher.id}/print">${esc(e.paymentVoucher.voucherNo)}</a>` : '—',
-          ...(canApprove ? [
-            e.approvalStatus === 'SUBMITTED'
+          ...(canWrite || canApprove ? [[
+            canWrite ? `<a class="btn-link" href="/finance/expenses/${e.id}/edit">Edit</a>` : '',
+            canApprove && e.approvalStatus === 'SUBMITTED'
               ? (e.recordedBy === res.locals.user.id
                 ? '<span class="muted-text">Awaiting another fund manager</span>'
                 : `<form method="post" action="/finance/expenses/${e.id}/approve" style="display:inline" onsubmit="return confirm('Approve and pay this expense?')"><button type="submit" class="btn-link">Approve</button></form>
                    <form method="post" action="/finance/expenses/${e.id}/reject" style="display:inline" onsubmit="return confirm('Reject this expense?')"><button type="submit" class="btn-link">Reject</button></form>`)
-              : '—',
-          ] : [])]), { keyCols: 3 })
+              : '',
+          ].filter(Boolean).join(' ')] : [])]), { keyCols: 3 })
         : '<p class="muted-text">No expenses recorded yet.</p>'}`;
     res.page({ title: 'Finance · Expenses', active: '/finance', noHeader: true, body: `${pageHero('Expenses', '')}${body}` });
   }));
@@ -2568,6 +2589,380 @@ function register(app) {
       flash(req, e.message);
     }
     res.redirect(`/finance/journal/${req.params.id}`);
+  }));
+
+  // --- Accounting: trial balance + general ledger ---
+  // Posted and reversed entries both count, as in the original: a reversal is
+  // its own balancing entry, so including both keeps the books balanced and
+  // shows the full history.
+  async function trialBalanceRows(db) {
+    const sums = await db.journalLine.groupBy({
+      by: ['accountId'],
+      where: { entry: { status: { in: ['POSTED', 'REVERSED'] } } },
+      _sum: { debit: true, credit: true },
+    });
+    const accounts = await db.account.findMany({ where: { id: { in: sums.map((s) => s.accountId) } }, orderBy: { code: 'asc' } });
+    const cents = (n) => Math.round(Number(n || 0) * 100) / 100;
+    return accounts
+      .map((a) => {
+        const s = sums.find((x) => x.accountId === a.id);
+        return { code: a.code, name: a.name, accountType: a.accountType, debit: cents(s._sum.debit), credit: cents(s._sum.credit) };
+      })
+      .filter((r) => r.debit > 0 || r.credit > 0);
+  }
+  const dc = (v) => (Number(v) > 0 ? fmtMoney(v) : '—');
+
+  app.get('/finance/accounting', requireFinanceReportAccess, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const churchId = res.locals.churchId;
+    const [funds, trial, ledgerLines, journalCount, lineCount] = await Promise.all([
+      db.fund.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
+      trialBalanceRows(db),
+      db.journalLine.findMany({
+        include: { entry: true, account: true, fund: true },
+        orderBy: [{ entry: { entryDate: 'desc' } }, { entryId: 'desc' }, { id: 'asc' }], take: 80,
+      }),
+      db.journalEntry.count(),
+      db.journalLine.count(),
+    ]);
+    const fundRows = await Promise.all(funds.map(async (f) => [
+      esc(f.code) || '—', esc(f.name), esc((f.fundType || 'GENERAL').replace(/_/g, ' ')),
+      f.restricted ? '<span class="pill pill-pending">Restricted</span>' : '<span class="pill pill-fulfilled">Unrestricted</span>',
+      fmtMoney(f.openingBalance || 0), `<strong>${fmtMoney(await ledger.fundBalance(db, churchId, f.id))}</strong>`,
+    ]));
+    const debitTotal = trial.reduce((s, r) => s + r.debit, 0);
+    const creditTotal = trial.reduce((s, r) => s + r.credit, 0);
+    const balanced = Math.round((debitTotal - creditTotal) * 100) === 0;
+    const trialTableRows = trial.map((r) => [esc(r.code), esc(r.name), esc(r.accountType), dc(r.debit), dc(r.credit)]).concat([[
+      '', '<strong>Total</strong>',
+      balanced ? '<span class="pill pill-fulfilled">Balanced</span>' : '<span class="pill pill-cancelled">Out of balance</span>',
+      `<strong>${fmtMoney(debitTotal)}</strong>`, `<strong>${fmtMoney(creditTotal)}</strong>`,
+    ]]);
+    const body = `
+      <div class="page-actions">
+        <a class="btn ghost" href="/finance/accounting/trial-balance.csv">Export trial balance</a>
+        <a class="btn ghost" href="/finance/accounting/ledger.csv">Export ledger</a>
+      </div>
+      ${statsRow([
+        { cls: balanced ? 'green' : 'orange', icon: icon('ledger'), value: balanced ? 'Balanced' : 'Review', label: 'Trial balance' },
+        { cls: 'blue', icon: icon('hash'), value: journalCount, label: 'Journal entries' },
+        { cls: 'purple', icon: icon('hash'), value: lineCount, label: 'Journal lines' },
+      ])}
+      <section class="card" style="margin-bottom:1rem">
+        <div class="card-head"><h2>Fund balances</h2><span class="meta">Ledger-derived</span></div>
+        ${fundRows.length ? table(['Code', 'Fund', 'Type', 'Restriction', 'Opening', 'Balance'], fundRows) : '<p class="muted-text">No active funds configured.</p>'}
+      </section>
+      <section class="card" style="margin-bottom:1rem">
+        <div class="card-head"><h2>Trial balance</h2><span class="meta">Posted and reversed journals included</span></div>
+        ${trial.length ? table(['Code', 'Account', 'Type', 'Debit', 'Credit'], trialTableRows) : '<p class="muted-text">No journal activity yet.</p>'}
+      </section>
+      <section class="card">
+        <div class="card-head"><h2>General ledger</h2><span class="meta">Most recent 80 journal lines</span></div>
+        ${ledgerLines.length ? table(['Entry', 'Date', 'Source', 'Status', 'Account', 'Fund', 'Debit', 'Credit', 'Memo'],
+          ledgerLines.map((l) => [
+            `<a href="/finance/journal/${l.entryId}">${esc(l.entry.entryNo)}</a>`, esc(l.entry.entryDate.toISOString().slice(0, 10)),
+            `${esc(l.entry.sourceType)}${l.entry.sourceId ? ' #' + esc(l.entry.sourceId) : ''}`, esc(l.entry.status),
+            `${esc(l.account.code)} · ${esc(l.account.name)}`, esc((l.fund && l.fund.name) || '') || '—',
+            dc(l.debit), dc(l.credit), esc(l.memo || l.entry.memo || ''),
+          ])) : '<p class="muted-text">No journal lines posted yet.</p>'}
+      </section>`;
+    res.page({ title: 'Finance · Accounting', active: '/finance', noHeader: true, body: `${pageHero('Accounting', '')}${body}` });
+  }));
+
+  app.get('/finance/accounting/trial-balance.csv', requireFinanceReportAccess, asyncHandler(async (req, res) => {
+    const rows = await trialBalanceRows(res.locals.db);
+    sendCsv(res, 'trial-balance.csv', ['Code', 'Account', 'Type', 'Debit', 'Credit'], rows.map((r) => [r.code, r.name, r.accountType, r.debit, r.credit]));
+  }));
+
+  app.get('/finance/accounting/ledger.csv', requireFinanceReportAccess, asyncHandler(async (req, res) => {
+    const lines = await res.locals.db.journalLine.findMany({
+      include: { entry: true, account: true, fund: true },
+      orderBy: [{ entry: { entryDate: 'asc' } }, { entryId: 'asc' }, { id: 'asc' }],
+    });
+    sendCsv(res, 'general-ledger.csv', ['Entry', 'Date', 'Source', 'Status', 'Account code', 'Account', 'Fund', 'Debit', 'Credit', 'Memo'],
+      lines.map((l) => [l.entry.entryNo, l.entry.entryDate.toISOString().slice(0, 10),
+        `${l.entry.sourceType}${l.entry.sourceId ? ' #' + l.entry.sourceId : ''}`, l.entry.status, l.account.code, l.account.name,
+        (l.fund && l.fund.name) || '', l.debit, l.credit, l.memo || l.entry.memo || '']));
+  }));
+
+  // --- Fund edit ---
+  app.get('/finance/funds/:id/edit', requireFundManager, asyncHandler(async (req, res) => {
+    const fund = await res.locals.db.fund.findUnique({ where: { id: Number(req.params.id) } });
+    if (!fund) return res.status(404).send('Not found');
+    const body = `
+      <p><a href="/finance/funds">← All funds</a></p>
+      <form class="form" method="post" action="/finance/funds/${fund.id}">
+        <label>Code<input name="code" maxlength="16" value="${esc(fund.code || '')}"></label>
+        <label>Fund name<input name="name" required value="${esc(fund.name)}"></label>
+        <label>Type<select name="fundType">${fundTypeOptions(fund.fundType)}</select></label>
+        <label>Opening balance (GH₵)<input type="number" step="0.01" min="0" name="openingBalance" value="${esc(fund.openingBalance)}"></label>
+        <label>Responsible officer<input name="responsibleOfficer" value="${esc(fund.responsibleOfficer || '')}"></label>
+        <label><span>&nbsp;</span><label class="check" style="background:none;padding:0"><input type="checkbox" name="restricted" value="1" ${fund.restricted ? 'checked' : ''}> Restricted fund</label></label>
+        <label class="wide">Notes<input name="notes" value="${esc(fund.notes || '')}"></label>
+        <div class="actions"><button type="submit">Save fund</button></div>
+      </form>`;
+    res.page({ title: `Edit fund · ${fund.name}`, active: '/finance', noHeader: true, body: `${pageHero(`Edit fund · ${esc(fund.name)}`, '')}${body}` });
+  }));
+
+  app.post('/finance/funds/:id', requireFundManager, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const id = Number(req.params.id);
+    const b = req.body || {};
+    const fund = await db.fund.findUnique({ where: { id } });
+    if (!fund) return res.status(404).send('Not found');
+    const name = String(b.name || '').trim();
+    if (!name) { flash(req, 'Enter a fund name.'); return res.redirect(`/finance/funds/${id}/edit`); }
+    if (!isMoneyNonNeg(b.openingBalance || 0)) { flash(req, 'Opening balance must be 0 or more.'); return res.redirect(`/finance/funds/${id}/edit`); }
+    try {
+      await db.fund.update({
+        where: { id },
+        data: {
+          name, code: String(b.code || '').trim().toUpperCase() || null,
+          fundType: FUND_TYPES.includes(b.fundType) ? b.fundType : 'GENERAL',
+          restricted: !!b.restricted, openingBalance: Number(b.openingBalance) || 0,
+          responsibleOfficer: b.responsibleOfficer || null, notes: b.notes || null,
+        },
+      });
+      await logActivity(db, 'fund_updated', `Updated finance fund ${name}`, '/finance/funds', res.locals.user.id);
+      flash(req, 'Fund updated.', 'success');
+    } catch (e) {
+      if (e.code !== 'P2002') throw e;
+      flash(req, 'A fund with that name or code already exists.');
+      return res.redirect(`/finance/funds/${id}/edit`);
+    }
+    res.redirect('/finance/funds');
+  }));
+
+  app.post('/finance/funds/:id/restriction', requireFundManager, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const id = Number(req.params.id);
+    const fund = await db.fund.findUnique({ where: { id } });
+    if (!fund) return res.status(404).send('Not found');
+    const restricted = req.body && req.body.restricted === '1';
+    await db.fund.update({ where: { id }, data: { restricted } });
+    await logActivity(db, 'fund_restriction_updated', `${fund.name} marked ${restricted ? 'restricted' : 'unrestricted'}`, '/finance/funds', res.locals.user.id);
+    res.redirect('/finance/funds');
+  }));
+
+  // --- Expense edit ---
+  // The original let anyone with write access edit an expense in any state and
+  // override its status directly. That cannot be carried over safely: a PAID
+  // expense already has a journal entry and voucher, so changing its amount,
+  // date, fund or category would silently desync the ledger, and a free status
+  // override would bypass the maker-checker rule (approve/reject by someone
+  // other than the recorder). So:
+  //  - SUBMITTED / REJECTED: every field is editable. The editor becomes the
+  //    recorder (so they cannot then approve their own edit), and a REJECTED
+  //    expense goes back to SUBMITTED for another look.
+  //  - PAID: only descriptive fields (description, paid to, reference, method,
+  //    receipt flag); the voucher is re-synced. To change the money, reverse
+  //    the journal entry and record the expense again.
+  // There is deliberately no /expenses/:id/status route; approve/reject are it.
+  app.get('/finance/expenses/:id/edit', requireFinanceWrite, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const e = await db.expense.findUnique({ where: { id: Number(req.params.id) } });
+    if (!e) return res.status(404).send('Not found');
+    const paid = e.approvalStatus === 'PAID';
+    const cats = await db.expenseCategory.findMany({ where: { isActive: true }, orderBy: { categoryName: 'asc' } });
+    const lock = paid ? 'disabled' : '';
+    const body = `
+      <p><a href="/finance/expenses">← All expenses</a></p>
+      <p>Status: <span class="pill pill-${esc(e.approvalStatus.toLowerCase())}">${esc(e.approvalStatus)}</span></p>
+      ${paid ? '<p class="muted-text">This expense is paid and posted to the ledger, so the amount, date, category, fund and project are locked. To change them, reverse its journal entry and record the expense again.</p>'
+        : e.approvalStatus === 'REJECTED' ? '<p class="muted-text">Saving changes sends this expense back for approval.</p>' : ''}
+      <form class="form" method="post" action="/finance/expenses/${e.id}/edit">
+        <label>Date<input type="date" name="spentOn" required value="${esc(e.spentOn.toISOString().slice(0, 10))}" ${lock}></label>
+        <label>Category<select name="expenseCatId" ${lock}>${cats.map((c) => `<option value="${c.id}" ${c.id === e.expenseCatId ? 'selected' : ''}>${esc(c.categoryName)}</option>`).join('')}</select></label>
+        <label>Amount (GH₵)<input type="number" step="0.01" min="0.01" name="amount" required value="${esc(e.amount)}" ${lock}></label>
+        <label>Payment method<select name="paymentMethod">${['Cash', 'Bank Transfer', 'Cheque', 'Mobile Money', 'Other'].map((m) => `<option ${m === e.paymentMethod ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+        <label>Fund<select name="fundId" ${lock}>${await fundOptions(db, e.fundId, false)}</select></label>
+        <label>Project<select name="projectId" ${lock}>${await projectOptions(db, e.projectId)}</select></label>
+        <label class="wide">Description<input name="description" required value="${esc(e.description || '')}"></label>
+        <label>Paid to<input name="paidTo" value="${esc(e.paidTo || '')}"></label>
+        <label>Reference #<input name="referenceNumber" value="${esc(e.referenceNumber || '')}"></label>
+        <label><span>&nbsp;</span><label class="check" style="background:none;padding:0"><input type="checkbox" name="receiptAttached" value="1" ${e.receiptAttached ? 'checked' : ''}> Receipt attached</label></label>
+        <div class="actions"><button type="submit">Save changes</button></div>
+      </form>`;
+    res.page({ title: 'Edit expense', active: '/finance', noHeader: true, body: `${pageHero('Edit expense', '')}${body}` });
+  }));
+
+  app.post('/finance/expenses/:id/edit', requireFinanceWrite, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const id = Number(req.params.id);
+    const b = req.body || {};
+    const e = await db.expense.findUnique({ where: { id } });
+    if (!e) return res.status(404).send('Not found');
+    const back = `/finance/expenses/${id}/edit`;
+    const descriptive = {
+      description: String(b.description || '').trim() || null, paidTo: b.paidTo || null, paymentMethod: b.paymentMethod || null,
+      referenceNumber: b.referenceNumber || null, receiptAttached: !!b.receiptAttached,
+    };
+    if (!descriptive.description) { flash(req, 'Enter a description.'); return res.redirect(back); }
+
+    if (e.approvalStatus === 'PAID') {
+      const updated = await db.expense.update({ where: { id }, data: descriptive });
+      await syncExpenseVoucher(db, updated, res.locals.user.id);
+    } else {
+      if (!isValidDate(b.spentOn)) { flash(req, 'Enter a valid date.'); return res.redirect(back); }
+      if (!isMoneyPositive(b.amount)) { flash(req, 'Amount must be greater than 0.'); return res.redirect(back); }
+      const cat = b.expenseCatId ? await db.expenseCategory.findUnique({ where: { id: Number(b.expenseCatId) } }) : null;
+      const fundCheck = await checkFundId(db, b.fundId);
+      if (!fundCheck.ok) { flash(req, 'Fund not found.'); return res.redirect(back); }
+      const projectCheck = await checkProjectId(db, b.projectId);
+      if (!projectCheck.ok) { flash(req, 'Project not found.'); return res.redirect(back); }
+      await db.expense.update({
+        where: { id },
+        data: {
+          ...descriptive, expenseCatId: cat ? cat.id : e.expenseCatId, category: (cat && cat.categoryName) || e.category,
+          amount: Number(b.amount), spentOn: new Date(b.spentOn), fundId: fundCheck.fundId ?? e.fundId, projectId: projectCheck.projectId,
+          recordedBy: res.locals.user.id,
+          ...(e.approvalStatus === 'REJECTED' ? { approvalStatus: 'SUBMITTED', submittedAt: new Date(), rejectedAt: null, approvalNote: null } : {}),
+        },
+      });
+    }
+    await logActivity(db, 'expense_edited', `Expense #${id} edited (${e.approvalStatus})`, '/finance/expenses', res.locals.user.id);
+    flash(req, e.approvalStatus === 'REJECTED' ? 'Expense updated and resubmitted for approval.' : 'Expense updated.', 'success');
+    res.redirect('/finance/expenses');
+  }));
+
+  // --- Budget line edit ---
+  app.get('/finance/budgets/:id/lines/:lineId/edit', requireFundManager, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const budget = await db.financeBudget.findUnique({ where: { id: Number(req.params.id) } });
+    if (!budget) return res.status(404).send('Not found');
+    if (budget.status === 'CLOSED') { flash(req, 'This budget is closed; lines are immutable.'); return res.redirect(`/finance/budgets/${budget.id}`); }
+    const line = await db.financeBudgetLine.findFirst({ where: { id: Number(req.params.lineId), budgetId: budget.id } });
+    if (!line) return res.status(404).send('Not found');
+    const body = `
+      <p><a href="/finance/budgets/${budget.id}">← Back to budget</a></p>
+      <form class="form" method="post" action="/finance/budgets/${budget.id}/lines/${line.id}/edit">
+        <label>Type<select name="lineType">${BUDGET_LINE_TYPES.map((t) => `<option value="${t}" ${t === line.lineType ? 'selected' : ''}>${t === 'INCOME' ? 'Income' : 'Expense'}</option>`).join('')}</select></label>
+        <label class="wide">Category label<input name="category" required value="${esc(line.category)}"></label>
+        <label>Account (optional)<select name="accountId">${await accountOptionsForBudget(db, line.lineType, line.accountId)}</select></label>
+        <label>Fund (optional)<select name="fundId">${await fundOptions(db, line.fundId, true)}</select></label>
+        <label>Budgeted amount (GH₵)<input type="number" step="0.01" min="0" name="amount" required value="${esc(line.amount)}"></label>
+        <label class="wide">Notes<input name="notes" value="${esc(line.notes || '')}"></label>
+        <div class="actions"><button type="submit">Save line</button></div>
+      </form>`;
+    res.page({ title: 'Edit budget line', active: '/finance', noHeader: true, body: `${pageHero('Edit budget line', '')}${body}` });
+  }));
+
+  app.post('/finance/budgets/:id/lines/:lineId/edit', requireFundManager, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const b = req.body || {};
+    const budget = await db.financeBudget.findUnique({ where: { id: Number(req.params.id) } });
+    if (!budget) return res.status(404).send('Not found');
+    if (budget.status === 'CLOSED') { flash(req, 'This budget is closed; lines are immutable.'); return res.redirect(`/finance/budgets/${budget.id}`); }
+    const line = await db.financeBudgetLine.findFirst({ where: { id: Number(req.params.lineId), budgetId: budget.id } });
+    if (!line) return res.status(404).send('Not found');
+    const back = `/finance/budgets/${budget.id}/lines/${line.id}/edit`;
+    if (!BUDGET_LINE_TYPES.includes(b.lineType) || !String(b.category || '').trim() || !isMoneyNonNeg(b.amount)) {
+      flash(req, 'Pick a type, enter a category label, and a budgeted amount of 0 or more.');
+      return res.redirect(back);
+    }
+    const accountCheck = await checkAccountId(db, b.accountId);
+    const fundCheck = await checkFundId(db, b.fundId);
+    if (!accountCheck.ok || !fundCheck.ok) { flash(req, 'Account or fund not found.'); return res.redirect(back); }
+    await db.financeBudgetLine.update({
+      where: { id: line.id },
+      data: { lineType: b.lineType, category: String(b.category).trim(), accountId: accountCheck.accountId, fundId: fundCheck.fundId, amount: Number(b.amount), notes: b.notes || null },
+    });
+    await logActivity(db, 'budget_line_edited', `Budget line edited in "${budget.name}": ${String(b.category).trim()}`, `/finance/budgets/${budget.id}`, res.locals.user.id);
+    flash(req, 'Budget line updated.', 'success');
+    res.redirect(`/finance/budgets/${budget.id}`);
+  }));
+
+  // --- Budgets list CSV ---
+  app.get('/finance/budgets.csv', requireFinanceReportAccess, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const budgets = await db.financeBudget.findMany({ orderBy: [{ year: 'desc' }, { id: 'desc' }], include: { lines: true } });
+    sendCsv(res, 'budgets.csv', ['Name', 'Scope', 'Year', 'Month', 'Status', 'Lines', 'Budgeted income', 'Budgeted expense'],
+      budgets.map((bg) => [bg.name, bg.scope, bg.year, bg.month ?? '', bg.status, bg.lines.length,
+        bg.lines.filter((l) => l.lineType === 'INCOME').reduce((s, l) => s + Number(l.amount), 0),
+        bg.lines.filter((l) => l.lineType === 'EXPENSE').reduce((s, l) => s + Number(l.amount), 0)]));
+  }));
+
+  // --- Finance settings ---
+  app.get('/finance/settings', requireFinanceReportAccess, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const canManage = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
+    const s = (await db.financeSetting.findFirst()) || { receiptPrefix: 'RCT', voucherPrefix: 'PV', smallExpenseMax: 500, mediumExpenseMax: 5000 };
+    const dis = canManage ? '' : 'disabled';
+    const body = `
+      <section class="card">
+        <div class="card-head"><h2>Finance settings</h2><span class="meta">Receipt and voucher numbering</span></div>
+        <form class="form" method="post" action="/finance/settings">
+          <label>Receipt prefix<input name="receiptPrefix" required maxlength="24" value="${esc(s.receiptPrefix)}" ${dis}></label>
+          <label>Voucher prefix<input name="voucherPrefix" required maxlength="24" value="${esc(s.voucherPrefix)}" ${dis}></label>
+          <label>Small expense limit<input type="number" step="0.01" min="0" name="smallExpenseMax" value="${esc(s.smallExpenseMax)}" ${dis}></label>
+          <label>Medium expense limit<input type="number" step="0.01" min="0" name="mediumExpenseMax" value="${esc(s.mediumExpenseMax)}" ${dis}></label>
+          <label class="wide">Next receipt preview<input value="${esc(await nextReceiptNo(db, todayISO()))}" disabled></label>
+          <label class="wide">Next voucher preview<input value="${esc(await nextVoucherNo(db, todayISO()))}" disabled></label>
+          ${canManage ? '<div class="actions"><button type="submit">Save settings</button></div>' : '<p class="muted-text wide">Only finance fund managers can change these settings.</p>'}
+        </form>
+        <p class="muted-text">The expense limits are stored for approval thresholds but are not enforced yet.</p>
+      </section>`;
+    res.page({ title: 'Finance · Settings', active: '/finance', noHeader: true, body: `${pageHero('Finance settings', '')}${body}` });
+  }));
+
+  app.post('/finance/settings', requireFundManager, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const b = req.body || {};
+    const clean = (v) => String(v || '').trim().replace(/\s+/g, '-').toUpperCase();
+    const receiptPrefix = clean(b.receiptPrefix);
+    const voucherPrefix = clean(b.voucherPrefix);
+    if (!receiptPrefix || !voucherPrefix || receiptPrefix.length > 24 || voucherPrefix.length > 24 || !isMoneyNonNeg(b.smallExpenseMax || 0) || !isMoneyNonNeg(b.mediumExpenseMax || 0)) {
+      flash(req, 'Enter valid prefixes and expense limits.');
+      return res.redirect('/finance/settings');
+    }
+    const data = { receiptPrefix, voucherPrefix, smallExpenseMax: Number(b.smallExpenseMax || 0), mediumExpenseMax: Number(b.mediumExpenseMax || 0) };
+    if (await db.financeSetting.findFirst()) await db.financeSetting.update({ where: { churchId: res.locals.churchId }, data });
+    else await db.financeSetting.create({ data });
+    await logActivity(db, 'finance_settings_updated', 'Finance settings updated', '/finance/settings', res.locals.user.id);
+    flash(req, 'Finance settings saved.', 'success');
+    res.redirect('/finance/settings');
+  }));
+
+  // --- Finance audit trail ---
+  // Reads the same ActivityLog the rest of the app writes to, narrowed to
+  // finance events by kind. Keep FINANCE_ACTIVITY_KINDS in step with the
+  // logActivity() kinds used in this file (a test enforces it).
+  app.get('/finance/audit', requireFinanceReportAccess, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const perPage = 50;
+    const kind = FINANCE_ACTIVITY_KINDS.includes(req.query.kind) ? req.query.kind : '';
+    const where = { kind: kind ? kind : { in: FINANCE_ACTIVITY_KINDS } };
+    const [total, rows] = await Promise.all([
+      db.activityLog.count({ where }),
+      db.activityLog.findMany({ where, orderBy: { id: 'desc' }, skip: (page - 1) * perPage, take: perPage }),
+    ]);
+    const userIds = [...new Set(rows.map((r) => r.userId).filter(Boolean))];
+    const users = userIds.length ? await db.user.findMany({ where: { id: { in: userIds } }, select: { id: true, displayName: true, username: true } }) : [];
+    const actor = (id) => { const u = users.find((x) => x.id === id); return u ? (u.displayName || u.username) : '—'; };
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+    const kq = kind ? `&kind=${encodeURIComponent(kind)}` : '';
+    const body = `
+      <form method="get" action="/finance/audit" class="filter-bar">
+        <select name="kind" onchange="this.form.submit()">
+          <option value="">All finance events</option>
+          ${FINANCE_ACTIVITY_KINDS.map((k) => `<option value="${esc(k)}" ${k === kind ? 'selected' : ''}>${esc(k.replace(/_/g, ' '))}</option>`).join('')}
+        </select>
+        <a class="btn ghost" href="/finance/audit">Clear</a>
+      </form>
+      <section class="card">
+        <div class="card-head"><h2>Finance audit trail</h2><span class="meta">${total} event${total === 1 ? '' : 's'}</span></div>
+        ${rows.length ? table(['When', 'Event', 'Description', 'By', ''],
+          rows.map((r) => [esc(r.occurredAt.toISOString().slice(0, 16).replace('T', ' ')), `<code style="font-size:0.8rem">${esc(r.kind.replace(/_/g, ' '))}</code>`,
+            esc(r.description), esc(actor(r.userId)), r.link ? `<a href="${esc(r.link)}">View</a>` : '']))
+          : '<p class="muted-text">No finance audit events recorded yet.</p>'}
+      </section>
+      ${totalPages > 1 ? `<div class="filter-bar" style="margin-top:1rem">
+        ${page > 1 ? `<a class="btn ghost" href="/finance/audit?page=${page - 1}${kq}">← Prev</a>` : ''}
+        <span class="muted-text">Page ${page} of ${totalPages}</span>
+        ${page < totalPages ? `<a class="btn ghost" href="/finance/audit?page=${page + 1}${kq}">Next →</a>` : ''}
+      </div>` : ''}`;
+    res.page({ title: 'Finance · Audit Trail', active: '/finance', noHeader: true, body: `${pageHero('Finance audit trail', '')}${body}` });
   }));
 
   // --- Financial periods ---
