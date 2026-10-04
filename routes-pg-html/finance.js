@@ -2330,7 +2330,8 @@ function register(app) {
     res.redirect(`/finance/budgets/${budget.id}`);
   }));
 
-  app.get('/finance/budgets/:id', requireFinanceReportAccess, asyncHandler(async (req, res) => {
+  // :id is digits only so '/finance/budgets/57.csv' falls through to the CSV route below
+  app.get('/finance/budgets/:id(\\d+)', requireFinanceReportAccess, asyncHandler(async (req, res) => {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const churchId = res.locals.churchId;
