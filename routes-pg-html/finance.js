@@ -32,6 +32,7 @@ const ledger = require('../lib/ledger-pg');
 const { sendSmsBatch, sendEmailEach, normalizePhoneGH } = require('../lib/delivery');
 const { amountInWords } = require('../lib/money');
 const { icon } = require('../lib/icons');
+const { checkApprovalTier, requiredTier, TIER_LABELS } = require('../lib/expense-approval');
 
 function requireFinanceWrite(req, res, next) {
   const u = res.locals.user;
@@ -2442,6 +2443,7 @@ function register(app) {
     const db = res.locals.db;
     const canWrite = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(res.locals.user.financeRole);
     const canApprove = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
+    const limitSettings = await db.financeSetting.findFirst();
     const [cats, rows] = await Promise.all([
       db.expenseCategory.findMany({ where: { isActive: true }, orderBy: { categoryName: 'asc' } }),
       db.expense.findMany({ where: {}, orderBy: [{ spentOn: 'desc' }, { id: 'desc' }], take: 100, include: { expenseCategory: { select: { categoryName: true } }, fund: { select: { name: true } }, project: { select: { name: true } }, paymentVoucher: { select: { id: true, voucherNo: true } } } }),
@@ -2475,6 +2477,9 @@ function register(app) {
             canApprove && e.approvalStatus === 'SUBMITTED'
               ? (e.recordedBy === res.locals.user.id
                 ? '<span class="muted-text">Awaiting another fund manager</span>'
+                : !checkApprovalTier(res.locals.user, e.amount, limitSettings).ok
+                ? `<span class="muted-text">Needs ${esc(TIER_LABELS[requiredTier(e.amount, limitSettings)])}</span>
+                   <form method="post" action="/finance/expenses/${e.id}/reject" style="display:inline" onsubmit="return confirm('Reject this expense?')"><button type="submit" class="btn-link">Reject</button></form>`
                 : `<form method="post" action="/finance/expenses/${e.id}/approve" style="display:inline" onsubmit="return confirm('Approve and pay this expense?')"><button type="submit" class="btn-link">Approve</button></form>
                    <form method="post" action="/finance/expenses/${e.id}/reject" style="display:inline" onsubmit="return confirm('Reject this expense?')"><button type="submit" class="btn-link">Reject</button></form>`)
               : '',
@@ -2522,6 +2527,8 @@ function register(app) {
     if (!expense) return res.status(404).send('Not found');
     if (expense.approvalStatus !== 'SUBMITTED') { flash(req, 'This expense is not awaiting approval.'); return res.redirect('/finance/expenses'); }
     if (expense.recordedBy === res.locals.user.id) { flash(req, 'You cannot approve an expense you recorded yourself — ask another fund manager.'); return res.redirect('/finance/expenses'); }
+    const tier = checkApprovalTier(res.locals.user, expense.amount, await db.financeSetting.findFirst());
+    if (!tier.ok) { flash(req, `An expense of ${fmtMoney(expense.amount)} must be approved by ${tier.needs}.`); return res.redirect('/finance/expenses'); }
 
     const entryId = await ledger.postExpensePayment(db, churchId, {
       date: expense.spentOn.toISOString().slice(0, 10), amount: Number(expense.amount), expenseAccount: ledger.expenseAccountFor(expense.category),
@@ -2900,7 +2907,7 @@ function register(app) {
           <label class="wide">Next voucher preview<input value="${esc(await nextVoucherNo(db, todayISO()))}" disabled></label>
           ${canManage ? '<div class="actions"><button type="submit">Save settings</button></div>' : '<p class="muted-text wide">Only finance fund managers can change these settings.</p>'}
         </form>
-        <p class="muted-text">The expense limits are stored for approval thresholds but are not enforced yet.</p>
+        <p class="muted-text">Approval tiers: an expense up to the small limit can be approved by any fund manager; above it, up to the medium limit, by a Finance Admin or Admin; above the medium limit, by an Admin only. Nobody can approve an expense they recorded themselves.</p>
       </section>`;
     res.page({ title: 'Finance · Settings', active: '/finance', noHeader: true, body: `${pageHero('Finance settings', '')}${body}` });
   }));
@@ -2913,6 +2920,10 @@ function register(app) {
     const voucherPrefix = clean(b.voucherPrefix);
     if (!receiptPrefix || !voucherPrefix || receiptPrefix.length > 24 || voucherPrefix.length > 24 || !isMoneyNonNeg(b.smallExpenseMax || 0) || !isMoneyNonNeg(b.mediumExpenseMax || 0)) {
       flash(req, 'Enter valid prefixes and expense limits.');
+      return res.redirect('/finance/settings');
+    }
+    if (Number(b.smallExpenseMax || 0) > Number(b.mediumExpenseMax || 0)) {
+      flash(req, 'The small expense limit cannot be higher than the medium limit.');
       return res.redirect('/finance/settings');
     }
     const data = { receiptPrefix, voucherPrefix, smallExpenseMax: Number(b.smallExpenseMax || 0), mediumExpenseMax: Number(b.mediumExpenseMax || 0) };

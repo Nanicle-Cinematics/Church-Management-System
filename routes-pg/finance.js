@@ -29,6 +29,7 @@ const asyncHandler = require('../lib/async-handler');
 const ledger = require('../lib/ledger-pg');
 const { amountInWords } = require('../lib/money');
 const { logActivity } = require('../lib/tenant-activity');
+const { checkApprovalTier } = require('../lib/expense-approval');
 
 function requireFinanceWrite(req, res, next) {
   const u = res.locals.user;
@@ -731,6 +732,8 @@ function register(app) {
     if (!expense) return res.status(404).json({ error: 'Not found' });
     if (expense.approvalStatus !== 'SUBMITTED') return res.status(409).json({ error: 'This expense is not awaiting approval' });
     if (expense.recordedBy === res.locals.user.id) return res.status(403).json({ error: 'You cannot approve an expense you recorded yourself' });
+    const tier = checkApprovalTier(res.locals.user, expense.amount, await db.financeSetting.findFirst());
+    if (!tier.ok) return res.status(403).json({ error: `This expense must be approved by ${tier.needs}` });
 
     const entryId = await ledger.postExpensePayment(db, churchId, {
       date: expense.spentOn.toISOString().slice(0, 10),
