@@ -734,6 +734,7 @@ function register(app) {
         paidTo: b.paidTo || null,
         paymentMethod: b.paymentMethod || null,
         referenceNumber: b.referenceNumber || null,
+        notes: String(b.notes || '').trim().slice(0, 500) || null,
         fundId,
         projectId: projectCheck.projectId,
         approvalStatus: 'SUBMITTED',

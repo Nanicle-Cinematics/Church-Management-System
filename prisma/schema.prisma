@@ -1123,6 +1123,9 @@ model Expense {
   paidAt          DateTime?        @map("paid_at")
   rejectedAt      DateTime?        @map("rejected_at")
   approvalNote    String?          @map("approval_note")
+  // Free-text notes on the expense itself, separate from approvalNote (which is
+  // the reason given when an expense is rejected). Added by scripts/add-expense-notes.sql.
+  notes           String?
   createdAt       DateTime         @default(now()) @map("created_at")
 
   paymentVoucher PaymentVoucher?

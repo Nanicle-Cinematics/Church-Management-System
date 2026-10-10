@@ -2551,6 +2551,7 @@ function register(app) {
              <label>Paid to<input name="paidTo"></label>
              <label>Reference #<input name="referenceNumber"></label>
              <label><span>&nbsp;</span><label class="check" style="background:none;padding:0"><input type="checkbox" name="receiptAttached" value="1"> Receipt attached</label></label>
+             <label class="wide">Notes<input name="notes" maxlength="500"></label>
              <div class="actions"><button type="submit">Save</button></div>
            </form>
          </details>` : '';
@@ -2559,7 +2560,7 @@ function register(app) {
         rows.map((e) => [esc(e.spentOn.toISOString().slice(0, 10)),
           fmtMoney(e.amount), `<span class="pill pill-${esc(e.approvalStatus.toLowerCase())}">${esc(e.approvalStatus)}</span>`,
           esc((e.expenseCategory && e.expenseCategory.categoryName) || e.category),
-          `${esc(e.description)}${e.receiptAttached ? '<br><span class="muted-text">Receipt attached</span>' : ''}`, esc((e.fund && e.fund.name) || '—'), esc((e.project && e.project.name) || '—'), esc(e.paidTo) || '—', esc(e.paymentMethod) || '—',
+          `${esc(e.description)}${e.notes ? `<br><span class="muted-text">${esc(e.notes)}</span>` : ''}${e.receiptAttached ? '<br><span class="muted-text">Receipt attached</span>' : ''}`, esc((e.fund && e.fund.name) || '—'), esc((e.project && e.project.name) || '—'), esc(e.paidTo) || '—', esc(e.paymentMethod) || '—',
           e.paymentVoucher ? `<a class="btn-link" href="/finance/vouchers/${e.paymentVoucher.id}/print">${esc(e.paymentVoucher.voucherNo)}</a>` : '—',
           ...(canWrite || canApprove ? [expenseActions(e, { canWrite, canApprove, user: res.locals.user, limitSettings })] : [])]), { keyCols: 3 })
         : '<p class="muted-text">No expenses recorded yet.</p>'}`;
@@ -2588,7 +2589,7 @@ function register(app) {
       data: {
         expenseCatId: cat ? cat.id : null, category: categoryName, amount: Number(b.amount), spentOn: new Date(b.spentOn),
         description: b.description || null, paidTo: b.paidTo || null, paymentMethod: b.paymentMethod || null,
-        referenceNumber: b.referenceNumber || null, receiptAttached: !!b.receiptAttached, fundId, projectId: projectCheck.projectId,
+        referenceNumber: b.referenceNumber || null, receiptAttached: !!b.receiptAttached, notes: String(b.notes || '').trim().slice(0, 500) || null, fundId, projectId: projectCheck.projectId,
         approvalStatus: 'SUBMITTED', submittedAt: new Date(), recordedBy: res.locals.user.id,
       },
     });
@@ -2867,6 +2868,7 @@ function register(app) {
         <label>Paid to<input name="paidTo" value="${esc(e.paidTo || '')}"></label>
         <label>Reference #<input name="referenceNumber" value="${esc(e.referenceNumber || '')}"></label>
         <label><span>&nbsp;</span><label class="check" style="background:none;padding:0"><input type="checkbox" name="receiptAttached" value="1" ${e.receiptAttached ? 'checked' : ''}> Receipt attached</label></label>
+        <label class="wide">Notes<input name="notes" maxlength="500" value="${esc(e.notes || '')}"></label>
         <div class="actions"><button type="submit">Save changes</button></div>
       </form>`;
     res.page({ title: 'Edit expense', active: '/finance', noHeader: true, body: `${pageHero('Edit expense', '')}${body}` });
@@ -2882,6 +2884,7 @@ function register(app) {
     const descriptive = {
       description: String(b.description || '').trim() || null, paidTo: b.paidTo || null, paymentMethod: b.paymentMethod || null,
       referenceNumber: b.referenceNumber || null, receiptAttached: !!b.receiptAttached,
+      notes: String(b.notes || '').trim().slice(0, 500) || null,
     };
     if (!descriptive.description) { flash(req, 'Enter a description.'); return res.redirect(back); }
 
