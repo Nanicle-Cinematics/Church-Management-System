@@ -204,6 +204,21 @@ enum WelfareStatus {
   CLOSED
 }
 
+/// A cash count sheet: entered after a service, checked by a second officer.
+enum CashCountStatus {
+  COUNTED
+  VERIFIED
+  VOIDED
+}
+
+/// Money taken to the bank by hand: no bank connection.
+enum BankDepositStatus {
+  PENDING // set aside / taken to the bank; slip not yet recorded
+  DEPOSITED // slip number recorded
+  VERIFIED // checked by a second officer; posted Dr 1010 / Cr 1000
+  VOIDED
+}
+
 enum DayBorn {
   SUNDAY
   MONDAY
@@ -363,6 +378,9 @@ model Church {
   pledges            Pledge[]
   pledgePayments     PledgePayment[]
   expenseCategories  ExpenseCategory[]
+  cashCountSheets    CashCountSheet[]
+  cashCountLines     CashCountLine[]
+  bankDeposits       BankDeposit[]
 
   @@map("churches")
 }
@@ -1238,11 +1256,14 @@ model IncomeRecord {
   recordedBy      Int?            @map("recorded_by")
   journalEntryId  Int?            @map("journal_entry_id")
   deletedAt       DateTime?       @map("deleted_at")
+  // The bank deposit that took this money to the bank (cash control).
+  depositId       Int?            @map("deposit_id")
   createdAt       DateTime        @default(now()) @map("created_at")
 
   @@unique([churchId, receiptNumber])
   @@index([churchId])
   @@index([transactionDate])
+  @@index([depositId])
   @@index([category])
   @@map("income_records")
 }
@@ -1264,11 +1285,14 @@ model DayBornCollection {
   journalEntryId  Int?      @map("journal_entry_id")
   notes           String?
   deletedAt       DateTime? @map("deleted_at")
+  // The bank deposit that took this money to the bank (cash control).
+  depositId       Int?      @map("deposit_id")
   createdAt       DateTime  @default(now()) @map("created_at")
 
   @@unique([churchId, receiptNumber])
   @@index([churchId])
   @@index([collectionDate])
+  @@index([depositId])
   @@index([dayBorn])
   @@map("day_born_collections")
 }
@@ -1311,11 +1335,14 @@ model Tithe {
   recordedBy     Int?      @map("recorded_by")
   journalEntryId Int?      @map("journal_entry_id")
   deletedAt      DateTime? @map("deleted_at")
+  // The bank deposit that took this money to the bank (cash control).
+  depositId      Int?      @map("deposit_id")
   createdAt      DateTime  @default(now()) @map("created_at")
 
   @@index([churchId])
   @@index([memberId])
   @@index([titheDate])
+  @@index([depositId])
   @@map("tithes")
 }
 
@@ -1351,12 +1378,15 @@ model Service {
   journalEntryId Int?        @map("journal_entry_id")
   notes          String?
   deletedAt      DateTime?   @map("deleted_at")
+  // The bank deposit that took this money to the bank (cash control).
+  depositId      Int?        @map("deposit_id")
   createdAt      DateTime    @default(now()) @map("created_at")
 
   dayBornSplits DayBornSplit[]
 
   @@index([churchId])
   @@index([serviceDate])
+  @@index([depositId])
   @@map("services")
 }
 
@@ -1501,4 +1531,95 @@ model ExpenseCategory {
   @@unique([churchId, categoryName])
   @@index([churchId])
   @@map("expense_categories")
+}
+
+// ---------------------------------------------------------------------------
+//  FINANCE: CASH CONTROL (count sheets and bank deposits)
+// ---------------------------------------------------------------------------
+
+/// A hand count of one collection, by denomination. A control record: it
+/// posts nothing to the ledger (the collection itself was posted when it was
+/// recorded). It records what was physically in the bag, against what was
+/// expected, and who counted, witnessed, received and verified it.
+model CashCountSheet {
+  id             Int             @id @default(autoincrement()) @map("sheet_id")
+  churchId       String          @map("church_id")
+  church         Church          @relation(fields: [churchId], references: [id])
+  sheetNo        String          @map("sheet_no") // CC-2026-0001
+  serviceDate    DateTime        @map("service_date") @db.Date
+  serviceLabel   String?         @map("service_label")
+  collection     String
+  fundId         Int?            @map("fund_id")
+  expectedAmount Float?          @map("expected_amount")
+  // Always the sum of the lines, kept so lists need no join.
+  countedAmount  Float           @map("counted_amount")
+  countedBy      String          @map("counted_by") // names as written on the paper sheet
+  witnessedBy    String?         @map("witnessed_by")
+  receivedBy     String?         @map("received_by")
+  notes          String?
+  status         CashCountStatus @default(COUNTED)
+  enteredBy      Int?            @map("entered_by")
+  verifiedBy     Int?            @map("verified_by")
+  verifiedAt     DateTime?       @map("verified_at")
+  voidedBy       Int?            @map("voided_by")
+  voidedAt       DateTime?       @map("voided_at")
+  voidReason     String?         @map("void_reason")
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  lines CashCountLine[]
+
+  @@unique([churchId, sheetNo])
+  @@index([churchId])
+  @@index([serviceDate])
+  @@map("cash_count_sheets")
+}
+
+model CashCountLine {
+  id           Int            @id @default(autoincrement()) @map("line_id")
+  churchId     String         @map("church_id")
+  church       Church         @relation(fields: [churchId], references: [id])
+  sheetId      Int            @map("sheet_id")
+  sheet        CashCountSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  kind         String // NOTE or COIN: GH₵2 and GH₵1 circulate as both
+  denomination Float // face value in GH₵, e.g. 50, 0.5
+  quantity     Int
+  amount       Float
+
+  @@index([churchId])
+  @@index([sheetId])
+  @@map("cash_count_lines")
+}
+
+/// Money taken to the bank by hand. Verification posts Dr Bank Deposit
+/// Clearing (1010) / Cr Cash in hand (1000); a void after verification
+/// reverses it. Income, tithes, day-borns and services ticked on the deposit
+/// carry its id until it is voided.
+model BankDeposit {
+  id                  Int               @id @default(autoincrement()) @map("deposit_id")
+  churchId            String            @map("church_id")
+  church              Church            @relation(fields: [churchId], references: [id])
+  depositNo           String            @map("deposit_no") // DEP-2026-0001
+  depositDate         DateTime          @map("deposit_date") @db.Date
+  amount              Float
+  bankName            String            @map("bank_name")
+  accountNumber       String?           @map("account_number")
+  slipNo              String?           @map("slip_no")
+  depositedBy         String            @map("deposited_by")
+  collectionsIncluded String?           @map("collections_included")
+  fundId              Int?              @map("fund_id")
+  notes               String?
+  status              BankDepositStatus @default(PENDING)
+  recordedBy          Int?              @map("recorded_by")
+  verifiedBy          Int?              @map("verified_by")
+  verifiedAt          DateTime?         @map("verified_at")
+  journalEntryId      Int?              @map("journal_entry_id")
+  voidedBy            Int?              @map("voided_by")
+  voidedAt            DateTime?         @map("voided_at")
+  voidReason          String?           @map("void_reason")
+  createdAt           DateTime          @default(now()) @map("created_at")
+
+  @@unique([churchId, depositNo])
+  @@index([churchId])
+  @@index([depositDate])
+  @@map("bank_deposits")
 }

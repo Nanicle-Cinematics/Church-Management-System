@@ -638,6 +638,9 @@ function register(app) {
         ['/finance/funds', icon('wallet'), 'Funds'], ['/finance/projects', icon('folder'), 'Projects'], ['/finance/budgets', icon('ledger'), 'Budgets'],
         ['/finance/periods', icon('clock'), 'Financial periods'],
       ]],
+      ['Cash control', [
+        ['/finance/cash-counts', icon('hash'), 'Cash count sheets'], ['/finance/deposits', icon('wallet'), 'Bank deposits'],
+      ]],
       ['Reports & records', [
         ['/finance/reports', icon('reports'), 'Finance reports'], ['/finance/receipts', icon('receipt'), 'Receipts'],
         ['/finance/statements', icon('ledger'), 'Giving statements'],
@@ -1070,6 +1073,8 @@ function register(app) {
     const id = Number(req.params.id);
     const income = await db.incomeRecord.findUnique({ where: { id } });
     if (!income) return res.status(404).send('Not found');
+    // Banked money stays put until its deposit is voided (see /finance/deposits).
+    if (income.depositId) { flash(req, 'This money was taken to the bank on a deposit. Void that deposit first.'); return res.redirect('/finance/income'); }
     if (income.journalEntryId) await ledger.reverseJournal(db, churchId, income.journalEntryId, 'Generic income archived', res.locals.user.id);
     await db.incomeRecord.update({ where: { id }, data: { deletedAt: new Date() } });
     await db.financeReceipt.updateMany({ where: { sourceType: 'GENERIC_INCOME', sourceId: id }, data: { voidedAt: new Date(), voidReason: 'Generic income archived' } });
@@ -1190,6 +1195,8 @@ function register(app) {
     const id = Number(req.params.id);
     const row = await db.dayBornCollection.findUnique({ where: { id } });
     if (!row) return res.status(404).send('Not found');
+    // Banked money stays put until its deposit is voided (see /finance/deposits).
+    if (row.depositId) { flash(req, 'This money was taken to the bank on a deposit. Void that deposit first.'); return res.redirect('/finance/day-borns'); }
     if (row.journalEntryId) await ledger.reverseJournal(db, churchId, row.journalEntryId, 'Day-born collection archived', res.locals.user.id);
     await db.dayBornCollection.update({ where: { id }, data: { deletedAt: new Date() } });
     await db.financeReceipt.updateMany({ where: { sourceType: 'DAY_BORN_COLLECTION', sourceId: id }, data: { voidedAt: new Date(), voidReason: 'Day-born collection archived' } });
@@ -1538,6 +1545,8 @@ function register(app) {
     const id = Number(req.params.id);
     const service = await db.service.findUnique({ where: { id } });
     if (!service) return res.status(404).send('Not found');
+    // Banked money stays put until its deposit is voided (see /finance/deposits).
+    if (service.depositId) { flash(req, 'This money was taken to the bank on a deposit. Void that deposit first.'); return res.redirect('/finance/services'); }
     if (service.journalEntryId) await ledger.reverseJournal(db, churchId, service.journalEntryId, 'Service archived', res.locals.user.id);
     await db.service.update({ where: { id }, data: { deletedAt: new Date() } });
     await logActivity(db, 'finance_reversal', `Service #${id} archived and journal reversed`, '/finance/services', res.locals.user.id);
@@ -2663,7 +2672,7 @@ function register(app) {
         `/finance/journal/${req.params.id}`, res.locals.user.id);
       flash(req, 'Journal entry reversed.', 'success');
     } catch (e) {
-      if (!/not found|already reversed/i.test(e.message)) throw e;
+      if (!/not found|already reversed|Void th(at|e) deposit/i.test(e.message)) throw e;
       flash(req, e.message);
     }
     res.redirect(`/finance/journal/${req.params.id}`);
@@ -3114,4 +3123,9 @@ function register(app) {
   }));
 }
 
-module.exports = { register };
+// Shared with routes-pg-html/cash-control.js so the cash count and deposit
+// screens enforce exactly the same finance roles as the rest of finance.
+module.exports = {
+  register, requireFinanceWrite, requireFundManager, requireFinanceReportAccess,
+  refuseIfPeriodLocked, checkFundId, fundOptions, defaultFundId,
+};

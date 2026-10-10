@@ -320,6 +320,7 @@ function register(app) {
     const id = Number(req.params.id);
     const income = await db.incomeRecord.findUnique({ where: { id } });
     if (!income) return res.status(404).json({ error: 'Not found' });
+    if (income.depositId) return res.status(409).json({ error: 'This money was taken to the bank on a deposit. Void that deposit first.' });
     if (income.journalEntryId) {
       await ledger.reverseJournal(db, churchId, income.journalEntryId, 'Generic income archived', res.locals.user.id);
     }
@@ -387,6 +388,7 @@ function register(app) {
     const id = Number(req.params.id);
     const row = await db.dayBornCollection.findUnique({ where: { id } });
     if (!row) return res.status(404).json({ error: 'Not found' });
+    if (row.depositId) return res.status(409).json({ error: 'This money was taken to the bank on a deposit. Void that deposit first.' });
     if (row.journalEntryId) await ledger.reverseJournal(db, churchId, row.journalEntryId, 'Day-born collection archived', res.locals.user.id);
     await db.dayBornCollection.update({ where: { id }, data: { deletedAt: new Date() } });
     await db.financeReceipt.updateMany({ where: { sourceType: 'DAY_BORN_COLLECTION', sourceId: id }, data: { voidedAt: new Date(), voidReason: 'Day-born collection archived' } });
@@ -540,6 +542,7 @@ function register(app) {
     const id = Number(req.params.id);
     const service = await db.service.findUnique({ where: { id } });
     if (!service) return res.status(404).json({ error: 'Not found' });
+    if (service.depositId) return res.status(409).json({ error: 'This money was taken to the bank on a deposit. Void that deposit first.' });
     if (service.journalEntryId) await ledger.reverseJournal(db, churchId, service.journalEntryId, 'Service archived', res.locals.user.id);
     await db.service.update({ where: { id }, data: { deletedAt: new Date() } });
     res.status(204).end();
@@ -997,7 +1000,7 @@ function register(app) {
       res.status(201).json({ reversalId });
     } catch (e) {
       if (/not found/i.test(e.message)) return res.status(404).json({ error: e.message });
-      if (/already reversed/i.test(e.message)) return res.status(409).json({ error: e.message });
+      if (/already reversed|Void th(at|e) deposit/i.test(e.message)) return res.status(409).json({ error: e.message });
       throw e;
     }
   }));
