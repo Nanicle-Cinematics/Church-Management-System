@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Changed
+
+- **Money is now exact.** All 26 money columns (journal debits/credits, expenses, tithes, pledges, funds, budgets, cash counts, deposits, ...) change from `Float` to `Decimal(14,2)`. The app still sees plain numbers: `lib/tenant.js` converts Decimals at the Prisma boundary (model queries, aggregates and raw SQL). Amounts are limited to 999,999,999,999.99.
+  - **Production migration (run BEFORE deploying this):** take a backup, run `psql "$DATABASE_URL" -f scripts/check-money-precision.sql` (every row should show 0), then `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/migrate-money-to-decimal.sql`. Rehearse on a copy of the database first.
+
 ### Fixed
 
 - Member photo upload wrote the file before checking the member belonged to the caller's church (cross-tenant overwrite/delete) and had no CSRF check.
