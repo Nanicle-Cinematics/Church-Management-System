@@ -34,6 +34,7 @@ const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const { icon } = require('../lib/icons');
 const { csrfValid } = require('../lib/tenant-csrf');
+const { renderMemberProfile } = require('../lib/member-profile');
 
 const PHOTO_DIR = process.env.PHOTO_DIR || path.join(__dirname, '..', 'photos');
 try { fs.mkdirSync(PHOTO_DIR, { recursive: true }); } catch (_) { /* already exists */ }
@@ -334,65 +335,22 @@ function register(app) {
     ]);
     const memberOrgIds = memberOrgsNamed.map((o) => o.orgId);
 
-    const avatar = memberAvatar({ photo_filename: m.photoFilename, first_name: m.firstName, last_name: m.lastName });
-    const photoBlock = isAdmin
-      ? `<div class="member-photo">
-           ${avatar}
-           <form method="post" action="/members/${id}/photo" enctype="multipart/form-data" class="photo-form">
-             <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/gif" required>
-             <button type="submit">${m.photoFilename ? 'Replace photo' : 'Upload photo'}</button>
-           </form>
-           ${m.photoFilename ? `
-             <form method="post" action="/members/${id}/photo/delete" style="display:inline"
-                   onsubmit="return confirm('Remove this photo?')">
-               <button class="link" type="submit">Remove photo</button>
-             </form>` : ''}
-         </div>`
-      : `<div class="member-photo">${avatar}</div>`;
-    const editPanel = isAdmin
-      ? `${photoBlock}
-         <h2>Edit</h2>
-         ${await memberForm(db, m, memberOrgIds, `/members/${id}`)}
-         <form method="post" action="/members/${id}/delete" onsubmit="return confirm('Archive this member? They will be hidden but not permanently deleted.')">
-           <button class="danger" type="submit">Archive member</button>
-         </form>`
-      : `${photoBlock}
-         <h2>Profile</h2>
-         <dl class="stats">
-           <dt>Member ID</dt><dd>${esc(m.externalId) || '—'}</dd>
-           <dt>Name</dt><dd>${esc(m.firstName)} ${esc(m.lastName)}</dd>
-           <dt>Email</dt><dd>${esc(m.email) || '—'}</dd>
-           <dt>Mobile</dt><dd>${esc(m.mobilePhone) || '—'}</dd>
-           <dt>Status</dt><dd>${esc(MEMBER_STATUS_LABELS[m.membershipStatus] || m.membershipStatus)}</dd>
-           <dt>Bible class</dt><dd>${esc(m.bibleClass && m.bibleClass.name) || '—'}</dd>
-           <dt>Organizations</dt><dd>${memberOrgsNamed.map((o) => esc(o.organization.name)).join(', ') || '—'}</dd>
-           <dt>Joined</dt><dd>${esc(fmtDate(m.joinDate)) || '—'}</dd>
-           <dt>Baptized</dt><dd>${esc(fmtDate(m.baptismDate)) || '—'}</dd>
-           <dt>Confirmed</dt><dd>${esc(fmtDate(m.confirmationDate)) || '—'}</dd>
-           <dt>Notes</dt><dd>${esc(m.notes) || '—'}</dd>
-         </dl>`;
-    const body = `
-      <div class="two-col">
-        <section>${editPanel}</section>
-        <section>
-          <h2>At a glance</h2>
-          <h3>🚨 Emergency contact</h3>
-          ${(m.emergencyContactName || m.emergencyContactPhone || m.emergencyContactRelation)
-            ? `<dl class="stats emergency-box">
-                 <dt>Name</dt><dd>${esc(m.emergencyContactName) || '—'}</dd>
-                 <dt>Phone</dt><dd>${m.emergencyContactPhone ? `<a href="tel:${esc(m.emergencyContactPhone)}">${esc(m.emergencyContactPhone)}</a>` : '—'}</dd>
-                 <dt>Relationship</dt><dd>${esc(m.emergencyContactRelation) || '—'}</dd>
-               </dl>`
-            : '<p class="muted-text">No emergency contact on file.</p>'}
-          <h3>Ministries</h3>
-          ${ministries.length ? table(['Ministry', 'Role', 'Joined'], ministries.map((r) => [esc(r.ministry.name), esc(r.role), esc(fmtDate(r.joinedDate))])) : '<p>Not in any ministry.</p>'}
-          <h3>Sacraments</h3>
-          ${sacraments.length ? table(['Type', 'Date', 'Location'], sacraments.map((r) => [esc(r.sacramentType), esc(fmtDate(r.occurredOn)), esc(r.location)])) : '<p>None recorded.</p>'}
-          <h3>Recent attendance</h3>
-          ${attendance.length ? table(['Event', 'When'], attendance.map((r) => [esc(r.event.title), esc(fmtDate(r.event.startsAt))])) : '<p>No attendance recorded.</p>'}
-        </section>
-      </div>`;
-    res.page({ title: `${m.firstName} ${m.lastName}`, active: '/members', noHeader: true, body: `${pageHero(`${m.firstName} ${m.lastName}`, '')}${body}` });
+    const photoControlsHtml = `
+      <form method="post" action="/members/${id}/photo" enctype="multipart/form-data" class="photo-form">
+        <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/gif" required>
+        <button type="submit">${m.photoFilename ? 'Replace photo' : 'Upload photo'}</button>
+      </form>
+      ${m.photoFilename ? `
+        <form method="post" action="/members/${id}/photo/delete" onsubmit="return confirm('Remove this photo?')">
+          <button class="link" type="submit">Remove photo</button>
+        </form>` : ''}`;
+    const body = renderMemberProfile({
+      m, orgs: memberOrgsNamed, ministries, sacraments, attendance, isAdmin,
+      akanName: m.dayBorn ? (AKAN_NAMES[m.dayBorn] || '') : '',
+      photoControlsHtml,
+      editFormHtml: isAdmin ? await memberForm(db, m, memberOrgIds, `/members/${id}`) : '',
+    });
+    res.page({ title: `${m.firstName} ${m.lastName}`, active: '/members', noHeader: true, body });
   }));
 
   app.post('/members/:id', requireAdmin, asyncHandler(async (req, res) => {
@@ -400,11 +358,11 @@ function register(app) {
     const id = Number(req.params.id);
     const b = req.body || {};
     const err = memberErrors(b);
-    if (err) { flash(req, err); return res.redirect(`/members/${id}`); }
+    if (err) { flash(req, err); return res.redirect(`/members/${id}#edit`); }
     const orgIds = parseOrgIds(b);
-    if (!(await validOrgIds(db, orgIds))) { flash(req, 'One or more organizations were not found.'); return res.redirect(`/members/${id}`); }
+    if (!(await validOrgIds(db, orgIds))) { flash(req, 'One or more organizations were not found.'); return res.redirect(`/members/${id}#edit`); }
     const bibleClassCheck = await checkBibleClassId(db, b.bibleClassId);
-    if (!bibleClassCheck.ok) { flash(req, 'Bible class not found.'); return res.redirect(`/members/${id}`); }
+    if (!bibleClassCheck.ok) { flash(req, 'Bible class not found.'); return res.redirect(`/members/${id}#edit`); }
     try {
       await db.member.update({ where: { id }, data: { ...parseMemberBody(b), bibleClassId: bibleClassCheck.bibleClassId } });
     } catch (e) {
