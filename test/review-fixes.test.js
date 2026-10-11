@@ -256,8 +256,10 @@ test('pledge payments recorded at the same time are both counted', async () => {
 // ---- Auth ------------------------------------------------------------------
 
 test('login: a missing / non-string password is a plain failure, not a crash', async () => {
-  const { email } = await newChurch('login-types');
+  const { email, user } = await newChurch('login-types');
   for (const password of [undefined, null, 12345678, ['password123'], {}]) {
+    // Each failure counts toward the 5-attempt lockout, so reset between tries.
+    await db.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });
     const r = await authenticate(email, password);
     assert.strictEqual(r.status, 'invalid');
   }

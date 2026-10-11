@@ -27,7 +27,7 @@
 
 const asyncHandler = require('../lib/async-handler');
 const ledger = require('../lib/ledger-pg');
-const { createReceipt } = require('../lib/receipts');
+const { createReceipt, pendingReceiptNo } = require('../lib/receipts');
 const { amountInWords } = require('../lib/money');
 const { logActivity } = require('../lib/tenant-activity');
 const { checkApprovalTier } = require('../lib/expense-approval');
@@ -689,7 +689,7 @@ function register(app) {
     const pledge = await db.pledge.findFirst({ where: { id }, include: { harvest: { select: { harvestName: true } } } });
     if (!pledge) return res.status(404).json({ error: 'Not found' });
 
-    const payment = await db.pledgePayment.create({ data: { pledgeId: id, amount: add, paidOn: new Date(), receiptNumber: '', recordedBy: res.locals.user.id } });
+    const payment = await db.pledgePayment.create({ data: { pledgeId: id, amount: add, paidOn: new Date(), receiptNumber: pendingReceiptNo(), recordedBy: res.locals.user.id } });
     const receiptNumber = pledgePaymentReceiptNo(payment.id);
     await db.pledgePayment.update({ where: { id: payment.id }, data: { receiptNumber } });
     // Atomic increment: reading paidAmount and writing back read + add loses

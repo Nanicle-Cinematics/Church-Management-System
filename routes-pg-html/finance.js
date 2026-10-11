@@ -29,7 +29,7 @@ const { pageHero, statsRow, listCard, table } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const ledger = require('../lib/ledger-pg');
-const { createReceipt } = require('../lib/receipts');
+const { createReceipt, pendingReceiptNo } = require('../lib/receipts');
 const { sendSmsBatch, sendEmailEach, normalizePhoneGH } = require('../lib/delivery');
 const { amountInWords } = require('../lib/money');
 const { icon } = require('../lib/icons');
@@ -331,7 +331,7 @@ async function refuseIfPeriodLocked(req, res, db, dateStr, back) {
 async function recordPledgePayment(db, churchId, pledgeId, amount, paidOn, userId) {
   const pledge = await db.pledge.findFirst({ where: { id: pledgeId }, include: { harvest: { select: { harvestName: true } } } });
   if (!pledge) return null;
-  const payment = await db.pledgePayment.create({ data: { pledgeId, amount, paidOn: new Date(paidOn), receiptNumber: '', recordedBy: userId } });
+  const payment = await db.pledgePayment.create({ data: { pledgeId, amount, paidOn: new Date(paidOn), receiptNumber: pendingReceiptNo(), recordedBy: userId } });
   const receiptNumber = pledgePaymentReceiptNo(payment.id);
   await db.pledgePayment.update({ where: { id: payment.id }, data: { receiptNumber } });
   // Atomic increment: reading paidAmount and writing back read + add loses a

@@ -93,7 +93,9 @@ test('create assigns sequential per-church externalId (MBR-001, MBR-002...) and 
   const m1 = await client.post('/api/members', { firstName: 'Kofi', lastName: 'Mensah' });
   assert.strictEqual(m1.status, 201);
   assert.strictEqual(m1.body.externalId, 'MBR-001');
-  assert.ok(m1.body.unsubscribeToken);
+  assert.ok(!('unsubscribeToken' in m1.body), 'the token is a credential and is never returned by the API');
+  const stored = await db.member.findUnique({ where: { id: m1.body.id } });
+  assert.ok(stored.unsubscribeToken, 'but it is still generated and stored');
 
   const m2 = await client.post('/api/members', { firstName: 'Ama', lastName: 'Boateng' });
   assert.strictEqual(m2.body.externalId, 'MBR-002');

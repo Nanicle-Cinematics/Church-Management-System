@@ -11,7 +11,8 @@ All notable changes to this project are documented here.
 - Tithes reject non-positive amounts and invalid dates before any row is created; pledge payments use an atomic increment; receipt numbers retry on a clash.
 - Special offerings post to 4040; "Salaries", "Office Supplies" and "Outreach" expenses post to their own accounts instead of 5900. Entries already posted keep their old account.
 - Public check-in/RSVP: no roster dropdown, signed name picks, minimum search length, rate limiting, and suspended/deleted churches' links stop working. The RSVP page is now search-then-pick.
-- Platform-operator emails (`PLATFORM_ADMIN_EMAILS`) can no longer be registered once any church exists, or created as tenant users.
+- Platform-operator emails (`PLATFORM_ADMIN_EMAILS`) can no longer be registered once any church exists, or created as tenant users (set `ALLOW_PLATFORM_ADMIN_SIGNUP=1` just while registering the operator account after other churches exist).
+- Concurrent pledge payments no longer collide on the empty placeholder receipt number (each insert now uses a unique placeholder).
 - Rate limiter bounds its key length and bucket count. Production no longer signs sessions with a hardcoded secret when `SESSION_SECRET` is unset.
 - Password reset tokens are stored hashed, are single-use atomically, and sign out the user's other sessions. Reset/verification emails are not sent without `PUBLIC_URL` in production.
 - Login: non-string passwords no longer 500, unknown emails cost the same bcrypt time, failed-attempt counting is atomic.

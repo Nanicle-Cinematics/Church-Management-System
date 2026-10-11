@@ -12,6 +12,8 @@ const { db } = require('../lib/tenant');
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
 const platformEmail = `platform-admin-${process.pid}-${Date.now()}@example.test`;
 process.env.PLATFORM_ADMIN_EMAILS = platformEmail;
+// The operator signs up after other churches exist (see lib/provision.js).
+process.env.ALLOW_PLATFORM_ADMIN_SIGNUP = '1';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const createdChurchIds = [];
