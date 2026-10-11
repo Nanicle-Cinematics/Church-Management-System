@@ -21,6 +21,7 @@ const ROOT = path.join(__dirname, '..');
 const CSS = fs.readFileSync(path.join(ROOT, 'public', 'styles.css'), 'utf8');
 const THEME = fs.readFileSync(path.join(ROOT, 'public', 'theme-ios26.css'), 'utf8');
 const THEME_ED = fs.readFileSync(path.join(ROOT, 'public', 'theme-editorial.css'), 'utf8');
+const EDITORIAL = fs.readFileSync(path.join(ROOT, 'public', 'editorial.css'), 'utf8');
 
 const USER = { role: 'admin', display_name: 'Nana Aboagye', username: 'nana' };
 const CHURCH = 'Dunwell Methodist Church';
@@ -97,7 +98,8 @@ function page(html, { theme } = {}) {
   const inlined = html
     .replace(/<link rel="stylesheet" href="\/static\/styles\.css[^"]*">/, `<style>\n${CSS}\n</style>`)
     .replace(/<link rel="stylesheet" href="\/static\/theme-ios26\.css[^"]*">/, `<style>\n${THEME}\n</style>`)
-    .replace(/<link rel="stylesheet" href="\/static\/theme-editorial\.css[^"]*">/, `<style>\n${THEME_ED}\n</style>`);
+    .replace(/<link rel="stylesheet" href="\/static\/theme-editorial\.css[^"]*">/, `<style>\n${THEME_ED}\n</style>`)
+    .replace(/<link rel="stylesheet" href="\/static\/editorial\.css[^"]*">/, `<style>\n${EDITORIAL}\n</style>`);
   // Pin the colour scheme so a screenshot is deterministic instead of
   // following whatever the rendering host prefers. The shell's inline
   // theme-init script reads localStorage/matchMedia and would immediately
