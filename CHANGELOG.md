@@ -6,6 +6,9 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **Money is now exact.** All 26 money columns (journal debits/credits, expenses, tithes, pledges, funds, budgets, cash counts, deposits, ...) change from `Float` to `Decimal(14,2)`. The app still sees plain numbers: `lib/tenant.js` converts Decimals at the Prisma boundary (model queries, aggregates and raw SQL). Amounts are limited to 999,999,999,999.99.
+  - **Production migration (run BEFORE deploying this):** take a backup, run `psql "$DATABASE_URL" -f scripts/check-money-precision.sql` (every row should show 0), then `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/migrate-money-to-decimal.sql`. Rehearse on a copy of the database first.
+
 - Broadcasts are sent in the background. `POST /api/communications/broadcasts` now answers `202` with the broadcast in `SENDING`; poll `GET /api/communications/broadcasts/:id` for the final status. The HTML broadcast page redirects at once and refreshes itself while sending. A failed send marks the broadcast `FAILED`, and on SIGTERM the server waits up to 20 seconds for in-flight sends.
 
 ### Fixed
