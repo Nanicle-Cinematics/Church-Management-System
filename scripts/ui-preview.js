@@ -20,7 +20,8 @@ const { sparkline } = require('../lib/charts');
 const ROOT = path.join(__dirname, '..');
 const CSS = fs.readFileSync(path.join(ROOT, 'public', 'styles.css'), 'utf8');
 const THEME = fs.readFileSync(path.join(ROOT, 'public', 'theme-ios26.css'), 'utf8');
-const THEME_ED = fs.readFileSync(path.join(ROOT, 'public', 'theme-editorial.css'), 'utf8');
+const THEME_MU = fs.readFileSync(path.join(ROOT, 'public', 'theme-material.css'), 'utf8');
+const MU_JS = fs.readFileSync(path.join(ROOT, 'public', 'material-theme.js'), 'utf8');
 const EDITORIAL = fs.readFileSync(path.join(ROOT, 'public', 'editorial.css'), 'utf8');
 
 const USER = { role: 'admin', display_name: 'Nana Aboagye', username: 'nana' };
@@ -98,20 +99,14 @@ function page(html, { theme } = {}) {
   const inlined = html
     .replace(/<link rel="stylesheet" href="\/static\/styles\.css[^"]*">/, `<style>\n${CSS}\n</style>`)
     .replace(/<link rel="stylesheet" href="\/static\/theme-ios26\.css[^"]*">/, `<style>\n${THEME}\n</style>`)
-    .replace(/<link rel="stylesheet" href="\/static\/theme-editorial\.css[^"]*">/, `<style>\n${THEME_ED}\n</style>`)
+    .replace(/<link rel="stylesheet" href="\/static\/theme-material\.css[^"]*">/, `<style>\n${THEME_MU}\n</style>`)
     .replace(/<link rel="stylesheet" href="\/static\/editorial\.css[^"]*">/, `<style>\n${EDITORIAL}\n</style>`);
-  // Pin the colour scheme so a screenshot is deterministic instead of
-  // following whatever the rendering host prefers. The shell's inline
-  // theme-init script reads localStorage/matchMedia and would immediately
-  // overwrite the pinned attribute, so it is dropped when pinning.
-  if (!theme) return inlined;
-  // The shell runs two theme scripts that read localStorage/matchMedia, so a
-  // pinned attribute in <html> gets overwritten during load. Re-assert it
-  // from the very end of <body>, after both have run.
-  const pin = `<script>document.documentElement.setAttribute('data-theme',${JSON.stringify(theme)});</script>`;
+  // The palette engine (public/material-theme.js) is inlined so the file is
+  // self-contained. To pin the colour scheme for a deterministic screenshot,
+  // the saved choice is written first; the engine reads it on load.
+  const pinned = theme ? `try{localStorage.setItem('theme',${JSON.stringify(theme)});}catch(e){}\n` : '';
   return inlined
-    .replace('<html lang="en">', `<html lang="en" data-theme="${theme}">`)
-    .replace('</body>', `${pin}</body>`);
+    .replace(/<script src="\/static\/material-theme\.js[^"]*"><\/script>/, `<script>${pinned}${MU_JS}</script>`);
 }
 
 // The real dashboard (lib/tenant-dashboard.js) needs a database, so its markup
