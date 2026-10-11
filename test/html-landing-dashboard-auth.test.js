@@ -94,7 +94,7 @@ test('GET / unauthenticated shows the landing page, not a redirect', async () =>
   const client = htmlClient();
   const res = await client.getHtml('/');
   assert.strictEqual(res.status, 200);
-  assert.match(res.text, /Lead the ministry/);
+  assert.match(res.text, /The church office, /);
 });
 
 test('GET / authenticated shows the dashboard, aggregating live data', async () => {
