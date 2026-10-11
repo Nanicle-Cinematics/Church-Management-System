@@ -28,7 +28,8 @@ const path = require('path');
 const { icon } = require('../lib/icons');
 
 const LOGO_DIR = process.env.LOGO_DIR || path.join(process.env.PHOTO_DIR || path.join(__dirname, '..', 'photos'), 'church-logos');
-const DEFAULT_LOGO = path.join(__dirname, '..', 'public', 'logo.png');
+// 128px copy of the default logo: the original is ~840 KB and was sent on every page.
+const DEFAULT_LOGO = path.join(__dirname, '..', 'public', 'logo-128.png');
 const LOGO_EXTENSIONS = ['png', 'jpg', 'webp', 'gif'];
 const LOGO_EXT_FROM_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
 try { fs.mkdirSync(LOGO_DIR, { recursive: true }); } catch (_) { /* created by the mounted volume at runtime */ }
