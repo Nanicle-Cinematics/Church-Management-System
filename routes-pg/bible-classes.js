@@ -90,9 +90,11 @@ function register(app) {
     try {
       const ministry = await db.ministry.update({
         where: { id: Number(req.params.id) },
+        // Only fields the client actually sent: omitting `orgId` used to
+        // silently clear the class's organization (and likewise the leader).
         data: {
-          leaderId: leaderCheck.leaderId,
-          orgId: orgCheck.orgId,
+          ...(Object.prototype.hasOwnProperty.call(b, 'leaderId') ? { leaderId: leaderCheck.leaderId } : {}),
+          ...(Object.prototype.hasOwnProperty.call(b, 'orgId') ? { orgId: orgCheck.orgId } : {}),
         },
       });
       res.json(ministry);

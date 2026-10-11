@@ -104,8 +104,10 @@ function register(app) {
       return res.status(400).json({ error: 'title and startsAt are required' });
     }
     try {
+      // eventType in the where, like GET and DELETE: this endpoint manages
+      // services only and must not rewrite a wedding or funeral by id.
       const ev = await res.locals.db.event.update({
-        where: { id: Number(req.params.id) },
+        where: { id: Number(req.params.id), eventType: 'SERVICE' },
         data: v,
       });
       res.json(shapeService(ev));

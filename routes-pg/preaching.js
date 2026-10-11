@@ -18,6 +18,14 @@ const asyncHandler = require('../lib/async-handler');
 const { sendSmsBatch, sendEmailEach, normalizePhoneGH } = require('../lib/delivery');
 const { fmtPreachDate } = require('../lib/format');
 const { logActivity } = require('../lib/tenant-activity');
+const { createRateLimiter } = require('../lib/rate-limit');
+
+// Reminders go to a phone/email the admin typed in, via the platform's shared
+// SMS/email accounts, so cap how many one church can trigger.
+const remindRateLimit = createRateLimiter({
+  windowMs: 60 * 60 * 1000, max: 30,
+  key: (req) => `remind|${(req.res && req.res.locals && req.res.locals.churchId) || req.ip}`,
+});
 
 function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
@@ -67,11 +75,17 @@ async function sendPreachingReminder(db, plan, userId, churchName) {
     try { email = await sendEmailEach(db, [{ addr: c.email, token: c.token }], `Preaching reminder — ${when}`, msg, { withFooter: false, churchName }); }
     catch (e) { email = { ok: false, error: e.message }; }
   }
-  await db.preachingPlan.update({ where: { id: plan.id }, data: { reminderSentAt: new Date() } });
-  await logActivity(db, 'preaching_reminder', `Sent preaching reminder to ${c.name || 'preacher'} for ${when}`, '/preaching', userId);
   const dryRun = (sms && sms.dryRun) || (email && email.dryRun);
+  // "Reminder sent" used to be recorded even when both providers failed, which
+  // then hid the failure. Record it only if a channel actually accepted it
+  // (a dry run counts: nothing is configured, so nothing was expected to send).
+  const delivered = (sms && (sms.ok || sms.dryRun)) || (email && (email.ok || email.dryRun));
+  if (delivered) {
+    await db.preachingPlan.update({ where: { id: plan.id }, data: { reminderSentAt: new Date() } });
+    await logActivity(db, 'preaching_reminder', `Sent preaching reminder to ${c.name || 'preacher'} for ${when}`, '/preaching', userId);
+  }
   return {
-    ok: true, name: c.name, hadPhone: !!phone, hadEmail: !!c.email,
+    ok: true, delivered: !!delivered, name: c.name, hadPhone: !!phone, hadEmail: !!c.email,
     smsOk: sms ? (sms.ok || sms.dryRun) : null,
     emailOk: email ? (email.ok || email.dryRun) : null,
     dryRun,
@@ -164,7 +178,7 @@ function register(app) {
     }
   }));
 
-  app.post('/api/preaching/:id/remind', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/preaching/:id/remind', requireAdmin, remindRateLimit, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const plan = await db.preachingPlan.findFirst({
       where: { id: Number(req.params.id), deletedAt: null },
@@ -191,4 +205,4 @@ function register(app) {
   }));
 }
 
-module.exports = { register, sendPreachingReminder, preacherContact };
+module.exports = { register, sendPreachingReminder, preacherContact, remindRateLimit };

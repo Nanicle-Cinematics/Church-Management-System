@@ -1,7 +1,11 @@
 name: deploy
 
+# Deploys only after the "tests" workflow has PASSED on main. It used to run on
+# every push to main in parallel with the tests, so a red build still shipped.
 on:
-  push:
+  workflow_run:
+    workflows: ["tests"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -12,6 +16,7 @@ concurrency:
 jobs:
   fly:
     name: Deploy to Fly.io
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -19,9 +24,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      # Pinned to a release tag instead of @master, which would run whatever
+      # that branch contains next while holding the production deploy token.
       - name: Set up flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
+        uses: superfly/flyctl-actions/setup-flyctl@1.5
 
       - name: Deploy to Fly
         env:

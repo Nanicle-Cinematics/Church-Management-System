@@ -27,11 +27,13 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const asyncHandler = require('../lib/async-handler');
+const { pickEnum, cleanDate, memberFieldError, createMemberWithId, GENDERS, MARITAL_STATUSES: MARITAL_ENUM, PREFERRED_CHANNELS } = require('../lib/member-input');
 const { esc, initials, fmtDate, DAYS_OF_WEEK, looksLikeImage } = require('../lib/format');
 const { pageHero, statsRow, filterCard, listCard, table, pager, ICON_EYE, ICON_PENCIL, ICON_TRASH, memberAvatar } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const { icon } = require('../lib/icons');
+const { csrfValid } = require('../lib/tenant-csrf');
 
 const PHOTO_DIR = process.env.PHOTO_DIR || path.join(__dirname, '..', 'photos');
 try { fs.mkdirSync(PHOTO_DIR, { recursive: true }); } catch (_) { /* already exists */ }
@@ -64,7 +66,7 @@ function memberErrors(b) {
   if (!b.lastName || !String(b.lastName).trim()) return 'Last name is required.';
   if (b.email && !isEmailish(b.email)) return 'Enter a valid email address, or leave it blank.';
   if (b.mobilePhone && !isPhoneish(b.mobilePhone)) return 'Enter a valid mobile number (at least 7 digits).';
-  return null;
+  return memberFieldError(b);
 }
 
 async function nextMemberId(db) {
@@ -81,19 +83,19 @@ function parseMemberBody(b) {
     lastName: (b.lastName || '').trim(),
     email: (b.email || '').trim() || null,
     mobilePhone: (b.mobilePhone || '').trim() || null,
-    dateOfBirth: b.dateOfBirth ? new Date(b.dateOfBirth) : null,
+    dateOfBirth: cleanDate(b.dateOfBirth),
     dayBorn: DAYS_OF_WEEK.includes(b.dayBorn) ? b.dayBorn : null,
-    gender: b.gender || null,
-    maritalStatus: b.maritalStatus || null,
+    gender: pickEnum(b.gender, GENDERS),
+    maritalStatus: pickEnum(b.maritalStatus, MARITAL_ENUM),
     membershipStatus: MEMBERSHIP_STATUSES.includes(b.membershipStatus) ? b.membershipStatus : 'VISITOR',
-    joinDate: b.joinDate ? new Date(b.joinDate) : null,
-    baptismDate: b.baptismDate ? new Date(b.baptismDate) : null,
-    confirmationDate: b.confirmationDate ? new Date(b.confirmationDate) : null,
+    joinDate: cleanDate(b.joinDate),
+    baptismDate: cleanDate(b.baptismDate),
+    confirmationDate: cleanDate(b.confirmationDate),
     notes: (b.notes || '').trim() || null,
     emergencyContactName: (b.emergencyContactName || '').trim() || null,
     emergencyContactPhone: (b.emergencyContactPhone || '').trim() || null,
     emergencyContactRelation: (b.emergencyContactRelation || '').trim() || null,
-    preferredChannel: b.preferredChannel || 'NONE',
+    preferredChannel: pickEnum(b.preferredChannel, PREFERRED_CHANNELS, 'NONE'),
   };
 }
 
@@ -309,8 +311,8 @@ function register(app) {
     if (!(await validOrgIds(db, orgIds))) { flash(req, 'One or more organizations were not found.'); return res.redirect('/members/new'); }
     const bibleClassCheck = await checkBibleClassId(db, b.bibleClassId);
     if (!bibleClassCheck.ok) { flash(req, 'Bible class not found.'); return res.redirect('/members/new'); }
-    const externalId = await nextMemberId(db);
-    const member = await db.member.create({ data: { ...parseMemberBody(b), bibleClassId: bibleClassCheck.bibleClassId, externalId, unsubscribeToken: require('crypto').randomBytes(16).toString('hex') } });
+    const member = await createMemberWithId(db, { ...parseMemberBody(b), bibleClassId: bibleClassCheck.bibleClassId });
+    const externalId = member.externalId;
     if (orgIds.length) await saveMemberOrgs(db, member.id, orgIds);
     await logActivity(db, 'member_added', `New member added: ${b.firstName} ${b.lastName} (${externalId})`, `/members/${member.id}`, res.locals.user.id);
     res.redirect(`/members/${member.id}`);
@@ -427,8 +429,17 @@ function register(app) {
   }));
 
   app.post('/members/:id/photo', requireAdmin, photoUpload.single('photo'), asyncHandler(async (req, res) => {
+    // Multipart bodies skip the global CSRF middleware (the body isn't parsed
+    // yet when it runs), so the token is checked here, as /settings/logo does.
+    if (!csrfValid(req)) return res.status(403).send('Security check failed. Refresh the page and try again.');
     const db = res.locals.db;
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(404).send('Not found');
+    // Confirm the member belongs to THIS church before touching the shared
+    // photo directory: files are named by member id alone, so writing first
+    // would let one church overwrite or delete another church's photo.
+    const member = await db.member.findFirst({ where: { id }, select: { id: true } });
+    if (!member) return res.status(404).send('Not found');
     if (!req.file) return res.redirect(`/members/${id}`);
     if (!looksLikeImage(req.file.buffer)) {
       return res.status(400).send(`<p>That file does not look like a valid image. Upload a JPG, PNG, WebP or GIF.</p><p><a href="/members/${id}">Back</a></p>`);
@@ -442,12 +453,7 @@ function register(app) {
         try { fs.unlinkSync(path.join(PHOTO_DIR, `${id}.${otherExt}`)); } catch (_) { /* didn't exist */ }
       }
     }
-    try {
-      await db.member.update({ where: { id }, data: { photoFilename: filename } });
-    } catch (e) {
-      if (e.code !== 'P2025') throw e;
-      return res.status(404).send('Not found');
-    }
+    await db.member.update({ where: { id }, data: { photoFilename: filename } });
     await logActivity(db, 'member_photo_updated', `Member photo updated for #${id}`, `/members/${id}`, res.locals.user.id);
     res.redirect(`/members/${id}`);
   }));

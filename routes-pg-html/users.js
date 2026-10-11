@@ -20,8 +20,10 @@ const { pageHero, table } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const { logSecurityEvent } = require('../lib/security-audit');
+const { revokeUserSessions } = require('../lib/auth');
 const { db: rawDb } = require('../lib/tenant');
 const { canAddUser, upgradeMessage } = require('../lib/plan');
+const { isPlatformAdminEmail } = require('../lib/platform-admins');
 
 const ROLES = ['ADMIN', 'EDITOR', 'VIEWER'];
 const FINANCE_ROLES = ['NONE', 'CASHIER', 'TREASURER', 'AUDITOR', 'FINANCE_ADMIN'];
@@ -72,10 +74,10 @@ function register(app) {
         <label>Password<input type="password" name="password" required minlength="8"></label>
         <label>Role<select name="role">
           <option value="ADMIN">admin (full access)</option>
-          <option value="EDITOR">editor (manage records)</option>
+          <option value="EDITOR">editor (currently read-only, same as viewer)</option>
           <option value="VIEWER" selected>viewer (read-only)</option>
         </select>
-        <span class="hint">Admins manage everything incl. users &amp; settings. Editors manage records but not those admin areas. Viewers are read-only.</span></label>
+        <span class="hint">Admins manage everything incl. users &amp; settings. Editor and Viewer are both read-only today; edit rights beyond that come from the Finance role below.</span></label>
         <label>Finance role<select name="financeRole">
           ${Object.entries(FINANCE_ROLE_LABELS).map(([v, l]) => `<option value="${v}"${v === 'NONE' ? ' selected' : ''}>${esc(l)}</option>`).join('')}
         </select>
@@ -92,7 +94,8 @@ function register(app) {
     const db = res.locals.db;
     const b = req.body || {};
     if (!b.username || !String(b.username).trim()) { flash(req, 'Username is required.'); return res.redirect('/users/new'); }
-    if (!b.email || !/^\S+@\S+\.\S+$/.test(b.email)) { flash(req, 'A valid email is required.'); return res.redirect('/users/new'); }
+    if (typeof b.email !== 'string' || !/^\S+@\S+\.\S+$/.test(b.email)) { flash(req, 'A valid email is required.'); return res.redirect('/users/new'); }
+    if (isPlatformAdminEmail(b.email)) { flash(req, 'That email address is reserved.'); return res.redirect('/users/new'); }
     if (!b.password || String(b.password).length < 8) { flash(req, 'Password must be at least 8 characters.'); return res.redirect('/users/new'); }
     const role = ROLES.includes(b.role) ? b.role : 'VIEWER';
     const financeRole = FINANCE_ROLES.includes(b.financeRole) ? b.financeRole : 'NONE';
@@ -109,12 +112,13 @@ function register(app) {
       return res.redirect('/settings');
     }
 
-    const passwordHash = await bcrypt.hash(b.password, 10);
+    const passwordHash = await bcrypt.hash(String(b.password), 10);
     try {
       const user = await db.user.create({
         data: { username: String(b.username).trim(), email: b.email.toLowerCase().trim(), passwordHash, displayName: b.displayName || null, role, financeRole },
       });
       await logActivity(db, 'user_created', `User created: ${user.username} (${role})`, '/users', res.locals.user.id);
+      await logSecurityEvent(db, req, { event: 'user.created', subject: `${user.email} (${role}/${financeRole})`, actorId: res.locals.user.id });
     } catch (e) {
       if (e.code !== 'P2002') throw e;
       flash(req, 'That username is already taken in this church.');
@@ -160,8 +164,11 @@ function register(app) {
     const { password } = req.body || {};
     if (!password || String(password).length < 8) { flash(req, 'Password must be at least 8 characters.'); return res.redirect('/users'); }
     try {
-      const passwordHash = await bcrypt.hash(password, 10);
-      const target = await res.locals.db.user.update({ where: { id: Number(req.params.id) }, data: { passwordHash } });
+      const passwordHash = await bcrypt.hash(String(password), 10);
+      const resetId = Number(req.params.id);
+      // Also clears a lockout and signs the user out everywhere (see the API twin).
+      const target = await res.locals.db.user.update({ where: { id: resetId }, data: { passwordHash, failedAttempts: 0, lockedUntil: null } });
+      if (resetId !== res.locals.user.id) await revokeUserSessions(resetId);
       await logActivity(res.locals.db, 'user_password_reset', `Password reset for ${target.username}`, '/users', res.locals.user.id);
       await logSecurityEvent(res.locals.db, req, {
         event: 'user.password_reset_by_admin',
@@ -178,7 +185,7 @@ function register(app) {
 
   app.post('/users/:id/disable-2fa', requireOwner, asyncHandler(async (req, res) => {
     try {
-      const target = await res.locals.db.user.update({ where: { id: Number(req.params.id) }, data: { totpSecret: null, totpEnabled: false } });
+      const target = await res.locals.db.user.update({ where: { id: Number(req.params.id) }, data: { totpSecret: null, totpEnabled: false, totpRecoveryCodes: null } });
       await logActivity(res.locals.db, 'user_2fa_disabled', `Two-factor disabled for ${target.username}`, '/users', res.locals.user.id);
       // Distinct from settings.js's self-service 'auth.mfa_disabled' — this is
       // an admin disabling it on someone else's account.
@@ -198,7 +205,13 @@ function register(app) {
     const id = Number(req.params.id);
     if (id === res.locals.user.id) { flash(req, "You can't delete your own account."); return res.redirect('/users'); }
     try {
-      const target = await res.locals.db.user.update({ where: { id }, data: { deletedAt: new Date() } });
+      // Soft delete frees the login email (globally unique) so the person can
+      // be re-invited; the original stays embedded for the audit trail.
+      const current = await res.locals.db.user.findUnique({ where: { id } });
+      if (!current) return res.status(404).send('Not found');
+      const target = current.deletedAt
+        ? current
+        : await res.locals.db.user.update({ where: { id }, data: { deletedAt: new Date(), email: `deleted+${id}+${current.email}` } });
       await logActivity(res.locals.db, 'user_deleted', `User account deleted: ${target.username}`, '/users', res.locals.user.id);
       await logSecurityEvent(res.locals.db, req, {
         event: 'user.deleted',

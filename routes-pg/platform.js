@@ -25,10 +25,7 @@ const { db: rawDb } = require('../lib/tenant');
 const { isPro } = require('./settings');
 const { requestIp, requestUserAgent } = require('../lib/security-audit');
 
-function platformAdminEmails() {
-  return String(process.env.PLATFORM_ADMIN_EMAILS || '')
-    .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
-}
+const { platformAdminEmails } = require('../lib/platform-admins');
 
 function requirePlatformAdmin(req, res, next) {
   const email = res.locals.user && res.locals.user.email;
@@ -70,6 +67,9 @@ function register(app) {
     if (!['free', 'pro'].includes(plan)) return res.status(400).json({ error: 'plan must be "free" or "pro"' });
     const data = { plan };
     if (plan === 'pro') {
+      if (months && !(Number.isFinite(Number(months)) && Number(months) > 0)) {
+        return res.status(400).json({ error: 'months must be a positive number' });
+      }
       data.proSince = new Date();
       data.proUntil = months ? new Date(Date.now() + Number(months) * 30 * 24 * 60 * 60 * 1000) : null;
     } else {

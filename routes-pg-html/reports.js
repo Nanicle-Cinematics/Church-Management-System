@@ -33,8 +33,9 @@ function reportTabs(active) {
 }
 function defaultRange(req) {
   const today = new Date();
-  const start = req.query.start || new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
-  const end = req.query.end || today.toISOString().slice(0, 10);
+  const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+  const start = ISO_DAY.test(req.query.start || '') ? req.query.start : new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  const end = ISO_DAY.test(req.query.end || '') ? req.query.end : today.toISOString().slice(0, 10);
   return { start, end };
 }
 function rangeForm(action, start, end) {
@@ -284,7 +285,8 @@ function register(app) {
       rawDb.$queryRaw`
         WITH last_services AS (
           SELECT event_id FROM events
-          WHERE church_id = ${churchId} AND event_type = 'SERVICE'
+          WHERE church_id = ${churchId} AND event_type = 'SERVICE' AND starts_at <= now()
+            AND EXISTS (SELECT 1 FROM attendance a0 WHERE a0.event_id = events.event_id AND a0.church_id = ${churchId})
           ORDER BY starts_at DESC LIMIT 3
         )
         SELECT m.member_id AS member_id, m.first_name || ' ' || m.last_name AS name, m.email

@@ -22,11 +22,13 @@ test.before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   platformEmail = `platform-admin-${process.pid}-${Date.now()}@example.test`;
   process.env.PLATFORM_ADMIN_EMAILS = platformEmail;
+  process.env.ALLOW_PLATFORM_ADMIN_SIGNUP = '1'; // operator signs up after other churches exist
   // Created ONCE — email must be globally unique, so every test that needs
   // a logged-in platform admin reuses this same client/session rather than
   // re-signing-up with the same email.
   const admin = await newSignedInChurch('platform-admin-owner', platformEmail);
   platformAdminClient = admin.client;
+  delete process.env.ALLOW_PLATFORM_ADMIN_SIGNUP;
 });
 test.after(async () => {
   server.close();

@@ -46,6 +46,15 @@ function parseEventBody(b) {
   };
 }
 
+// startsAt is validated by the callers; endsAt used to reach Prisma as an
+// Invalid Date (a 500) and could precede the start.
+function endsAtError(v) {
+  if (!v.endsAt) return null;
+  if (Number.isNaN(v.endsAt.getTime())) return 'endsAt is not a valid date';
+  if (v.startsAt && v.endsAt < v.startsAt) return 'endsAt cannot be before startsAt';
+  return null;
+}
+
 function register(app) {
   app.get('/api/events', requireAuth, asyncHandler(async (req, res) => {
     const q = (req.query.q || '').trim();
@@ -62,6 +71,7 @@ function register(app) {
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
       return res.status(400).json({ error: 'title and startsAt are required' });
     }
+    if (endsAtError(v)) return res.status(400).json({ error: endsAtError(v) });
     const ev = await res.locals.db.event.create({ data: { ...v, checkinToken: crypto.randomBytes(16).toString('hex') } });
     res.status(201).json(ev);
   }));
@@ -100,6 +110,7 @@ function register(app) {
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
       return res.status(400).json({ error: 'title and startsAt are required' });
     }
+    if (endsAtError(v)) return res.status(400).json({ error: endsAtError(v) });
     try {
       const ev = await res.locals.db.event.update({ where: { id: Number(req.params.id) }, data: v });
       res.json(ev);

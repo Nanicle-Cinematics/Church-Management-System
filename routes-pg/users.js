@@ -14,6 +14,9 @@
 const bcrypt = require('bcryptjs');
 const asyncHandler = require('../lib/async-handler');
 const { canAddUser, upgradeMessage } = require('../lib/plan');
+const { isPlatformAdminEmail } = require('../lib/platform-admins');
+const { logSecurityEvent } = require('../lib/security-audit');
+const { revokeUserSessions } = require('../lib/auth');
 
 const ROLES = ['ADMIN', 'EDITOR', 'VIEWER'];
 const FINANCE_ROLES = ['NONE', 'CASHIER', 'TREASURER', 'AUDITOR', 'FINANCE_ADMIN'];
@@ -45,7 +48,8 @@ function register(app) {
     const db = res.locals.db;
     const b = req.body || {};
     if (!b.username || !String(b.username).trim()) return res.status(400).json({ error: 'username is required' });
-    if (!b.email || !/^\S+@\S+\.\S+$/.test(b.email)) return res.status(400).json({ error: 'a valid email is required' });
+    if (typeof b.email !== 'string' || !/^\S+@\S+\.\S+$/.test(b.email)) return res.status(400).json({ error: 'a valid email is required' });
+    if (isPlatformAdminEmail(b.email)) return res.status(409).json({ error: 'That email address is reserved' });
     if (!b.password || String(b.password).length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
     const role = ROLES.includes(b.role) ? b.role : 'VIEWER';
     const financeRole = FINANCE_ROLES.includes(b.financeRole) ? b.financeRole : 'NONE';
@@ -64,11 +68,12 @@ function register(app) {
       return res.status(402).json({ error: upgradeMessage('users'), code: 'plan_limit' });
     }
 
-    const passwordHash = await bcrypt.hash(b.password, 10);
+    const passwordHash = await bcrypt.hash(String(b.password), 10);
     try {
       const user = await db.user.create({
         data: { username: String(b.username).trim(), email: b.email.toLowerCase().trim(), passwordHash, displayName: b.displayName || null, role, financeRole },
       });
+      await logSecurityEvent(db, req, { event: 'user.created', subject: `${user.email} (${role}/${financeRole})`, actorId: res.locals.user.id });
       res.status(201).json(shapeUser(user));
     } catch (e) {
       if (e.code === 'P2002') return res.status(409).json({ error: 'That username is already taken in this church' });
@@ -93,6 +98,7 @@ function register(app) {
     }
     try {
       const user = await db.user.update({ where: { id }, data: { role, financeRole } });
+      await logSecurityEvent(db, req, { event: 'user.role_changed', subject: `${user.email} -> ${role}/${financeRole}`, actorId: res.locals.user.id });
       res.json(shapeUser(user));
     } catch (e) {
       if (e.code === 'P2025') return res.status(404).json({ error: 'Not found' });
@@ -104,8 +110,13 @@ function register(app) {
     const { password } = req.body || {};
     if (!password || String(password).length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
     try {
-      const passwordHash = await bcrypt.hash(password, 10);
-      await res.locals.db.user.update({ where: { id: Number(req.params.id) }, data: { passwordHash } });
+      const passwordHash = await bcrypt.hash(String(password), 10);
+      const id = Number(req.params.id);
+      // Also clears a lockout, and (below) signs the user out everywhere: the
+      // usual reason to reset a password is that the old one may be known.
+      const target = await res.locals.db.user.update({ where: { id }, data: { passwordHash, failedAttempts: 0, lockedUntil: null } });
+      if (id !== res.locals.user.id) await revokeUserSessions(id);
+      await logSecurityEvent(res.locals.db, req, { event: 'user.password_reset_by_admin', subject: target.email, actorId: res.locals.user.id });
       res.status(204).end();
     } catch (e) {
       if (e.code === 'P2025') return res.status(404).json({ error: 'Not found' });
@@ -115,7 +126,8 @@ function register(app) {
 
   app.post('/api/users/:id/disable-2fa', requireOwner, asyncHandler(async (req, res) => {
     try {
-      await res.locals.db.user.update({ where: { id: Number(req.params.id) }, data: { totpSecret: null, totpEnabled: false } });
+      const target = await res.locals.db.user.update({ where: { id: Number(req.params.id) }, data: { totpSecret: null, totpEnabled: false, totpRecoveryCodes: null } });
+      await logSecurityEvent(res.locals.db, req, { event: 'user.mfa_disabled_by_admin', subject: target.email, actorId: res.locals.user.id });
       res.status(204).end();
     } catch (e) {
       if (e.code === 'P2025') return res.status(404).json({ error: 'Not found' });
@@ -126,13 +138,15 @@ function register(app) {
   app.delete('/api/users/:id', requireOwner, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     if (id === res.locals.user.id) return res.status(400).json({ error: "You can't delete your own account" });
-    try {
-      await res.locals.db.user.update({ where: { id }, data: { deletedAt: new Date() } });
-      res.status(204).end();
-    } catch (e) {
-      if (e.code === 'P2025') return res.status(404).json({ error: 'Not found' });
-      throw e;
+    const target = await res.locals.db.user.findUnique({ where: { id } });
+    if (!target) return res.status(404).json({ error: 'Not found' });
+    // Soft delete frees the login email (it is globally unique) so the person
+    // can be re-invited; the original stays embedded for the audit trail.
+    if (!target.deletedAt) {
+      await res.locals.db.user.update({ where: { id }, data: { deletedAt: new Date(), email: `deleted+${id}+${target.email}` } });
+      await logSecurityEvent(res.locals.db, req, { event: 'user.deleted', subject: target.email, actorId: res.locals.user.id });
     }
+    res.status(204).end();
   }));
 }
 

@@ -27,6 +27,7 @@
 
 const asyncHandler = require('../lib/async-handler');
 const ledger = require('../lib/ledger-pg');
+const { createReceipt, pendingReceiptNo } = require('../lib/receipts');
 const { amountInWords } = require('../lib/money');
 const { logActivity } = require('../lib/tenant-activity');
 const { checkApprovalTier } = require('../lib/expense-approval');
@@ -295,22 +296,17 @@ function register(app) {
       memo: b.description || `${category} from ${receivedFrom}`,
     });
 
-    const receiptNo = await nextReceiptNo(db, b.transactionDate);
-    const [updatedIncome] = await Promise.all([
-      db.incomeRecord.update({ where: { id: income.id }, data: { journalEntryId: entryId, receiptNumber: receiptNo } }),
-      db.financeReceipt.create({
-        data: {
-          receiptNumber: receiptNo,
-          sourceType: 'GENERIC_INCOME',
-          sourceId: income.id,
-          receiptDate: new Date(b.transactionDate),
-          receivedFrom,
-          amount: Number(b.amount),
-          description: b.description || category,
-          createdBy: res.locals.user.id,
-        },
-      }),
-    ]);
+    const receipt = await createReceipt(db, () => nextReceiptNo(db, b.transactionDate), {
+      receiptNumber: await nextReceiptNo(db, b.transactionDate),
+      sourceType: 'GENERIC_INCOME',
+      sourceId: income.id,
+      receiptDate: new Date(b.transactionDate),
+      receivedFrom,
+      amount: Number(b.amount),
+      description: b.description || category,
+      createdBy: res.locals.user.id,
+    });
+    const updatedIncome = await db.incomeRecord.update({ where: { id: income.id }, data: { journalEntryId: entryId, receiptNumber: receipt.receiptNumber } });
     res.status(201).json(updatedIncome);
   }));
 
@@ -369,16 +365,12 @@ function register(app) {
       fundId, sourceType: 'DAY_BORN_COLLECTION', sourceId: row.id, createdBy: res.locals.user.id,
       memo: `${dayBornLabel(dayBorn)} day-born collection`,
     });
-    const [updated] = await Promise.all([
-      db.dayBornCollection.update({ where: { id: row.id }, data: { journalEntryId: entryId } }),
-      db.financeReceipt.create({
-        data: {
-          receiptNumber: receiptNo, sourceType: 'DAY_BORN_COLLECTION', sourceId: row.id, receiptDate: new Date(b.collectionDate),
-          receivedFrom: `${dayBornLabel(dayBorn)} day-born group`, amount: Number(b.amount),
-          description: `${dayBornLabel(dayBorn)} day-born collection`, createdBy: res.locals.user.id,
-        },
-      }),
-    ]);
+    const receipt = await createReceipt(db, () => nextReceiptNo(db, b.collectionDate), {
+      receiptNumber: receiptNo, sourceType: 'DAY_BORN_COLLECTION', sourceId: row.id, receiptDate: new Date(b.collectionDate),
+      receivedFrom: `${dayBornLabel(dayBorn)} day-born group`, amount: Number(b.amount),
+      description: `${dayBornLabel(dayBorn)} day-born collection`, createdBy: res.locals.user.id,
+    });
+    const updated = await db.dayBornCollection.update({ where: { id: row.id }, data: { journalEntryId: entryId, receiptNumber: receipt.receiptNumber } });
     res.status(201).json(updated);
   }));
 
@@ -429,7 +421,7 @@ function register(app) {
       },
     });
     const entryId = await ledger.postCashIncome(db, churchId, {
-      date: b.offeringDate, amount: Number(b.amount), incomeAccount: ledger.incomeAccountFor(cat.categoryName),
+      date: b.offeringDate, amount: Number(b.amount), incomeAccount: ledger.ACC.SPECIAL,
       fundId, sourceType: 'SPECIAL_OFFERING', sourceId: row.id, createdBy: res.locals.user.id,
       memo: b.purpose || cat.categoryName,
     });
@@ -452,9 +444,12 @@ function register(app) {
     const churchId = res.locals.churchId;
     const b = req.body || {};
     const memberId = Number(b.memberId);
-    // Matches the original exactly: looser validation than the other two
-    // finance features (no isValidDate/isMoneyPositive calls there either).
     if (!memberId || !b.amount || !b.titheDate) return res.status(400).json({ error: 'memberId, amount and titheDate are required' });
+    // The row is created before the ledger entry is posted, and the ledger
+    // rejects a non-positive amount: without these checks a negative tithe
+    // was saved and then left behind with no journal entry.
+    if (!isValidDate(b.titheDate)) return res.status(400).json({ error: 'Enter a valid tithe date.' });
+    if (!isMoneyPositive(b.amount)) return res.status(400).json({ error: 'Amount must be greater than 0.' });
     if (await periodLockedResponse(res, db, b.titheDate)) return;
 
     const member = await db.member.findUnique({ where: { id: memberId } });
@@ -694,12 +689,14 @@ function register(app) {
     const pledge = await db.pledge.findFirst({ where: { id }, include: { harvest: { select: { harvestName: true } } } });
     if (!pledge) return res.status(404).json({ error: 'Not found' });
 
-    const payment = await db.pledgePayment.create({ data: { pledgeId: id, amount: add, paidOn: new Date(), receiptNumber: '', recordedBy: res.locals.user.id } });
+    const payment = await db.pledgePayment.create({ data: { pledgeId: id, amount: add, paidOn: new Date(), receiptNumber: pendingReceiptNo(), recordedBy: res.locals.user.id } });
     const receiptNumber = pledgePaymentReceiptNo(payment.id);
     await db.pledgePayment.update({ where: { id: payment.id }, data: { receiptNumber } });
-    const newPaid = Number(pledge.paidAmount) + add;
-    const status = newPaid >= Number(pledge.pledgedAmount) ? 'FULFILLED' : 'PARTIAL';
-    await db.pledge.update({ where: { id }, data: { paidAmount: newPaid, status } });
+    // Atomic increment: reading paidAmount and writing back read + add loses
+    // a payment when two are recorded at once.
+    const bumped = await db.pledge.update({ where: { id }, data: { paidAmount: { increment: add } } });
+    const status = Number(bumped.paidAmount) >= Number(bumped.pledgedAmount) ? 'FULFILLED' : 'PARTIAL';
+    await db.pledge.update({ where: { id }, data: { status } });
     const entryId = await ledger.postCashIncome(db, churchId, {
       date: new Date().toISOString().slice(0, 10), amount: add, incomeAccount: ledger.ACC.PLEDGES, fundId: await defaultFundId(db),
       sourceType: 'PLEDGE_PAYMENT', sourceId: payment.id, createdBy: res.locals.user.id,
@@ -756,20 +753,10 @@ function register(app) {
     const tier = checkApprovalTier(res.locals.user, expense.amount, await db.financeSetting.findFirst());
     if (!tier.ok) return res.status(403).json({ error: `This expense must be approved by ${tier.needs}` });
 
-    const entryId = await ledger.postExpensePayment(db, churchId, {
-      date: expense.spentOn.toISOString().slice(0, 10),
-      amount: Number(expense.amount),
-      expenseAccount: ledger.expenseAccountFor(expense.category),
-      category: expense.category,
-      fundId: expense.fundId,
-      sourceId: expense.id,
-      createdBy: res.locals.user.id,
-      memo: expense.description || expense.category,
-    });
-    let updated = await db.expense.update({
-      where: { id },
-      data: { approvalStatus: 'PAID', approvedBy: res.locals.user.id, approvedAt: new Date(), paidAt: new Date(), journalEntryId: entryId },
-    });
+    if (await periodLockedResponse(res, db, expense.spentOn.toISOString().slice(0, 10))) return;
+
+    let updated = await ledger.approveAndPayExpense(db, churchId, expense, res.locals.user.id);
+    if (!updated) return res.status(409).json({ error: 'This expense is not awaiting approval' });
     updated = await syncExpenseVoucher(db, updated, res.locals.user.id);
     res.json(updated);
   }));

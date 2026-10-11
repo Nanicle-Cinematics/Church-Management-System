@@ -128,7 +128,7 @@ test('public check-in: unknown token returns a graceful 404, not a crash', async
   assert.match(page.text, /not recognized/i);
 });
 
-test('public RSVP: GET shows the form, POST records the response', async () => {
+test('public RSVP: search-then-pick records the response and never lists the roster', async () => {
   const { client: c, churchId } = await signedInChurch('rsvp-flow');
   const member = await db.member.create({ data: { churchId, externalId: 'MBR-201', firstName: 'Abena', lastName: 'Osei', membershipStatus: 'MEMBER' } });
   const listPage = await c.getHtml('/events');
@@ -139,14 +139,57 @@ test('public RSVP: GET shows the form, POST records the response', async () => {
 
   const rsvpPage = await anonGet(`/rsvp/${ev.checkinToken}`);
   assert.strictEqual(rsvpPage.status, 200);
-  assert.match(rsvpPage.text, /Abena Osei/);
+  assert.doesNotMatch(rsvpPage.text, /Abena Osei/, 'the RSVP page must not list the roster');
 
-  const posted = await anonPostForm(`/rsvp/${ev.checkinToken}`, { memberId: String(member.id), response: 'GOING' });
+  // A bare, unsigned memberId is ignored.
+  const bare = await anonPostForm(`/rsvp/${ev.checkinToken}`, { memberId: String(member.id), response: 'GOING' });
+  assert.strictEqual(bare.status, 302);
+  assert.doesNotMatch(bare.location, /ok=1/);
+  assert.strictEqual(await db.eventRsvp.count({ where: { eventId: Number(eventId) } }), 0);
+
+  // Too-short searches are refused.
+  const short = await anonPostForm(`/rsvp/${ev.checkinToken}`, { q: 'Ab', response: 'GOING' });
+  assert.strictEqual(short.status, 302);
+
+  // Search, then post the signed pick it returns.
+  const res = await fetch(base + `/rsvp/${ev.checkinToken}`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ q: 'Abena', response: 'GOING' }).toString() });
+  const html = await res.text();
+  assert.match(html, /Abena Osei/);
+  const sig = html.match(/name="sig" value="([a-f0-9]+)"/)[1];
+  const posted = await anonPostForm(`/rsvp/${ev.checkinToken}`, { memberId: String(member.id), sig, response: 'GOING' });
   assert.strictEqual(posted.status, 302);
   assert.match(posted.location, /ok=1/);
 
   const rsvp = await db.eventRsvp.findUnique({ where: { eventId_memberId: { eventId: Number(eventId), memberId: member.id } } });
   assert.strictEqual(rsvp.response, 'GOING');
+});
+
+test('public check-in: a guessed memberId without a signed pick checks no one in', async () => {
+  const { client: c, churchId } = await signedInChurch('checkin-sig');
+  const member = await db.member.create({ data: { churchId, externalId: 'MBR-301', firstName: 'Yaw', lastName: 'Boateng', membershipStatus: 'MEMBER' } });
+  const listPage = await c.getHtml('/events');
+  const csrf = listPage.text.match(/name="_csrf" value="([^"]*)"/)[1];
+  const created = await c.postForm('/events', { title: 'Sunday', eventType: 'SERVICE', startsAt: '2026-08-12T09:00', _csrf: csrf });
+  const eventId = created.location.match(/\/events\/(\d+)/)[1];
+  const ev = await db.event.findUnique({ where: { id: Number(eventId) } });
+
+  const guessed = await anonPostForm(`/checkin/${ev.checkinToken}`, { memberId: String(member.id) });
+  assert.strictEqual(guessed.status, 302);
+  assert.strictEqual(await db.attendance.count({ where: { eventId: Number(eventId) } }), 0);
+});
+
+test('public links of a suspended church stop working', async () => {
+  const { client: c, churchId } = await signedInChurch('checkin-suspended');
+  const listPage = await c.getHtml('/events');
+  const csrf = listPage.text.match(/name="_csrf" value="([^"]*)"/)[1];
+  const created = await c.postForm('/events', { title: 'Suspended Service', eventType: 'SERVICE', startsAt: '2026-08-14T09:00', _csrf: csrf });
+  const eventId = created.location.match(/\/events\/(\d+)/)[1];
+  const ev = await db.event.findUnique({ where: { id: Number(eventId) } });
+  assert.strictEqual((await anonGet(`/checkin/${ev.checkinToken}`)).status, 200);
+
+  await db.church.update({ where: { id: churchId }, data: { suspendedAt: new Date(), suspensionReason: 'test' } });
+  assert.strictEqual((await anonGet(`/checkin/${ev.checkinToken}`)).status, 404);
+  assert.strictEqual((await anonGet(`/rsvp/${ev.checkinToken}`)).status, 404);
 });
 
 test('cross-tenant: church A\'s checkin token never surfaces church B\'s members', async () => {

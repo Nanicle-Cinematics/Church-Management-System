@@ -13,6 +13,7 @@
 const asyncHandler = require('../lib/async-handler');
 const { normalizePhoneGH } = require('../lib/delivery');
 const { sendBroadcastAndTally, canReceive } = require('../lib/broadcast-delivery');
+const { checkBroadcastAllowance, allowanceMessage, validateBroadcastText } = require('../lib/send-limits');
 
 function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
@@ -129,6 +130,8 @@ function register(app) {
     if (!body || !['sms', 'email', 'both'].includes(channel)) {
       return res.status(400).json({ error: 'body and a valid channel (sms|email|both) are required' });
     }
+    const textError = validateBroadcastText(subject, body);
+    if (textError) return res.status(400).json({ error: textError });
     const orgIds = Array.isArray(req.body.orgIds) ? req.body.orgIds.map(Number).filter(Boolean) : [];
     const memberId = req.body.memberId ? Number(req.body.memberId) : null;
     const allMembers = req.body.allMembers === true || req.body.allMembers === '1';
@@ -136,6 +139,8 @@ function register(app) {
 
     const audience = await resolveAudience(db, { allMembers, orgIds, memberId });
     if (!audience.length) return res.status(400).json({ error: 'No recipients matched that audience' });
+    const allowance = await checkBroadcastAllowance(db, res.locals.church, audience.length, channel);
+    if (!allowance.ok) return res.status(429).json({ error: allowanceMessage(allowance), code: 'send_limit' });
 
     const audienceLabel = memberId
       ? `Single member: ${audience[0].firstName} ${audience[0].lastName}`
