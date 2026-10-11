@@ -84,6 +84,7 @@ function client() {
   };
   const headers = (extra) => ({ ...(cookie ? { cookie } : {}), ...extra });
   return {
+    cookie: () => cookie || '',
     async postJson(p, body) {
       const res = await fetch(base + p, { method: 'POST', headers: headers({ 'content-type': 'application/json' }), body: JSON.stringify(body) });
       remember(res);
@@ -400,4 +401,38 @@ test('missing-members report ignores future services', async () => {
   const viaClient = await c.getHtml('/reports/members');
   assert.ok([200, 402].includes(viaClient.status));
   if (viaClient.status === 200) assert.doesNotMatch(viaClient.text, /Reg Ular/, 'attended the only past service, and the future one must not count');
+});
+
+// ---- Background broadcasts ----
+
+test('background broadcast: a failing send marks the broadcast FAILED instead of leaving it SENDING', async () => {
+  const { startBroadcast, waitForIdleBroadcasts } = require('../lib/broadcast-delivery');
+  const { churchId } = await newChurch('bg-fail');
+  const scoped = tenantDb(churchId);
+  const member = await scoped.member.create({ data: { externalId: 'MBR-BG1', firstName: 'No', lastName: 'Phone', membershipStatus: 'MEMBER', preferredChannel: 'EITHER' } });
+  const broadcast = await scoped.broadcast.create({ data: { channel: 'SMS', audienceLabel: 'test', body: 'hi', totalRecipients: 1, status: 'SENDING' } });
+
+  // A client whose recipient writes blow up, standing in for a database error mid-send.
+  const broken = new Proxy(scoped, {
+    get(target, prop) {
+      if (prop === 'broadcastRecipient') return { updateMany: async () => { throw new Error('boom'); }, count: async () => 0 };
+      return target[prop];
+    },
+  });
+  startBroadcast(broken, { broadcastId: broadcast.id, audience: [member], channel: 'sms', subject: null, body: 'hi', ignorePrefs: false, churchName: 'T' });
+  assert.ok(await waitForIdleBroadcasts(10000), 'in-flight sends drain');
+  assert.strictEqual((await scoped.broadcast.findUnique({ where: { id: broadcast.id } })).status, 'FAILED');
+});
+
+test('background broadcast: HTML send redirects at once and the send finishes afterwards', async () => {
+  const { waitForIdleBroadcasts } = require('../lib/broadcast-delivery');
+  const { c, churchId } = await signedInClient('bg-html');
+  await db.member.create({ data: { churchId, externalId: 'MBR-BG2', firstName: 'Bea', lastName: 'Gee', membershipStatus: 'MEMBER', preferredChannel: 'EITHER', mobilePhone: '0244000099', email: 'bea@example.test' } });
+  const csrf = await csrfFrom(c, '/communications/broadcast');
+  const form = new URLSearchParams({ all_members: '1', channel: 'both', body: 'Hello', _csrf: csrf });
+  const res = await fetch(`${base}/communications/broadcast`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: c.cookie() }, body: form.toString(), redirect: 'manual' });
+  assert.strictEqual(res.status, 302);
+  await waitForIdleBroadcasts();
+  const b = await db.broadcast.findFirst({ where: { churchId } });
+  assert.notStrictEqual(b.status, 'SENDING');
 });

@@ -21,7 +21,7 @@ const { pageHero, statsRow, table } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const { normalizePhoneGH, emailDeliveryInfo } = require('../lib/delivery');
-const { sendBroadcastAndTally, canReceive } = require('../lib/broadcast-delivery');
+const { startBroadcast, canReceive } = require('../lib/broadcast-delivery');
 const { checkBroadcastAllowance, allowanceMessage, validateBroadcastText } = require('../lib/send-limits');
 const { icon } = require('../lib/icons');
 
@@ -306,12 +306,12 @@ function register(app) {
     await db.broadcastRecipient.createMany({ data: recipientRows });
 
     const church = await db.church.findUnique({ where: { id: res.locals.churchId } });
-    const updated = await sendBroadcastAndTally(db, {
+    const userId = res.locals.user.id;
+    startBroadcast(db, {
       broadcastId: broadcast.id, audience, channel, subject, body, ignorePrefs, churchName: church.name,
-    });
+    }, (updated) => logActivity(db, 'announcement', `Broadcast to ${audienceLbl}: ${audience.length} recipient(s) [${updated.status.toLowerCase()}]`, `/communications/broadcasts/${broadcast.id}`, userId));
 
-    await logActivity(res.locals.db, 'announcement', `Broadcast to ${audienceLbl}: ${audience.length} recipient(s) [${updated.status.toLowerCase()}]`, `/communications/broadcasts/${broadcast.id}`, res.locals.user.id);
-    flash(req, `Broadcast sent — ${updated.successfulSends} delivered, ${updated.failedSends} failed.`, updated.failedSends > 0 ? 'error' : 'success');
+    flash(req, `Broadcast queued for ${audience.length} member${audience.length === 1 ? '' : 's'} — it is sending now. This page updates by itself.`, 'success');
     res.redirect(`/communications/broadcasts/${broadcast.id}`);
   }));
 
@@ -348,7 +348,10 @@ function register(app) {
       include: { member: { select: { firstName: true, lastName: true } } },
       orderBy: { status: 'desc' },
     });
-    const body = `
+    // While the background send is running, reload every few seconds so the
+    // status and per-recipient log fill in without the admin refreshing.
+    const refresher = b.status === 'SENDING' ? '<script>setTimeout(function(){location.reload();},4000);</script>' : '';
+    const body = `${refresher}
       <div class="card">
         <div class="card-head">
           <h2>${esc(b.audienceLabel)} · ${esc(b.channel)}</h2>

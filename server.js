@@ -33,10 +33,27 @@ const PORT = process.env.PORT || 3000;
 const app = createTenantApp();
 
 if (require.main === module) {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Church Manager running at http://localhost:${PORT}`);
     startOperationsScheduler();
   });
+
+  // Fly sends SIGTERM on every deploy. Broadcasts now send in the background,
+  // so stop taking requests and give in-flight sends a short window to finish
+  // instead of cutting them off mid-list.
+  const { waitForIdleBroadcasts } = require('./lib/broadcast-delivery');
+  let shuttingDown = false;
+  const shutdown = async (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[shutdown] ${signal}: waiting for in-flight broadcasts`);
+    server.close();
+    const idle = await waitForIdleBroadcasts(20000);
+    console.log(idle ? '[shutdown] clean' : '[shutdown] timed out; the stuck-broadcast sweep will mark leftovers FAILED');
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 module.exports = app;

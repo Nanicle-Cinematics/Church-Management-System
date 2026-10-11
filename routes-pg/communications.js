@@ -12,7 +12,7 @@
 
 const asyncHandler = require('../lib/async-handler');
 const { normalizePhoneGH } = require('../lib/delivery');
-const { sendBroadcastAndTally, canReceive } = require('../lib/broadcast-delivery');
+const { startBroadcast, canReceive } = require('../lib/broadcast-delivery');
 const { checkBroadcastAllowance, allowanceMessage, validateBroadcastText } = require('../lib/send-limits');
 
 function requireAdmin(req, res, next) {
@@ -183,10 +183,12 @@ function register(app) {
     await db.broadcastRecipient.createMany({ data: recipientRows });
 
     const church = await db.church.findUnique({ where: { id: res.locals.churchId } });
-    const updated = await sendBroadcastAndTally(db, {
+    // Sent in the background; poll GET /api/communications/broadcasts/:id for
+    // the final status and per-recipient results.
+    startBroadcast(db, {
       broadcastId: broadcast.id, audience, channel, subject, body, ignorePrefs, churchName: church.name,
     });
-    res.status(201).json(updated);
+    res.status(202).json(broadcast);
   }));
 
   app.get('/api/communications/broadcasts', requireAuth, asyncHandler(async (req, res) => {
