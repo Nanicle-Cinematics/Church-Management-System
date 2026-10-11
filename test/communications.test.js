@@ -6,6 +6,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const { createTenantApp } = require('../lib/tenant-http');
 const { db } = require('../lib/tenant');
+const { waitForIdleBroadcasts } = require('../lib/broadcast-delivery');
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
 
@@ -129,12 +130,15 @@ test('broadcast: audience preview and full send-flow with preference skipping', 
   assert.strictEqual(preview.body.excludedPref, 1, 'the NONE-preference member is excluded from reachability counts');
 
   const sent = await client.post('/api/communications/broadcasts', { channel: 'both', body: 'Service moved to 10am', allMembers: true });
-  assert.strictEqual(sent.status, 201);
+  // Accepted, not finished: the send runs in the background.
+  assert.strictEqual(sent.status, 202);
   assert.strictEqual(sent.body.totalRecipients, 3);
-  assert.strictEqual(sent.body.status, 'DRY_RUN');
+  assert.strictEqual(sent.body.status, 'SENDING');
 
+  await waitForIdleBroadcasts();
   const detail = await client.get(`/api/communications/broadcasts/${sent.body.id}`);
   assert.strictEqual(detail.status, 200);
+  assert.strictEqual(detail.body.status, 'DRY_RUN', 'the background send tallied the result');
   // Ama is SMS_ONLY -> her email recipient row should be SKIPPED.
   const amaEmailRow = detail.body.recipients.find((r) => r.channel === 'email' && r.member.firstName === 'Ama');
   assert.strictEqual(amaEmailRow.status, 'SKIPPED');
@@ -157,6 +161,7 @@ test('cross-tenant: church B cannot see church A\'s announcements or broadcasts'
   await a.client.post('/api/communications/announcements', { title: 'A Only', body: 'secret' });
   await db.member.create({ data: { churchId: a.churchId, firstName: 'A', lastName: 'Member', membershipStatus: 'MEMBER', preferredChannel: 'EITHER', email: 'a@test.com' } });
   const sent = await a.client.post('/api/communications/broadcasts', { channel: 'email', body: 'A only broadcast', allMembers: true });
+  await waitForIdleBroadcasts();
 
   const bAnnouncements = await b.client.get('/api/communications/announcements');
   assert.ok(!bAnnouncements.body.some((x) => x.title === 'A Only'));

@@ -16,6 +16,7 @@ const assert = require('node:assert');
 const { Pool } = require('pg');
 const { createTenantApp } = require('../lib/tenant-http');
 const { db } = require('../lib/tenant');
+const { waitForIdleBroadcasts } = require('../lib/broadcast-delivery');
 const { sendSmsBatch, sendEmailEach, normalizePhoneGH } = require('../lib/delivery');
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
@@ -115,6 +116,7 @@ test('broadcast: dry-run send updates recipients and tallies correctly', async (
   assert.strictEqual(sent.status, 302);
 
   const detailUrl = sent.location;
+  await waitForIdleBroadcasts(); // the send runs in the background
   const detail = await client.getHtml(detailUrl);
   assert.match(detail.text, /dry run/);
   assert.match(detail.text, /Ama Owusu/);

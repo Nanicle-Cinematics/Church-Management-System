@@ -4,6 +4,10 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Changed
+
+- Broadcasts are sent in the background. `POST /api/communications/broadcasts` now answers `202` with the broadcast in `SENDING`; poll `GET /api/communications/broadcasts/:id` for the final status. The HTML broadcast page redirects at once and refreshes itself while sending. A failed send marks the broadcast `FAILED`, and on SIGTERM the server waits up to 20 seconds for in-flight sends.
+
 ### Fixed
 
 - Member photo upload wrote the file before checking the member belonged to the caller's church (cross-tenant overwrite/delete) and had no CSRF check.
