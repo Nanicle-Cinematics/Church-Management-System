@@ -21,6 +21,7 @@
 //   per-module).
 
 const asyncHandler = require('../lib/async-handler');
+const { pickEnum, cleanDate, memberFieldError, createMemberWithId, GENDERS, MARITAL_STATUSES: MARITAL_ENUM, PREFERRED_CHANNELS } = require('../lib/member-input');
 
 const MEMBERSHIP_STATUSES = ['VISITOR', 'REGULAR', 'MEMBER', 'INACTIVE', 'TRANSFERRED', 'DECEASED', 'OTHER'];
 const MEMBERS_PER_PAGE = 25;
@@ -36,6 +37,14 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// The unsubscribe token is a credential (anyone holding it can opt that member
+// out), so it is never returned to API clients.
+function publicMember(m) {
+  if (!m) return m;
+  const { unsubscribeToken, ...rest } = m; // eslint-disable-line no-unused-vars
+  return rest;
+}
+
 function isEmailish(s) { return !s || /^\S+@\S+\.\S+$/.test(s); }
 function isPhoneish(s) { return !s || /\d{7,}/.test(String(s).replace(/\D/g, '')); }
 
@@ -44,7 +53,7 @@ function memberErrors(b) {
   if (!b.lastName || !String(b.lastName).trim()) return 'Last name is required.';
   if (b.email && !isEmailish(b.email)) return 'Enter a valid email address, or leave it blank.';
   if (b.mobilePhone && !isPhoneish(b.mobilePhone)) return 'Enter a valid mobile number (at least 7 digits).';
-  return null;
+  return memberFieldError(b);
 }
 
 async function nextMemberId(db) {
@@ -69,19 +78,19 @@ function parseMemberBody(b) {
     lastName: (b.lastName || '').trim(),
     email: (b.email || '').trim() || null,
     mobilePhone: (b.mobilePhone || '').trim() || null,
-    dateOfBirth: b.dateOfBirth ? new Date(b.dateOfBirth) : null,
+    dateOfBirth: cleanDate(b.dateOfBirth),
     dayBorn: b.dayBorn || null,
-    gender: b.gender || null,
-    maritalStatus: b.maritalStatus || null,
+    gender: pickEnum(b.gender, GENDERS),
+    maritalStatus: pickEnum(b.maritalStatus, MARITAL_ENUM),
     membershipStatus: MEMBERSHIP_STATUSES.includes(b.membershipStatus) ? b.membershipStatus : 'VISITOR',
-    joinDate: b.joinDate ? new Date(b.joinDate) : null,
-    baptismDate: b.baptismDate ? new Date(b.baptismDate) : null,
-    confirmationDate: b.confirmationDate ? new Date(b.confirmationDate) : null,
+    joinDate: cleanDate(b.joinDate),
+    baptismDate: cleanDate(b.baptismDate),
+    confirmationDate: cleanDate(b.confirmationDate),
     notes: (b.notes || '').trim() || null,
     emergencyContactName: (b.emergencyContactName || '').trim() || null,
     emergencyContactPhone: (b.emergencyContactPhone || '').trim() || null,
     emergencyContactRelation: (b.emergencyContactRelation || '').trim() || null,
-    preferredChannel: b.preferredChannel || 'NONE',
+    preferredChannel: pickEnum(b.preferredChannel, PREFERRED_CHANNELS, 'NONE'),
   };
 }
 
@@ -149,7 +158,7 @@ function register(app) {
         include: { bibleClass: { select: { name: true } } },
       }),
     ]);
-    res.json({ total, page, pages: Math.max(1, Math.ceil(total / MEMBERS_PER_PAGE)), members: rows });
+    res.json({ total, page, pages: Math.max(1, Math.ceil(total / MEMBERS_PER_PAGE)), members: rows.map(publicMember) });
   }));
 
   app.post('/api/members', requireAdmin, asyncHandler(async (req, res) => {
@@ -161,17 +170,9 @@ function register(app) {
     if (!(await validOrgIds(db, orgIds))) return res.status(400).json({ error: 'One or more organizations were not found' });
     const bibleClassCheck = await checkBibleClassId(db, b.bibleClassId);
     if (!bibleClassCheck.ok) return res.status(400).json({ error: 'Bible class not found' });
-    const externalId = await nextMemberId(db);
-    const member = await db.member.create({
-      data: {
-        ...parseMemberBody(b),
-        bibleClassId: bibleClassCheck.bibleClassId,
-        externalId,
-        unsubscribeToken: require('crypto').randomBytes(16).toString('hex'),
-      },
-    });
+    const member = await createMemberWithId(db, { ...parseMemberBody(b), bibleClassId: bibleClassCheck.bibleClassId });
     if (orgIds.length) await saveMemberOrgs(db, member.id, orgIds);
-    res.status(201).json(member);
+    res.status(201).json(publicMember(member));
   }));
 
   app.get('/api/members/:id', requireAuth, asyncHandler(async (req, res) => {
@@ -196,7 +197,7 @@ function register(app) {
     ]);
 
     res.json({
-      ...member,
+      ...publicMember(member),
       organizations: orgMemberships.map((m) => m.organization),
       ministries: ministryMemberships.map((m) => ({ name: m.ministry.name, role: m.role, joinedDate: m.joinedDate })),
       sacraments,
@@ -217,7 +218,7 @@ function register(app) {
     try {
       const member = await db.member.update({ where: { id }, data: { ...parseMemberBody(b), bibleClassId: bibleClassCheck.bibleClassId } });
       await saveMemberOrgs(db, id, orgIds);
-      res.json(member);
+      res.json(publicMember(member));
     } catch (e) {
       if (e.code === 'P2025') return res.status(404).json({ error: 'Not found' });
       throw e;

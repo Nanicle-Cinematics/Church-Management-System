@@ -22,6 +22,7 @@ const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const { normalizePhoneGH, emailDeliveryInfo } = require('../lib/delivery');
 const { sendBroadcastAndTally, canReceive } = require('../lib/broadcast-delivery');
+const { checkBroadcastAllowance, allowanceMessage, validateBroadcastText } = require('../lib/send-limits');
 const { icon } = require('../lib/icons');
 
 function requireAdmin(req, res, next) {
@@ -269,12 +270,16 @@ function register(app) {
     const db = res.locals.db;
     const { channel, subject, body } = req.body || {};
     if (!body || !['sms', 'email', 'both'].includes(channel)) return res.redirect('/communications/broadcast');
+    const textError = validateBroadcastText(subject, body);
+    if (textError) { flash(req, textError); return res.redirect('/communications/broadcast'); }
 
     const orgs = await db.organization.findMany({ where: { active: true }, select: { id: true, name: true } });
     const choice = parseOrgChoice(req.body);
     if (!choice.memberId && !choice.allMembers && choice.orgIds.length === 0) return res.redirect('/communications/broadcast');
     const audience = await resolveAudience(db, choice);
     if (!audience.length) return res.redirect('/communications/broadcast');
+    const allowance = await checkBroadcastAllowance(db, res.locals.church, audience.length, channel);
+    if (!allowance.ok) { flash(req, allowanceMessage(allowance)); return res.redirect('/communications/broadcast'); }
     const audienceLbl = audienceLabel(orgs, choice, audience);
     const orgIdForRow = (!choice.memberId && !choice.allMembers && choice.orgIds.length === 1) ? choice.orgIds[0] : null;
     const ignorePrefs = req.body.ignore_prefs === '1';

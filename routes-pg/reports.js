@@ -34,10 +34,14 @@ function requireFinanceReportAccess(req, res, next) {
   return res.status(403).json({ error: 'Finance access required' });
 }
 
+// start/end are bound as query parameters (no injection), but a malformed
+// value used to reach Postgres as ::date and fail with a 500. Anything that is
+// not YYYY-MM-DD falls back to the default for that side.
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 function defaultRange(query) {
   const today = new Date();
-  const start = query.start || new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
-  const end = query.end || today.toISOString().slice(0, 10);
+  const start = ISO_DAY.test(query.start || '') ? query.start : new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  const end = ISO_DAY.test(query.end || '') ? query.end : today.toISOString().slice(0, 10);
   return { start, end };
 }
 
@@ -184,7 +188,8 @@ function register(app) {
     const rows = await rawDb.$queryRaw`
       WITH last_services AS (
         SELECT event_id FROM events
-        WHERE church_id = ${churchId} AND event_type = 'SERVICE'
+        WHERE church_id = ${churchId} AND event_type = 'SERVICE' AND starts_at <= now()
+          AND EXISTS (SELECT 1 FROM attendance a0 WHERE a0.event_id = events.event_id AND a0.church_id = ${churchId})
         ORDER BY starts_at DESC LIMIT 3
       )
       SELECT m.member_id AS member_id, m.first_name || ' ' || m.last_name AS name, m.email

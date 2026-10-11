@@ -127,7 +127,13 @@ test('forgot-password: real link works end to end, non-matching email shows no l
   const user = await db.user.findUnique({ where: { email } });
   const resetToken = await db.passwordResetToken.findFirst({ where: { userId: user.id, usedAt: null }, orderBy: { createdAt: 'desc' } });
   assert.ok(resetToken, 'matching email must create a reset token for email delivery');
-  const resetPath = `/reset-password/${resetToken.token}`;
+  // Only a hash is stored: the stored value must not itself work as a link.
+  const storedAsLink = await forgotClient.getHtml(`/reset-password/${resetToken.token}`);
+  assert.match(storedAsLink.text, /invalid or has expired/, 'the stored (hashed) token must not be a usable reset link');
+  // The raw token only ever travels by email, so issue a fresh one directly.
+  const { createPasswordResetToken } = require('../lib/auth');
+  const issued = await createPasswordResetToken(email);
+  const resetPath = `/reset-password/${issued.token}`;
 
   const resetPage = await forgotClient.getHtml(resetPath);
   assert.strictEqual(resetPage.status, 200);

@@ -29,6 +29,7 @@ const { pageHero, statsRow, listCard, table } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const ledger = require('../lib/ledger-pg');
+const { createReceipt } = require('../lib/receipts');
 const { sendSmsBatch, sendEmailEach, normalizePhoneGH } = require('../lib/delivery');
 const { amountInWords } = require('../lib/money');
 const { icon } = require('../lib/icons');
@@ -333,9 +334,11 @@ async function recordPledgePayment(db, churchId, pledgeId, amount, paidOn, userI
   const payment = await db.pledgePayment.create({ data: { pledgeId, amount, paidOn: new Date(paidOn), receiptNumber: '', recordedBy: userId } });
   const receiptNumber = pledgePaymentReceiptNo(payment.id);
   await db.pledgePayment.update({ where: { id: payment.id }, data: { receiptNumber } });
-  const newPaid = Number(pledge.paidAmount) + amount;
-  const status = newPaid >= Number(pledge.pledgedAmount) ? 'FULFILLED' : 'PARTIAL';
-  await db.pledge.update({ where: { id: pledgeId }, data: { paidAmount: newPaid, status } });
+  // Atomic increment: reading paidAmount and writing back read + add loses a
+  // payment when two are recorded at once.
+  const bumped = await db.pledge.update({ where: { id: pledgeId }, data: { paidAmount: { increment: amount } } });
+  const status = Number(bumped.paidAmount) >= Number(bumped.pledgedAmount) ? 'FULFILLED' : 'PARTIAL';
+  await db.pledge.update({ where: { id: pledgeId }, data: { status } });
   const entryId = await ledger.postCashIncome(db, churchId, {
     date: paidOn, amount, incomeAccount: ledger.ACC.PLEDGES, fundId: await defaultFundId(db),
     sourceType: 'PLEDGE_PAYMENT', sourceId: payment.id, createdBy: userId,
@@ -476,8 +479,13 @@ async function givingByMember(db, year) {
 // module header); copied near-verbatim from the original's
 // routes/finance.js:318-326 sendFinanceCsv/csvEscape pair.
 function csvEscape(v) {
-  const s = v === null || v === undefined ? '' : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  let s = v === null || v === undefined ? '' : String(v);
+  // Spreadsheet formula injection: a cell that starts with = + - @ (or a
+  // tab/CR) is executed by Excel/Sheets. Names, descriptions and "received
+  // from" are free text, so prefix an apostrophe. Plain numbers such as -50.00
+  // are left alone.
+  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 function sendCsv(res, filename, header, rows) {
   const lines = [header.map(csvEscape).join(',')].concat(rows.map((r) => r.map(csvEscape).join(',')));
@@ -1052,16 +1060,12 @@ function register(app) {
       fundId, sourceType: 'GENERIC_INCOME', sourceId: income.id, createdBy: res.locals.user.id,
       memo: b.description || `${label} from ${receivedFrom}`,
     });
-    const receiptNo = await nextReceiptNo(db, b.transactionDate);
-    await Promise.all([
-      db.incomeRecord.update({ where: { id: income.id }, data: { journalEntryId: entryId, receiptNumber: receiptNo } }),
-      db.financeReceipt.create({
-        data: {
-          receiptNumber: receiptNo, sourceType: 'GENERIC_INCOME', sourceId: income.id, receiptDate: new Date(b.transactionDate),
-          receivedFrom, amount: Number(b.amount), description: b.description || label, createdBy: res.locals.user.id,
-        },
-      }),
-    ]);
+    const receipt = await createReceipt(db, () => nextReceiptNo(db, b.transactionDate), {
+      receiptNumber: await nextReceiptNo(db, b.transactionDate), sourceType: 'GENERIC_INCOME', sourceId: income.id, receiptDate: new Date(b.transactionDate),
+      receivedFrom, amount: Number(b.amount), description: b.description || label, createdBy: res.locals.user.id,
+    });
+    const receiptNo = receipt.receiptNumber;
+    await db.incomeRecord.update({ where: { id: income.id }, data: { journalEntryId: entryId, receiptNumber: receiptNo } });
     await logActivity(db, 'income_recorded', `Generic income ${receiptNo} recorded`, '/finance/income', res.locals.user.id);
     flash(req, `Income recorded — receipt ${receiptNo}.`, 'success');
     res.redirect(`/finance/receipts/${encodeURIComponent(receiptNo)}/print?new=1`);
@@ -1160,7 +1164,7 @@ function register(app) {
     const fundCheck = await checkFundId(db, b.fundId);
     if (!fundCheck.ok) { flash(req, 'Fund not found.'); return res.redirect('/finance/day-borns'); }
     const fundId = fundCheck.fundId ?? await defaultFundId(db);
-    const receiptNo = await nextReceiptNo(db, b.collectionDate);
+    let receiptNo = await nextReceiptNo(db, b.collectionDate);
     const row = await db.dayBornCollection.create({
       data: {
         collectionDate: new Date(b.collectionDate), dayBorn, amount: Number(b.amount),
@@ -1174,16 +1178,13 @@ function register(app) {
       fundId, sourceType: 'DAY_BORN_COLLECTION', sourceId: row.id, createdBy: res.locals.user.id,
       memo: `${dayBornLabel(dayBorn)} day-born collection`,
     });
-    await Promise.all([
-      db.dayBornCollection.update({ where: { id: row.id }, data: { journalEntryId: entryId } }),
-      db.financeReceipt.create({
-        data: {
-          receiptNumber: receiptNo, sourceType: 'DAY_BORN_COLLECTION', sourceId: row.id, receiptDate: new Date(b.collectionDate),
-          receivedFrom: `${dayBornLabel(dayBorn)} day-born group`, amount: Number(b.amount),
-          description: `${dayBornLabel(dayBorn)} day-born collection`, createdBy: res.locals.user.id,
-        },
-      }),
-    ]);
+    const receipt = await createReceipt(db, () => nextReceiptNo(db, b.collectionDate), {
+      receiptNumber: receiptNo, sourceType: 'DAY_BORN_COLLECTION', sourceId: row.id, receiptDate: new Date(b.collectionDate),
+      receivedFrom: `${dayBornLabel(dayBorn)} day-born group`, amount: Number(b.amount),
+      description: `${dayBornLabel(dayBorn)} day-born collection`, createdBy: res.locals.user.id,
+    });
+    receiptNo = receipt.receiptNumber;
+    await db.dayBornCollection.update({ where: { id: row.id }, data: { journalEntryId: entryId, receiptNumber: receiptNo } });
     await logActivity(db, 'income_recorded', `Day-born collection ${receiptNo} recorded`, '/finance/day-borns', res.locals.user.id);
     flash(req, `Collection recorded — receipt ${receiptNo}.`, 'success');
     res.redirect('/finance/day-borns');
@@ -1287,7 +1288,7 @@ function register(app) {
       },
     });
     const entryId = await ledger.postCashIncome(db, churchId, {
-      date: b.offeringDate, amount: Number(b.amount), incomeAccount: ledger.incomeAccountFor(cat.categoryName),
+      date: b.offeringDate, amount: Number(b.amount), incomeAccount: ledger.ACC.SPECIAL,
       fundId, sourceType: 'SPECIAL_OFFERING', sourceId: row.id, createdBy: res.locals.user.id,
       memo: b.purpose || cat.categoryName,
     });
@@ -1385,9 +1386,12 @@ function register(app) {
     const churchId = res.locals.churchId;
     const b = req.body || {};
     const memberId = Number(b.memberId);
-    // Matches the original exactly: looser validation than day-borns/special
-    // (no isValidDate/isMoneyPositive calls there either, silent redirect).
     if (!memberId || !b.amount || !b.titheDate) return res.redirect('/finance/tithes');
+    // The row is created before the ledger entry is posted, and the ledger
+    // rejects a non-positive amount: without these checks a negative tithe
+    // was saved and then left behind with no journal entry.
+    if (!isValidDate(b.titheDate)) { flash(req, 'Enter a valid tithe date.'); return res.redirect('/finance/tithes'); }
+    if (!isMoneyPositive(b.amount)) { flash(req, 'Amount must be greater than 0.'); return res.redirect('/finance/tithes'); }
     if (await refuseIfPeriodLocked(req, res, db, b.titheDate, '/finance/tithes')) return;
 
     const member = await db.member.findUnique({ where: { id: memberId } });
@@ -2610,14 +2614,8 @@ function register(app) {
     if (!tier.ok) { flash(req, `An expense of ${fmtMoney(expense.amount)} must be approved by ${tier.needs}.`); return res.redirect('/finance/expenses'); }
     if (await refuseIfPeriodLocked(req, res, db, expense.spentOn.toISOString().slice(0, 10), '/finance/expenses')) return;
 
-    const entryId = await ledger.postExpensePayment(db, churchId, {
-      date: expense.spentOn.toISOString().slice(0, 10), amount: Number(expense.amount), expenseAccount: ledger.expenseAccountFor(expense.category),
-      category: expense.category, fundId: expense.fundId, sourceId: expense.id, createdBy: res.locals.user.id, memo: expense.description || expense.category,
-    });
-    const updated = await db.expense.update({
-      where: { id },
-      data: { approvalStatus: 'PAID', approvedBy: res.locals.user.id, approvedAt: new Date(), paidAt: new Date(), journalEntryId: entryId },
-    });
+    const updated = await ledger.approveAndPayExpense(db, churchId, expense, res.locals.user.id);
+    if (!updated) { flash(req, 'This expense is not awaiting approval.'); return res.redirect('/finance/expenses'); }
     await syncExpenseVoucher(db, updated, res.locals.user.id);
     await logActivity(db, 'expense_approved', `Expense approved and paid: ${expense.category} (${fmtMoney(expense.amount)})`, '/finance/expenses', res.locals.user.id);
     flash(req, 'Expense approved — a payment voucher was issued.', 'success');
@@ -2800,6 +2798,15 @@ function register(app) {
     const name = String(b.name || '').trim();
     if (!name) { flash(req, 'Enter a fund name.'); return res.redirect(`/finance/funds/${id}/edit`); }
     if (!isMoneyNonNeg(b.openingBalance || 0)) { flash(req, 'Opening balance must be 0 or more.'); return res.redirect(`/finance/funds/${id}/edit`); }
+    // The opening balance is the base every later fund balance is built on.
+    // Changing it after money has been posted to the fund silently rewrites
+    // balances in periods that may already be closed, with no journal entry to
+    // show for it. Once the fund has postings, correct it with an entry instead.
+    if (Math.round((Number(b.openingBalance) || 0) * 100) !== Math.round(Number(fund.openingBalance || 0) * 100)
+        && await db.journalLine.count({ where: { fundId: id } })) {
+      flash(req, 'This fund already has postings, so its opening balance can no longer be edited. Record a journal adjustment instead.');
+      return res.redirect(`/finance/funds/${id}/edit`);
+    }
     try {
       await db.fund.update({
         where: { id },
@@ -2888,8 +2895,11 @@ function register(app) {
     };
     if (!descriptive.description) { flash(req, 'Enter a description.'); return res.redirect(back); }
 
+    const raced = () => { flash(req, 'This expense was just approved or changed by someone else. Reload and try again.'); return res.redirect(back); };
     if (e.approvalStatus === 'PAID') {
-      const updated = await db.expense.update({ where: { id }, data: descriptive });
+      const claim = await db.expense.updateMany({ where: { id, approvalStatus: 'PAID' }, data: descriptive });
+      if (!claim.count) return raced();
+      const updated = await db.expense.findUnique({ where: { id } });
       await syncExpenseVoucher(db, updated, res.locals.user.id);
     } else {
       if (!isValidDate(b.spentOn)) { flash(req, 'Enter a valid date.'); return res.redirect(back); }
@@ -2899,8 +2909,10 @@ function register(app) {
       if (!fundCheck.ok) { flash(req, 'Fund not found.'); return res.redirect(back); }
       const projectCheck = await checkProjectId(db, b.projectId);
       if (!projectCheck.ok) { flash(req, 'Project not found.'); return res.redirect(back); }
-      await db.expense.update({
-        where: { id },
+      // Conditional on the status we read: an approval that lands first makes
+      // this match nothing, so a paid expense's amount can never be rewritten.
+      const claim = await db.expense.updateMany({
+        where: { id, approvalStatus: e.approvalStatus },
         data: {
           ...descriptive, expenseCatId: cat ? cat.id : e.expenseCatId, category: (cat && cat.categoryName) || e.category,
           amount: Number(b.amount), spentOn: new Date(b.spentOn), fundId: fundCheck.fundId ?? e.fundId, projectId: projectCheck.projectId,
@@ -2908,6 +2920,7 @@ function register(app) {
           ...(e.approvalStatus === 'REJECTED' ? { approvalStatus: 'SUBMITTED', submittedAt: new Date(), rejectedAt: null, approvalNote: null } : {}),
         },
       });
+      if (!claim.count) return raced();
     }
     await logActivity(db, 'expense_edited', `Expense #${id} edited (${e.approvalStatus})`, '/finance/expenses', res.locals.user.id);
     flash(req, e.approvalStatus === 'REJECTED' ? 'Expense updated and resubmitted for approval.' : 'Expense updated.', 'success');
@@ -2985,8 +2998,8 @@ function register(app) {
         <form class="form" method="post" action="/finance/settings">
           <label>Receipt prefix<input name="receiptPrefix" required maxlength="24" value="${esc(s.receiptPrefix)}" ${dis}></label>
           <label>Voucher prefix<input name="voucherPrefix" required maxlength="24" value="${esc(s.voucherPrefix)}" ${dis}></label>
-          <label>Small expense limit<input type="number" step="0.01" min="0" name="smallExpenseMax" value="${esc(s.smallExpenseMax)}" ${dis}></label>
-          <label>Medium expense limit<input type="number" step="0.01" min="0" name="mediumExpenseMax" value="${esc(s.mediumExpenseMax)}" ${dis}></label>
+          <label>Small expense limit<input type="number" step="0.01" min="0" name="smallExpenseMax" value="${esc(s.smallExpenseMax)}" ${dis}${res.locals.user.role === 'ADMIN' ? '' : ' readonly'}></label>
+          <label>Medium expense limit<input type="number" step="0.01" min="0" name="mediumExpenseMax" value="${esc(s.mediumExpenseMax)}" ${dis}${res.locals.user.role === 'ADMIN' ? '' : ' readonly'}></label>
           <label class="wide">Next receipt preview<input value="${esc(await nextReceiptNo(db, todayISO()))}" disabled></label>
           <label class="wide">Next voucher preview<input value="${esc(await nextVoucherNo(db, todayISO()))}" disabled></label>
           ${canManage ? '<div class="actions"><button type="submit">Save settings</button></div>' : '<p class="muted-text wide">Only finance fund managers can change these settings.</p>'}
@@ -3011,7 +3024,17 @@ function register(app) {
       return res.redirect('/finance/settings');
     }
     const data = { receiptPrefix, voucherPrefix, smallExpenseMax: Number(b.smallExpenseMax || 0), mediumExpenseMax: Number(b.mediumExpenseMax || 0) };
-    if (await db.financeSetting.findFirst()) await db.financeSetting.update({ where: { churchId: res.locals.churchId }, data });
+    // The limits decide WHO may approve an expense. A Treasurer (tier 1) could
+    // otherwise raise them until their own tier covers everything, defeating
+    // the Finance Admin / Admin tiers. Only an Admin may change them.
+    const current = await db.financeSetting.findFirst();
+    const limitsChanged = Number(current ? current.smallExpenseMax : 500) !== data.smallExpenseMax
+      || Number(current ? current.mediumExpenseMax : 5000) !== data.mediumExpenseMax;
+    if (limitsChanged && res.locals.user.role !== 'ADMIN') {
+      flash(req, 'Only an Admin can change the expense approval limits. Prefixes were not saved either — resubmit without changing the limits.');
+      return res.redirect('/finance/settings');
+    }
+    if (current) await db.financeSetting.update({ where: { churchId: res.locals.churchId }, data });
     else await db.financeSetting.create({ data });
     await logActivity(db, 'finance_settings_updated', 'Finance settings updated', '/finance/settings', res.locals.user.id);
     flash(req, 'Finance settings saved.', 'success');
@@ -3061,8 +3084,7 @@ function register(app) {
   }));
 
   // --- Financial periods ---
-  app.get('/finance/periods', asyncHandler(async (req, res) => {
-    if (!res.locals.user) return res.redirect('/login');
+  app.get('/finance/periods', requireFinanceReportAccess, asyncHandler(async (req, res) => {
     const canManage = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
     const canReopen = res.locals.user.role === 'ADMIN';
     const periods = await res.locals.db.financialPeriod.findMany({ orderBy: [{ year: 'desc' }, { month: 'desc' }] });
@@ -3088,7 +3110,10 @@ function register(app) {
   app.post('/finance/periods/lock', requireFundManager, asyncHandler(async (req, res) => {
     const year = Number(req.body.year);
     const month = Number(req.body.month);
-    if (!Number.isInteger(year) || !Number.isInteger(month)) { flash(req, 'Year and month are required.'); return res.redirect('/finance/periods'); }
+    if (!Number.isInteger(year) || !Number.isInteger(month) || year < 2000 || year > 2100 || month < 1 || month > 12) {
+      flash(req, 'Enter a year between 2000 and 2100 and a month from 1 to 12.');
+      return res.redirect('/finance/periods');
+    }
     await res.locals.db.financialPeriod.upsert({
       where: { churchId_year_month: { churchId: res.locals.churchId, year, month } },
       update: { status: 'LOCKED', closedAt: new Date(), closedBy: res.locals.user.id },

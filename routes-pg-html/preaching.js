@@ -17,7 +17,7 @@ const asyncHandler = require('../lib/async-handler');
 const { esc, fmtDate, fmtPreachDate } = require('../lib/format');
 const { pageHero, statsRow } = require('../lib/views');
 const { logActivity } = require('../lib/tenant-activity');
-const { sendPreachingReminder } = require('../routes-pg/preaching');
+const { sendPreachingReminder, remindRateLimit } = require('../routes-pg/preaching');
 const { icon } = require('../lib/icons');
 
 function requireAdmin(req, res, next) {
@@ -204,7 +204,7 @@ function register(app) {
     });
   }));
 
-  app.post('/preaching/:id/remind', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/preaching/:id/remind', requireAdmin, remindRateLimit, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const id = Number(req.params.id);
     const plan = await db.preachingPlan.findFirst({

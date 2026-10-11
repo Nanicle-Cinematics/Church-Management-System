@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+### Fixed
+
+- Member photo upload wrote the file before checking the member belonged to the caller's church (cross-tenant overwrite/delete) and had no CSRF check.
+- Expense approval and journal reversal are now claimed atomically; concurrent requests can no longer pay an expense or reverse an entry twice (`approveAndPayExpense`, `reverseJournal`).
+- Tithes reject non-positive amounts and invalid dates before any row is created; pledge payments use an atomic increment; receipt numbers retry on a clash.
+- Special offerings post to 4040; "Salaries", "Office Supplies" and "Outreach" expenses post to their own accounts instead of 5900. Entries already posted keep their old account.
+- Public check-in/RSVP: no roster dropdown, signed name picks, minimum search length, rate limiting, and suspended/deleted churches' links stop working. The RSVP page is now search-then-pick.
+- Platform-operator emails (`PLATFORM_ADMIN_EMAILS`) can no longer be registered once any church exists, or created as tenant users.
+- Rate limiter bounds its key length and bucket count. Production no longer signs sessions with a hardcoded secret when `SESSION_SECRET` is unset.
+- Password reset tokens are stored hashed, are single-use atomically, and sign out the user's other sessions. Reset/verification emails are not sent without `PUBLIC_URL` in production.
+- Login: non-string passwords no longer 500, unknown emails cost the same bcrypt time, failed-attempt counting is atomic.
+- `/api` rejects form-encoded bodies; non-numeric ids give 404; production 500 responses no longer include internal error text; CSV exports neutralise formula cells; removed users free their login email.
+- Expense approval now claims on the exact amount/date/fund/category the approver saw, and expense edits are conditional on status, so an edit racing an approval can no longer change a paid expense. Expense approval limits can only be changed by an Admin.
+- Email "From" is always the platform address (churches control only the display name and Reply-To); broadcasts have a length limit and a rolling 24-hour per-church cap (`BROADCAST_DAILY_LIMIT_FREE` / `_PRO`); preaching reminders are rate limited and only marked sent if a channel accepted them.
+- Added the missing `/u/:token` unsubscribe page that every broadcast email links to; `/api/members` no longer returns `unsubscribeToken`.
+- A fund's opening balance can't be edited once it has postings. Added `scripts/purge-deleted-churches.js` (dry run by default) to act on `deletionPurgeAfter`. Stuck `SENDING` broadcasts are marked FAILED after 30 minutes.
+- JSON user routes now write security-audit events like the HTML ones; an admin password reset clears the lockout and signs the user out everywhere; admin 2FA disable clears recovery codes.
+- Member ids retry on a clash; gender / marital status / preferred channel / dates are validated (400, not 500). "Missing 3 Sundays" ignores future and unattended services; report dates are validated.
+- The Editor role is documented as read-only (it never had write access); `docs/AUTHORIZATION_MATRIX.md` rewritten to match the code. Only platform operators see the Platform nav link.
+- Oversized text fields (over 20,000 characters) are refused; Sentry tracing defaults to 10%; deploys wait for the tests workflow and pin the flyctl action.
+
 ## v1.4.0 - 2026-06-30
 
 ### Added
