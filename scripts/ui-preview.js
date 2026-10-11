@@ -20,6 +20,7 @@ const { sparkline } = require('../lib/charts');
 const ROOT = path.join(__dirname, '..');
 const CSS = fs.readFileSync(path.join(ROOT, 'public', 'styles.css'), 'utf8');
 const THEME = fs.readFileSync(path.join(ROOT, 'public', 'theme-ios26.css'), 'utf8');
+const THEME_ED = fs.readFileSync(path.join(ROOT, 'public', 'theme-editorial.css'), 'utf8');
 const EDITORIAL = fs.readFileSync(path.join(ROOT, 'public', 'editorial.css'), 'utf8');
 
 const USER = { role: 'admin', display_name: 'Nana Aboagye', username: 'nana' };
@@ -97,6 +98,7 @@ function page(html, { theme } = {}) {
   const inlined = html
     .replace(/<link rel="stylesheet" href="\/static\/styles\.css[^"]*">/, `<style>\n${CSS}\n</style>`)
     .replace(/<link rel="stylesheet" href="\/static\/theme-ios26\.css[^"]*">/, `<style>\n${THEME}\n</style>`)
+    .replace(/<link rel="stylesheet" href="\/static\/theme-editorial\.css[^"]*">/, `<style>\n${THEME_ED}\n</style>`)
     .replace(/<link rel="stylesheet" href="\/static\/editorial\.css[^"]*">/, `<style>\n${EDITORIAL}\n</style>`);
   // Pin the colour scheme so a screenshot is deterministic instead of
   // following whatever the rendering host prefers. The shell's inline
@@ -352,23 +354,82 @@ function landing() {
   return require('../lib/tenant-landing').landingPage(false);
 }
 
+// ---- The REAL dashboard and member profile, fed sample data ---------------
+// These call the production renderers (lib/tenant-dashboard.js,
+// lib/member-profile.js) so what is reviewed here is what ships.
+async function dashboardReal() {
+  const day = 86400000;
+  let weekCall = 0;
+  const weekly = [312, 348, 331, 386, 402, 376];
+  const stub = {
+    member: {
+      count: async ({ where }) => (where.joinDate ? 46 : (where.email === null ? 12 : 1284)),
+      groupBy: async () => [
+        { membershipStatus: 'MEMBER', _count: 842 }, { membershipStatus: 'REGULAR', _count: 260 },
+        { membershipStatus: 'VISITOR', _count: 182 }, { membershipStatus: 'INACTIVE', _count: 31 },
+      ],
+    },
+    event: { findMany: async () => [
+      { id: 1, title: 'Sunday Worship Service', startsAt: new Date(Date.now() + 2 * day), eventType: 'SERVICE', location: 'Main sanctuary' },
+      { id: 2, title: 'Youth Fellowship', startsAt: new Date(Date.now() + 5 * day), eventType: 'YOUTH', location: 'Hall B' },
+      { id: 3, title: 'Harvest Planning Meeting', startsAt: new Date(Date.now() + 9 * day), eventType: 'OTHER', location: null },
+    ] },
+    attendance: { count: async ({ where }) => (where.checkedInAt.lt ? weekly[weekCall++ % 6] : 386) },
+    incomeRecord: { aggregate: async () => ({ _sum: { amount: 48920 } }) },
+    activityLog: { findMany: async () => [
+      { description: 'Sunday offering posted for ₵4,210', link: '/finance/income', occurredAt: new Date(Date.now() - day), kind: 'income_recorded' },
+      { description: 'New member added: Ama Serwaa (MBR-1285)', link: '/members/1', occurredAt: new Date(Date.now() - 2 * day), kind: 'member_added' },
+      { description: 'Attendance recorded for Wednesday service', link: null, occurredAt: new Date(Date.now() - 3 * day), kind: 'attendance_recorded' },
+    ] },
+    expense: { count: async () => 3 }, cashCountSheet: { count: async () => 1 }, bankDeposit: { count: async () => 2 },
+  };
+  const user = { role: 'ADMIN', financeRole: 'FINANCE_ADMIN', displayName: 'Nana Aboagye', username: 'nana' };
+  const body = await require('../lib/tenant-dashboard').renderDashboard(stub, user);
+  return layout({ title: 'Dashboard', body, active: '/', user: USER, churchName: CHURCH, noHeader: true });
+}
+
+function memberProfile() {
+  const { renderMemberProfile } = require('../lib/member-profile');
+  const m = {
+    id: 12, externalId: 'MBR-012', firstName: 'Ama', lastName: 'Serwaa', membershipStatus: 'MEMBER', photoFilename: null,
+    bibleClass: { name: 'Bible Class B' }, mobilePhone: '024 555 0111', email: 'ama.serwaa@example.org',
+    dateOfBirth: new Date('1988-03-14'), dayBorn: 'Friday', gender: 'F', maritalStatus: 'MARRIED', preferredChannel: 'EITHER',
+    joinDate: new Date('2019-06-02'), baptismDate: new Date('2019-08-18'), confirmationDate: new Date('2020-04-12'),
+    notes: 'Leads the children’s choir on first Sundays. Prefers calls in the evening.',
+    emergencyContactName: 'Kwame Serwaa', emergencyContactPhone: '020 555 0142', emergencyContactRelation: 'spouse',
+  };
+  const body = renderMemberProfile({
+    m, isAdmin: true, akanName: 'Afia / Kofi',
+    orgs: [{ organization: { id: 1, name: 'Women’s Fellowship' } }, { organization: { id: 2, name: 'Choir' } }],
+    ministries: [{ ministry: { name: 'Children’s Ministry' }, role: 'Leader', joinedDate: new Date('2021-01-10') }],
+    sacraments: [{ sacramentType: 'BAPTISM', occurredOn: new Date('2019-08-18'), location: 'Dunwell Methodist' }],
+    attendance: [
+      { event: { title: 'Sunday Worship Service', startsAt: new Date('2026-10-04') } },
+      { event: { title: 'Wednesday Bible Study', startsAt: new Date('2026-09-30') } },
+    ],
+    photoControlsHtml: '<form class="photo-form"><input type="file"><button type="submit">Upload photo</button></form>',
+    editFormHtml: '<form class="form"><label>First name<input value="Ama"></label><label>Last name<input value="Serwaa"></label><div class="actions"><button type="submit">Save member</button></div></form>',
+  });
+  return layout({ title: 'Ama Serwaa', body, active: '/members', user: USER, churchName: CHURCH, noHeader: true });
+}
+
 const PAGES = {
   dashboard, dashboardHero, members: membersPage, form: formPage,
   financeIndex, financeReceipt, attendancePage, attendanceEmpty,
-  platformPortal, login: loginPage, landing,
+  platformPortal, login: loginPage, landing, dashboardReal, memberProfile,
 };
 
-function main() {
+async function main() {
   const outDir = process.argv[2] || path.join(ROOT, '.ui-preview');
   fs.mkdirSync(outDir, { recursive: true });
   for (const [name, fn] of Object.entries(PAGES)) {
     for (const theme of ['light', 'dark']) {
       const file = path.join(outDir, `${name}-${theme}.html`);
-      fs.writeFileSync(file, page(fn(), { theme }));
+      fs.writeFileSync(file, page(await fn(), { theme }));
       console.log(file);
     }
   }
 }
 
-if (require.main === module) main();
+if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });
 module.exports = { PAGES, page };
