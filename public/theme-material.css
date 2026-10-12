@@ -47,24 +47,24 @@ svg.mu-i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-w
 /* ==========================================================================
    Shell: rail <-> drawer, top bar, rounded panel
    ========================================================================== */
-.mu-app { display: grid; grid-template-columns: var(--nav, 96px) minmax(0, 1fr); height: 100vh; height: 100dvh; transition: grid-template-columns .3s cubic-bezier(.2, 0, 0, 1); }
+.mu-app { display: grid; grid-template-columns: var(--nav, 88px) minmax(0, 1fr); height: 100vh; height: 100dvh; transition: grid-template-columns .3s cubic-bezier(.2, 0, 0, 1); }
 .mu-app.drawer { --nav: 288px; }
 .mu-rail { display: flex; flex-direction: column; gap: 4px; padding: 12px 12px 12px; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; min-height: 0; }
 .mu-rail::-webkit-scrollbar { display: none; }
-.mu-menu { width: 48px; height: 48px; flex: none; border-radius: 50%; display: grid; place-items: center; margin: 0 0 4px 8px; color: var(--on-sf-v); background: none; border: 0; cursor: pointer; }
+.mu-menu { width: 48px; height: 48px; flex: none; border-radius: 50%; display: grid; place-items: center; margin: 0 0 8px 8px; color: var(--on-sf-v); background: none; border: 0; cursor: pointer; }
 .mu-menu:hover, .mu-iconbtn:hover { background: color-mix(in srgb, var(--on-sf) 8%, transparent); }
-.mu-brand { display: none; align-items: center; gap: 10px; padding: 4px 12px 10px; color: var(--on-sf); text-decoration: none; white-space: nowrap; }
+.mu-brand { display: none; align-items: center; gap: 14px; padding: 4px 12px 12px 16px; color: var(--on-sf); text-decoration: none; white-space: nowrap; }
 .mu-app.drawer .mu-brand { display: flex; }
 .mu-brand img, .mu-brand i { width: 36px; height: 36px; border-radius: 10px; flex: none; object-fit: contain; }
 .mu-brand b { font: 500 15px/1.2 var(--disp); overflow: hidden; text-overflow: ellipsis; white-space: normal; }
-.mu-fab { display: flex; align-items: center; gap: 12px; height: 56px; width: 56px; flex: none; padding: 0 16px; border-radius: 16px; background: var(--pri-c); color: var(--on-pri-c); margin: 6px 0 14px 8px; font: 500 15px var(--disp); white-space: nowrap; overflow: hidden; border: 0; cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, .14); transition: width .25s, box-shadow .2s; }
+.mu-fab { display: flex; align-items: center; gap: 12px; height: 56px; width: 56px; flex: none; padding: 0 16px; border-radius: 16px; background: var(--pri-c); color: var(--on-pri-c); margin: 6px 0 14px 4px; font: 500 15px var(--disp); white-space: nowrap; overflow: hidden; border: 0; cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, .14); transition: width .25s, box-shadow .2s; }
 .mu-fab:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, .22); }
 .mu-fab span { opacity: 0; transition: opacity .2s; }
 .mu-app.drawer .mu-fab { width: 156px; } .mu-app.drawer .mu-fab span { opacity: 1; }
 .mu-nav { display: flex; flex-direction: column; gap: 2px; }
 .mu-label { padding: 14px 16px 6px; font: 500 12px var(--font); color: var(--on-sf-v); white-space: nowrap; opacity: 0; height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; transition: opacity .2s; }
 .mu-app.drawer .mu-label { opacity: 1; height: auto; padding-top: 14px; padding-bottom: 6px; }
-.mu-item { position: relative; display: flex; align-items: center; gap: 12px; height: 56px; border-radius: 28px; padding: 0 0 0 16px; color: var(--on-sf-v); text-decoration: none; font: 500 14px var(--font); white-space: nowrap; overflow: hidden; }
+.mu-item { position: relative; display: flex; align-items: center; gap: 12px; height: 56px; border-radius: 28px; padding: 0 0 0 20px; color: var(--on-sf-v); text-decoration: none; font: 500 14px var(--font); white-space: nowrap; overflow: hidden; }
 .mu-item:hover { background: color-mix(in srgb, var(--on-sf) 6%, transparent); color: var(--on-sf); }
 .mu-item[aria-current="page"] { background: var(--sec-c); color: var(--on-sec-c); }
 .mu-item .ico { display: grid; place-items: center; width: 24px; height: 24px; flex: none; }
@@ -81,6 +81,7 @@ svg.mu-i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-w
 .mu-main { display: flex; flex-direction: column; min-width: 0; padding: 0 16px 16px 0; min-height: 0; }
 .mu-top { display: flex; align-items: center; gap: 12px; height: 80px; flex: none; }
 .mu-iconbtn.mu-hamburger { display: none; }
+.mu-iconbtn.mu-searchbtn { display: none; }
 .mu-title { font: 400 22px/28px var(--disp); white-space: nowrap; display: none; }
 .mu-search { flex: 1; max-width: 680px; display: flex; align-items: center; gap: 14px; height: 56px; border-radius: 28px; background: var(--sf-hi); padding: 0 12px 0 20px; color: var(--on-sf-v); border: 0; cursor: text; font: 400 16px var(--font); text-align: left; transition: background-color .2s, box-shadow .2s; }
 .mu-search:hover { background: color-mix(in srgb, var(--sf-hi) 80%, var(--on-sf) 6%); }
@@ -357,12 +358,12 @@ svg.chart .dot { fill: var(--sf) !important; stroke: var(--pri) !important; stro
   .mu-brand { display: flex; } .mu-label { opacity: 1; height: auto; padding-top: 14px; padding-bottom: 6px; } .mu-item .t, .mu-fab span { opacity: 1; } .mu-fab { width: 156px; } .mu-scripture { display: block; }
   .mu-menu { display: none; }
   .mu-main { padding: 0; } .mu-top { padding: 0 12px; height: 68px; } .mu-iconbtn.mu-hamburger { display: grid; } .mu-title { display: block; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .mu-top { gap: 4px; } .mu-title { font-size: 20px; } .mu-top #muThemeBtn { display: none; }
   .mu-search { display: none; } .mu-signout { display: none; } .mu-iconbtn.mu-searchbtn { display: grid; }
   .mu-panel { border-radius: 28px 28px 0 0; } .mu-panel .page { padding: 20px 16px 16px; }
   .page > h1, .dash-head h1 { font-size: 32px; line-height: 38px; } .page-hero h1, .page-hero.command-center h1 { font-size: 32px !important; line-height: 38px !important; }
   .profile-id { gap: 16px; } .profile-avatar .m-avatar, .profile-avatar .m-avatar-fallback { width: 64px; height: 64px; font-size: 22px; line-height: 64px; }
 }
-.mu-iconbtn.mu-searchbtn { display: none; }
 @media (max-width: 700px) { .members-stats { align-items: stretch; } .hero-actions { width: 100%; } .filter-bar { flex-direction: column; align-items: stretch; } .filter-bar .search-field { flex: 0 0 auto; } .filter-bar select, .filter-bar button { width: 100%; } .hero-stat-group { grid-template-columns: 1fr 1fr; } }
 @media print {
   body { overflow: visible !important; background: #fff !important; }
