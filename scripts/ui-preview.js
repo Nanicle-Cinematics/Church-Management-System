@@ -21,9 +21,8 @@ const ROOT = path.join(__dirname, '..');
 const CSS = fs.readFileSync(path.join(ROOT, 'public', 'styles.css'), 'utf8');
 const THEME = fs.readFileSync(path.join(ROOT, 'public', 'theme-ios26.css'), 'utf8');
 const THEME_PC = fs.readFileSync(path.join(ROOT, 'public', 'theme-precision.css'), 'utf8');
-const MU_JS = fs.readFileSync(path.join(ROOT, 'public', 'material-theme.js'), 'utf8');
 const APP_JS = fs.readFileSync(path.join(ROOT, 'public', 'app-theme.js'), 'utf8');
-const EDITORIAL = fs.readFileSync(path.join(ROOT, 'public', 'editorial.css'), 'utf8');
+const PUBLIC_CSS = fs.readFileSync(path.join(ROOT, 'public', 'public.css'), 'utf8');
 
 const USER = { role: 'admin', display_name: 'Nana Aboagye', username: 'nana' };
 const CHURCH = 'Dunwell Methodist Church';
@@ -101,15 +100,13 @@ function page(html, { theme } = {}) {
     .replace(/<link rel="stylesheet" href="\/static\/styles\.css[^"]*">/, `<style>\n${CSS}\n</style>`)
     .replace(/<link rel="stylesheet" href="\/static\/theme-ios26\.css[^"]*">/, `<style>\n${THEME}\n</style>`)
     .replace(/<link rel="stylesheet" href="\/static\/theme-precision\.css[^"]*">/, `<style>\n${THEME_PC}\n</style>`)
-    .replace(/<link rel="stylesheet" href="\/static\/editorial\.css[^"]*">/, `<style>\n${EDITORIAL}\n</style>`);
-  // The theme scripts (public/app-theme.js for the app, material-theme.js for
-  // the public pages) are inlined so the file is self-contained. To pin the
-  // colour scheme for a deterministic screenshot, the saved choice is written
-  // first; both scripts read it on load.
+    .replace(/<link rel="stylesheet" href="\/static\/public\.css[^"]*">/, `<style>\n${PUBLIC_CSS}\n</style>`);
+  // The theme script (public/app-theme.js) is inlined so the file is
+  // self-contained. To pin the colour scheme for a deterministic screenshot,
+  // the saved choice is written first; the script reads it on load.
   const pinned = theme ? `try{localStorage.setItem('theme',${JSON.stringify(theme)});}catch(e){}\n` : '';
   return inlined
-    .replace(/<script src="\/static\/app-theme\.js[^"]*"><\/script>/, `<script>${pinned}${APP_JS}</script>`)
-    .replace(/<script src="\/static\/material-theme\.js[^"]*"><\/script>/, `<script>${pinned}${MU_JS}</script>`);
+    .replace(/<script src="\/static\/app-theme\.js[^"]*"><\/script>/, `<script>${pinned}${APP_JS}</script>`);
 }
 
 // The real dashboard (lib/tenant-dashboard.js) needs a database, so its markup
