@@ -17,7 +17,7 @@
 
   function systemDark() { return !!(window.matchMedia && matchMedia('(prefers-color-scheme:dark)').matches); }
   function isDark() { return root.getAttribute('data-theme') === 'dark'; }
-  function seed() { var s = parseInt(read('mu-seed'), 10); return isNaN(s) ? 222 : s; }
+  function seed() { var s = parseInt(read('mu-seed'), 10); return isNaN(s) ? 270 : s; }
   function hsl(h, s, l) { return 'hsl(' + (((h % 360) + 360) % 360) + ' ' + s + '% ' + l + '%)'; }
 
   function palette(h, dark) {

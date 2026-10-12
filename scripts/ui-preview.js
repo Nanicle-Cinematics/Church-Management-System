@@ -359,6 +359,11 @@ async function dashboardReal() {
   const stub = {
     member: {
       count: async ({ where }) => (where.joinDate ? 46 : (where.email === null ? 12 : 1284)),
+      findMany: async () => [
+        { id: 1285, firstName: 'Ama', lastName: 'Serwaa', photoFilename: null, membershipStatus: 'MEMBER', joinDate: new Date(Date.now() - 2 * day), createdAt: new Date() },
+        { id: 1284, firstName: 'Kwame', lastName: 'Mensah', photoFilename: null, membershipStatus: 'VISITOR', joinDate: null, createdAt: new Date(Date.now() - 3 * day) },
+        { id: 1283, firstName: 'Akosua', lastName: 'Boateng', photoFilename: null, membershipStatus: 'REGULAR', joinDate: new Date(Date.now() - 6 * day), createdAt: new Date() },
+      ],
       groupBy: async () => [
         { membershipStatus: 'MEMBER', _count: 842 }, { membershipStatus: 'REGULAR', _count: 260 },
         { membershipStatus: 'VISITOR', _count: 182 }, { membershipStatus: 'INACTIVE', _count: 31 },
