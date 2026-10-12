@@ -14,7 +14,6 @@
 const bcrypt = require('bcryptjs');
 const asyncHandler = require('../lib/async-handler');
 const { canAddUser, upgradeMessage } = require('../lib/plan');
-const { isPlatformAdminEmail } = require('../lib/platform-admins');
 const { logSecurityEvent } = require('../lib/security-audit');
 const { revokeUserSessions } = require('../lib/auth');
 
@@ -49,7 +48,6 @@ function register(app) {
     const b = req.body || {};
     if (!b.username || !String(b.username).trim()) return res.status(400).json({ error: 'username is required' });
     if (typeof b.email !== 'string' || !/^\S+@\S+\.\S+$/.test(b.email)) return res.status(400).json({ error: 'a valid email is required' });
-    if (isPlatformAdminEmail(b.email)) return res.status(409).json({ error: 'That email address is reserved' });
     if (!b.password || String(b.password).length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
     const role = ROLES.includes(b.role) ? b.role : 'VIEWER';
     const financeRole = FINANCE_ROLES.includes(b.financeRole) ? b.financeRole : 'NONE';

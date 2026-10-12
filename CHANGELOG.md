@@ -6,6 +6,14 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- Platform operators are now separate accounts, not church accounts:
+  - They sign in at `/platform/login` and must use two-factor; the first sign-in sets it up and shows recovery codes. Five wrong passwords lock the account for 15 minutes, and 30 minutes without activity signs them out.
+  - An operator has no church and cannot open church pages; no church account can open `/platform` or `/api/platform`, whatever its email. The church sidebar no longer shows a Platform link.
+  - Accounts are created and managed only on the server with `scripts/platform-operator.js` (create, list, reset-password, reset-2fa, disable, enable). There is no sign-up page.
+  - Operator sign-ins and console actions are logged in a new `platform_audit_log`, shown on the console as "Operator activity". Plan and access changes still appear in the church's own audit log, now without a church user as the actor.
+  - `PLATFORM_ADMIN_EMAILS` no longer grants console access, and `ALLOW_PLATFORM_ADMIN_SIGNUP` is gone; signing up or inviting a user with a listed address is no longer refused. The variable is still used as a fallback address for alert emails.
+  - Database: new tables `platform_operators` and `platform_audit_log` (`scripts/add-platform-operators.sql`, run before deploying).
+
 - New "Precision" look for the signed-in app, stage 1 of 3 (shell and dashboard). A light sidebar with grouped sections, a top bar with breadcrumbs, a "New" menu and a light/dark switch, and a ⌘K / Ctrl K search over pages, actions, members and events. It replaces the Material You theme (`public/theme-material.css` removed; `public/theme-precision.css` and `public/app-theme.js` added). The colour picker is gone; the light/dark choice carries over. Cards, buttons, forms, tables and badges on every page use the new style. The sign-in and landing pages are unchanged for now.
 - The dashboard has four key figures with trend lines, giving by type over 12 weeks or 12 months, what needs your attention, birthdays in the next 7 days (with a Wish shortcut to a one-person SMS for admins), attendance over the last 12 full weeks, upcoming events with the membership mix, and recent activity. Giving now comes from the finance ledger, so it matches the Finance page (it used to count general income records only).
 - Platform operators see the Platform link in the sidebar again.

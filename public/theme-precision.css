@@ -970,3 +970,24 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
   @media (max-width: 900px) { .pc-tabbar, .pc-fab { background: color-mix(in srgb, var(--pc-panel) 94%, transparent); } }
 }
 @media print { .pc-tabbar, .pc-fab, .pc-sheet, .pc-sheet-scrim { display: none !important; } }
+
+/* ==========================================================================
+   Platform console (operators: no church, so no sidebar or tab bar)
+   ========================================================================== */
+.pc-op .pc-app { grid-template-columns: minmax(0, 1fr); }
+.op-top { gap: 8px; }
+.op-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--pc-text) !important; text-decoration: none; font-size: 14.5px; }
+.op-mark { display: inline-grid; width: 26px; height: 26px; color: var(--pc-accent); }
+.op-mark svg { width: 26px; height: 26px; }
+.op-who { display: inline-flex; align-items: center; gap: 6px; max-width: 40vw; color: var(--pc-text-2); font-size: 13px; }
+.op-who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-who svg { width: 15px; height: 15px; flex: none; }
+.op-signout { margin: 0; }
+.pc-op .pc-main > .page { max-width: 1240px; }
+@media (max-width: 900px) {
+  .pc-op .pc-main > .page { padding-bottom: 32px; }
+  .pc-op .pc-top { padding-left: 16px; }
+}
+@media (max-width: 560px) {
+  .op-who { display: none; }
+}

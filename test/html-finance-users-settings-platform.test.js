@@ -10,10 +10,6 @@ const { createTenantApp } = require('../lib/tenant-http');
 const { db } = require('../lib/tenant');
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
-const platformEmail = `platform-admin-${process.pid}-${Date.now()}@example.test`;
-process.env.PLATFORM_ADMIN_EMAILS = platformEmail;
-// The operator signs up after other churches exist (see lib/provision.js).
-process.env.ALLOW_PLATFORM_ADMIN_SIGNUP = '1';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const createdChurchIds = [];
@@ -113,10 +109,11 @@ for (const [path, title] of [['/finance', 'Finance'], ['/users', 'Users'], ['/se
   });
 }
 
-test('non-platform-admin GET /platform is forbidden', async () => {
+test('a church admin GET /platform is sent to the operator sign-in', async () => {
   const { client } = await signedInClient('html-platform-forbidden');
   const res = await client.getHtml('/platform');
-  assert.strictEqual(res.status, 403);
+  assert.strictEqual(res.status, 302);
+  assert.strictEqual(res.location, '/platform/login');
 });
 
 test('finance: create a fund, record income, record + approve an expense, verify balance', async () => {
@@ -203,20 +200,4 @@ test('settings: update church name', async () => {
   assert.strictEqual(updated.status, 302);
   const after = await client.getHtml('/settings');
   assert.match(after.text, /Renamed via Settings/);
-});
-
-test('platform: admin sees churches list and can set a church to Pro', async () => {
-  const { client, churchId } = await signedInClient('html-platform-admin', platformEmail);
-  const page = await client.getHtml('/platform');
-  assert.strictEqual(page.status, 200);
-  assert.match(page.text, /Churches/);
-  const csrf = extractCsrf(page.text);
-
-  const setPro = await client.postForm(`/platform/churches/${churchId}/plan`, { plan: 'pro', months: '6', _csrf: csrf });
-  assert.strictEqual(setPro.status, 302);
-  const after = await client.getHtml('/platform');
-  assert.match(after.text, /pill pill-fulfilled/);
-
-  const settings = await client.getHtml('/settings');
-  assert.match(settings.text, /<dd>Pro<\/dd>/);
 });

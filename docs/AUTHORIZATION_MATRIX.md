@@ -16,7 +16,9 @@ Two independent settings decide access: the user **role** and the **finance role
 | Communications: view history | Read | Read | Read |
 | Users and roles, church settings, data export | Read/write | Blocked | Blocked |
 | Reports (Pro plan) | Read | Read | Read |
-| Platform console | Only addresses in `PLATFORM_ADMIN_EMAILS` | | |
+
+No church account, whatever its role, can open the platform console. See
+**Platform operators** below.
 
 `editor` is currently identical to `viewer`: no route grants it write access.
 It is kept so existing accounts do not break; give a user write access either by
@@ -48,3 +50,24 @@ when the church is suspended or deleted.
 Security-sensitive actions are written to `security_audit_log` (logins, MFA,
 role changes, admin password resets, user removal, data export). Finance actions
 are written to the activity log and shown at `/finance/audit`.
+
+## Platform operators
+
+The platform console (`/platform`, `/api/platform/*`) sees and changes every
+church, so it is not reached through a church account at all.
+
+- Operators are a separate table (`platform_operators`) with no church and no
+  access to church pages or church data. A church account cannot open the
+  console, and an operator session cannot open church pages.
+- They sign in at `/platform/login`. Two-factor is required: an operator who
+  has not set it up is taken through setup right after the password, and the
+  console stays closed until it is done. Five wrong passwords lock the account
+  for 15 minutes; 30 minutes without activity signs them out.
+- There is no sign-up page. Accounts are managed on the server with
+  `node scripts/platform-operator.js` (see `docs/OPERATIONS_RUNBOOK.md`).
+- Sign-ins and every console action are recorded in `platform_audit_log`.
+  Plan and access changes are also written to the affected church's own
+  security audit log.
+
+`PLATFORM_ADMIN_EMAILS` no longer grants access. It is still read as a fallback
+address for operational alert emails when `ALERT_EMAIL` is unset.
