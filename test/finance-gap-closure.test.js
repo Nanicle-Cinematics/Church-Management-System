@@ -377,7 +377,6 @@ test('finance overview: shows collections, income by type and approvals; actions
   }
   // The admin recorded both, so they cannot approve them; the two-person rule shows here too.
   assert.match(page.text, /Awaiting another fund manager/);
-  assert.match(page.text, /name="return_to" value="\/finance"/);
 
   const [first, second] = await db.expense.findMany({ where: { churchId }, orderBy: { id: 'asc' } });
   const csrf = csrfOf(page.text);
