@@ -922,21 +922,26 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
   .pc-top { padding-left: 16px; }
   .pc-main > .page { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
   .pc-main > .footer { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
+  /* Clear glass, close to iOS 26: almost no tint and a light blur, so the
+     page shows through; the shape comes from a bright rim (::after), an
+     inner edge glow and a soft specular highlight (::before). */
   .pc-tabbar, .pc-fab {
     position: fixed; z-index: 46; isolation: isolate;
-    background: linear-gradient(180deg, rgba(255, 255, 255, .52), rgba(255, 255, 255, .22));
-    -webkit-backdrop-filter: blur(14px) saturate(1.9) brightness(1.06) !important; backdrop-filter: blur(14px) saturate(1.9) brightness(1.06) !important;
-    border: 1px solid rgba(255, 255, 255, .55);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .95), inset 0 -1px 0 rgba(255, 255, 255, .25), inset 0 0 24px rgba(255, 255, 255, .18), 0 18px 40px -16px rgba(20, 20, 70, .45), 0 2px 6px -2px rgba(20, 20, 70, .18);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .18), rgba(255, 255, 255, .05));
+    -webkit-backdrop-filter: blur(4px) saturate(1.9) brightness(1.1) contrast(1.04) !important; backdrop-filter: blur(4px) saturate(1.9) brightness(1.1) contrast(1.04) !important;
+    border: 0;
+    box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .5), inset 0 0 16px rgba(255, 255, 255, .28), inset 0 -10px 18px -14px rgba(255, 255, 255, .7), 0 12px 32px -12px rgba(20, 20, 60, .32), 0 1px 3px rgba(20, 20, 60, .1);
   }
-  .pc-tabbar::before, .pc-fab::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; background: radial-gradient(120% 70% at 18% -10%, rgba(255, 255, 255, .75), transparent 46%), radial-gradient(90% 60% at 100% 120%, rgba(255, 255, 255, .35), transparent 50%); }
+  .pc-tabbar::before, .pc-fab::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; background: radial-gradient(70% 55% at 22% 0%, rgba(255, 255, 255, .5), transparent 62%), radial-gradient(50% 40% at 92% 110%, rgba(255, 255, 255, .28), transparent 60%); }
+  .pc-tabbar::after, .pc-fab::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; padding: 1.25px; background: linear-gradient(140deg, rgba(255, 255, 255, .95), rgba(255, 255, 255, .25) 30%, rgba(255, 255, 255, .06) 55%, rgba(255, 255, 255, .55) 85%, rgba(255, 255, 255, .9)); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
   .pc-tabbar { left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom)); height: 66px; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 2px; padding: 6px; border-radius: 26px; }
-  .pc-tabbar a, body.pc .pc-tabbar button { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; height: auto; padding: 0; border: 0; border-radius: 19px !important; background: none !important; box-shadow: none !important; color: color-mix(in srgb, var(--pc-text) 72%, transparent) !important; font: 600 10.5px/1.1 var(--pc-font); text-decoration: none !important; cursor: pointer; transition: background-color .2s, color .2s; -webkit-tap-highlight-color: transparent; }
+  .pc-tabbar a, body.pc .pc-tabbar button { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; height: auto; padding: 0; border: 0; border-radius: 19px !important; background: none !important; box-shadow: none !important; color: color-mix(in srgb, var(--pc-text) 82%, transparent) !important; font: 600 10.5px/1.1 var(--pc-font); text-shadow: 0 0 6px rgba(255, 255, 255, .9), 0 0 2px rgba(255, 255, 255, .8); text-decoration: none !important; cursor: pointer; transition: background-color .2s, color .2s; -webkit-tap-highlight-color: transparent; }
+  .pc-tabbar svg, .pc-fab svg { filter: drop-shadow(0 0 3px rgba(255, 255, 255, .85)); }
   .pc-tabbar svg { width: 22px; height: 22px; }
   .pc-tabbar span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pc-tabbar a[aria-current], body.pc .pc-tabbar button[aria-current] { color: var(--tc) !important; background: linear-gradient(180deg, rgba(255, 255, 255, .78), rgba(255, 255, 255, .38)) !important; box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(255, 255, 255, .4), 0 4px 12px -4px rgba(20, 20, 70, .25) !important; }
+  .pc-tabbar a[aria-current], body.pc .pc-tabbar button[aria-current] { color: var(--tc) !important; background: linear-gradient(180deg, rgba(255, 255, 255, .42), rgba(255, 255, 255, .16)) !important; box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .75), inset 0 1px 0 rgba(255, 255, 255, .95), inset 0 0 10px rgba(255, 255, 255, .3), 0 3px 10px -4px rgba(20, 20, 60, .22) !important; }
   .pc-tabbar a:active, .pc-tabbar button:active { transform: scale(.94); }
-  body.pc button.pc-fab { right: 16px; bottom: calc(92px + env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 7px; height: 46px; padding: 0 18px 0 14px; border-radius: 23px !important; color: var(--pc-accent-ink) !important; font: 600 14px var(--pc-font); cursor: pointer; }
+  body.pc button.pc-fab { right: 16px; bottom: calc(92px + env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 7px; height: 46px; padding: 0 18px 0 14px; border-radius: 23px !important; color: var(--pc-accent-ink) !important; font: 600 14px var(--pc-font); text-shadow: 0 0 6px rgba(255, 255, 255, .9); cursor: pointer; }
   .pc-fab svg { width: 18px; height: 18px; }
   .pc-sheet-scrim { display: block; position: fixed; inset: 0; z-index: 60; background: rgba(10, 10, 20, .4); opacity: 0; transition: opacity .2s; }
   .pc-sheet-scrim.on { opacity: 1; }
@@ -959,9 +964,12 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
   /* things that already float at the bottom sit above the bar */
   .pm-bulk { bottom: calc(92px + env(safe-area-inset-bottom)) !important; }
   body.pm-bulk-on .pc-fab { display: none !important; }
-  :root[data-theme="dark"] .pc-tabbar, :root[data-theme="dark"] .pc-fab { background: linear-gradient(180deg, rgba(40, 40, 52, .55), rgba(20, 20, 28, .35)); border-color: rgba(255, 255, 255, .14); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), inset 0 -1px 0 rgba(255, 255, 255, .06), inset 0 0 24px rgba(255, 255, 255, .05), 0 18px 40px -14px rgba(0, 0, 0, .8); }
-  :root[data-theme="dark"] .pc-tabbar::before, :root[data-theme="dark"] .pc-fab::before { background: radial-gradient(120% 70% at 18% -10%, rgba(255, 255, 255, .22), transparent 46%); }
-  :root[data-theme="dark"] .pc-tabbar a[aria-current], :root[data-theme="dark"] body.pc .pc-tabbar button[aria-current] { color: #fff !important; background: linear-gradient(180deg, rgba(255, 255, 255, .28), rgba(255, 255, 255, .12)) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35) !important; }
+  :root[data-theme="dark"] .pc-tabbar, :root[data-theme="dark"] .pc-fab { background: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .03)); -webkit-backdrop-filter: blur(4px) saturate(1.7) brightness(.92) !important; backdrop-filter: blur(4px) saturate(1.7) brightness(.92) !important; box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .22), inset 0 0 16px rgba(255, 255, 255, .07), inset 0 -10px 18px -14px rgba(255, 255, 255, .3), 0 14px 34px -12px rgba(0, 0, 0, .7); }
+  :root[data-theme="dark"] .pc-tabbar::after, :root[data-theme="dark"] .pc-fab::after { background: linear-gradient(140deg, rgba(255, 255, 255, .6), rgba(255, 255, 255, .12) 30%, rgba(255, 255, 255, .03) 55%, rgba(255, 255, 255, .3) 85%, rgba(255, 255, 255, .55)); }
+  :root[data-theme="dark"] .pc-tabbar a, :root[data-theme="dark"] body.pc .pc-tabbar button, :root[data-theme="dark"] body.pc button.pc-fab { text-shadow: 0 0 6px rgba(0, 0, 0, .85), 0 0 2px rgba(0, 0, 0, .7); }
+  :root[data-theme="dark"] .pc-tabbar svg, :root[data-theme="dark"] .pc-fab svg { filter: drop-shadow(0 0 3px rgba(0, 0, 0, .8)); }
+  :root[data-theme="dark"] .pc-tabbar::before, :root[data-theme="dark"] .pc-fab::before { background: radial-gradient(70% 55% at 22% 0%, rgba(255, 255, 255, .16), transparent 62%); }
+  :root[data-theme="dark"] .pc-tabbar a[aria-current], :root[data-theme="dark"] body.pc .pc-tabbar button[aria-current] { color: #fff !important; background: linear-gradient(180deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .07)) !important; box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .3), inset 0 1px 0 rgba(255, 255, 255, .4) !important; }
   :root[data-theme="dark"] .pc-tabbar a[aria-current] svg, :root[data-theme="dark"] .pc-tabbar button[aria-current] svg { color: color-mix(in srgb, var(--tc) 60%, #fff); }
   :root[data-theme="dark"] body.pc button.pc-fab { color: #fff !important; }
 }
