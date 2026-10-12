@@ -29,6 +29,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Members on phones: the Filters button was cut off at the right edge (search now gets its own row, with Export and Filters side by side below it), and long names and phone numbers ran out of the member card instead of trimming with an ellipsis.
 - Members on phones: the filter sheet showed open over the list on load; it now stays hidden until Filters is tapped.
 - Member photo upload wrote the file before checking the member belonged to the caller's church (cross-tenant overwrite/delete) and had no CSRF check.
 - Expense approval and journal reversal are now claimed atomically; concurrent requests can no longer pay an expense or reverse an entry twice (`approveAndPayExpense`, `reverseJournal`).
