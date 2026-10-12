@@ -10,9 +10,8 @@
 // admin-only, with a mandatory reason), (Phase 9d) tithes/special
 // offerings/standalone day-born collections with CSV exports (a NEW
 // convention — no CSV export existed anywhere in the new stack before
-// this; see the small csvEscape/sendCsv helpers below, copied from the
-// original's routes/finance.js:318-326 pattern since nothing shared exists
-// to import), (Phase 9e) services/harvests with the shared DayBornSplit
+// this; the csvEscape/sendCsv pair from the original's
+// routes/finance.js:318-326 now lives in lib/csv.js), (Phase 9e) services/harvests with the shared DayBornSplit
 // table, and (Phase 9f) pledges/pledge-payments/printable receipts/giving
 // statements — pledge creation/edit never touch the ledger (only payments
 // do), pledge payments get their OWN independent receipt-number scheme
@@ -475,24 +474,7 @@ async function givingByMember(db, year) {
     .sort((a, b) => b.total - a.total);
 }
 
-// Small CSV helpers — no shared lib/ convention exists yet for this (see
-// module header); copied near-verbatim from the original's
-// routes/finance.js:318-326 sendFinanceCsv/csvEscape pair.
-function csvEscape(v) {
-  let s = v === null || v === undefined ? '' : String(v);
-  // Spreadsheet formula injection: a cell that starts with = + - @ (or a
-  // tab/CR) is executed by Excel/Sheets. Names, descriptions and "received
-  // from" are free text, so prefix an apostrophe. Plain numbers such as -50.00
-  // are left alone.
-  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`;
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-function sendCsv(res, filename, header, rows) {
-  const lines = [header.map(csvEscape).join(',')].concat(rows.map((r) => r.map(csvEscape).join(',')));
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  res.send(lines.join('\r\n'));
-}
+const { sendCsv } = require('../lib/csv');
 
 // The expenses list's Actions cell: buttons in one wrapping row, and the reason
 // an expense can't be approved by this user on its own line underneath (a long
