@@ -373,3 +373,116 @@ svg.chart .dot { fill: var(--sf) !important; stroke: var(--pri) !important; stro
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 .mu-pal input:focus-visible, .mu-pal input { outline: none !important; border: 0 !important; box-shadow: none !important; background: none !important; min-height: 0; padding: 0; }
 .hero-stat, .stat { text-align: left !important; align-items: flex-start; }
+
+/* ==========================================================================
+   VIBRANT DASHBOARD LAYER — floating app card on a colour wash, pastel tiles
+   with glyphs, drawn charts, tinted feeds, and motion that respects
+   prefers-reduced-motion.
+   ========================================================================== */
+@media (min-width: 1000px) {
+  body.mu {
+    background:
+      radial-gradient(1200px 700px at 8% -10%, color-mix(in srgb, var(--pri) 55%, #fff) 0%, transparent 60%),
+      radial-gradient(900px 700px at 100% 0%, color-mix(in srgb, var(--ter-c) 90%, #fff) 0%, transparent 55%),
+      linear-gradient(160deg, color-mix(in srgb, var(--pri) 30%, #fff), color-mix(in srgb, var(--pri-c) 70%, #fff));
+    background-attachment: fixed;
+  }
+  :root[data-theme="dark"] body.mu {
+    background:
+      radial-gradient(1200px 700px at 8% -10%, color-mix(in srgb, var(--pri) 40%, #000) 0%, transparent 60%),
+      radial-gradient(900px 700px at 100% 0%, color-mix(in srgb, var(--ter-c) 45%, #000) 0%, transparent 55%),
+      linear-gradient(160deg, color-mix(in srgb, var(--pri) 18%, #000), #05060a);
+    background-attachment: fixed;
+  }
+  .mu-app { max-width: 1620px; margin: 18px auto; height: calc(100dvh - 36px); border-radius: 36px; background: var(--bg); overflow: hidden; box-shadow: 0 30px 80px color-mix(in srgb, var(--pri) 28%, transparent), 0 2px 0 rgba(255, 255, 255, .5) inset; }
+  .mu-main { padding-bottom: 14px; }
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop { from { opacity: 0; transform: scale(.2); } to { opacity: 1; transform: scale(1); } }
+@keyframes seg { from { stroke-dasharray: 0 400; } }
+
+.dash > * { animation: rise .55s cubic-bezier(.2, .7, .2, 1) both; }
+.dash > :nth-child(2) { animation-delay: .05s; } .dash > :nth-child(3) { animation-delay: .1s; }
+.dash > :nth-child(4) { animation-delay: .16s; } .dash > :nth-child(5) { animation-delay: .22s; }
+
+.vt-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.vt { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 22px 24px; border-radius: 24px; color: var(--on-sf); transition: transform .25s cubic-bezier(.2, .7, .2, 1), box-shadow .25s; }
+.vt:hover { transform: translateY(-4px); box-shadow: 0 14px 28px color-mix(in srgb, var(--pri) 18%, transparent); }
+.vt small { display: block; font: 500 14px var(--font); opacity: .75; margin-bottom: 8px; }
+.vt strong { display: block; font: 600 clamp(1.6rem, 2.4vw, 2.2rem)/1.05 var(--disp); letter-spacing: -.5px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.vt-ico { flex: none; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 20px; background: color-mix(in srgb, #fff 55%, transparent); transition: transform .35s cubic-bezier(.3, 1.6, .5, 1); }
+.vt:hover .vt-ico { transform: rotate(-8deg) scale(1.08); }
+:root[data-theme="dark"] .vt-ico { background: color-mix(in srgb, #fff 10%, transparent); }
+.vt-ico svg { width: 36px; height: 36px; }
+.vt.t1 { background: var(--pri-c); } .vt.t1 .vt-ico { color: var(--pri); }
+.vt.t2 { background: var(--sec-c); } .vt.t2 .vt-ico { color: var(--on-sec-c); }
+.vt.t3 { background: var(--ter-c); } .vt.t3 .vt-ico { color: var(--on-ter-c); }
+.vt.t4 { background: var(--warn-c); } .vt.t4 .vt-ico { color: var(--warn); }
+
+.dash-grid.wide { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); margin-bottom: 16px; }
+.dash-block { background: var(--sf); box-shadow: 0 1px 0 var(--out-v), 0 8px 24px color-mix(in srgb, var(--on-sf) 5%, transparent); border: 1px solid color-mix(in srgb, var(--out-v) 60%, transparent); transition: box-shadow .25s, transform .25s; }
+.dash-block:hover { box-shadow: 0 12px 32px color-mix(in srgb, var(--pri) 14%, transparent); }
+.dash-hero { background: linear-gradient(120deg, var(--pri), color-mix(in srgb, var(--pri) 55%, #b06cff)); color: var(--on-pri); }
+.dash-hero .count b, .dash-hero .count > div { background: color-mix(in srgb, #fff 20%, transparent); color: inherit; }
+
+.linechart { width: 100%; height: auto; display: block; overflow: visible; }
+.linechart .gl { stroke: var(--out-v); stroke-dasharray: 3 5; opacity: .8; }
+.linechart text { fill: var(--on-sf-v); font: 400 12px var(--font); }
+.linechart .ln { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.3s .25s cubic-bezier(.4, 0, .2, 1) forwards; filter: drop-shadow(0 6px 8px color-mix(in srgb, var(--pri) 40%, transparent)); }
+.linechart .area { opacity: 0; animation: fadein .9s 1s forwards; }
+.linechart .dot { fill: var(--sf); stroke: var(--pri); stroke-width: 3; transform-box: fill-box; transform-origin: center; opacity: 0; animation: pop .4s cubic-bezier(.3, 1.6, .5, 1) forwards; }
+.linechart .dot.now { fill: var(--pri); stroke: var(--sf); filter: drop-shadow(0 0 6px var(--pri)); }
+
+.donut { position: relative; width: min(220px, 70%); margin: 4px auto 12px; }
+.donut svg { width: 100%; height: auto; display: block; filter: drop-shadow(0 8px 14px color-mix(in srgb, var(--pri) 25%, transparent)); }
+.donut .seg { animation: seg 1s cubic-bezier(.4, 0, .2, 1) backwards; }
+.donut .mid { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.donut .mid small { font: 500 13px var(--font); color: var(--on-sf-v); }
+.donut .mid b { font: 600 30px/1.1 var(--disp); font-variant-numeric: tabular-nums; }
+.legend { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: 8px; }
+.legend li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--on-sf-v); }
+.legend li i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.legend li b { margin-left: auto; color: var(--on-sf); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.feed li { display: flex; align-items: center; gap: 14px; padding: 10px 8px; border-radius: 18px; transition: background-color .2s; }
+.feed li:hover { background: var(--sf-lo); }
+.feed .fi { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; }
+.feed .fi.pri { background: var(--pri-c); color: var(--pri); } .feed .fi.sec { background: var(--sec-c); color: var(--on-sec-c); }
+.feed .fi.ter { background: var(--ter-c); color: var(--on-ter-c); } .feed .fi.ok { background: var(--ok-c); color: var(--ok); }
+.feed li > div { min-width: 0; display: grid; gap: 2px; }
+.feed li a, .feed li span:not(.fi) { font: 500 14.5px/1.35 var(--font); color: var(--on-sf); text-decoration: none; overflow-wrap: anywhere; }
+.dash .feed li a { color: var(--on-sf); } .dash .feed li a:hover { color: var(--pri); }
+.dash .dm-table .who { color: var(--on-sf); }
+.feed small { color: var(--on-sf-v); font-size: 12.5px; }
+
+.dm-table { width: 100%; border-collapse: collapse; }
+.dm-table th { text-align: left; font: 500 13px var(--font); color: var(--on-sf-v); padding: 0 8px 10px; border-bottom: 1px solid var(--out-v); }
+.dm-table td { padding: 10px 8px; border-bottom: 1px solid color-mix(in srgb, var(--out-v) 55%, transparent); font-size: 14px; }
+.dm-table tbody tr { transition: background-color .15s; } .dm-table tbody tr:hover { background: var(--sf-lo); }
+.dm-table tbody tr:last-child td { border-bottom: 0; }
+.dm-table .who { display: flex; align-items: center; gap: 12px; color: var(--on-sf); font-weight: 500; text-decoration: none; }
+.dm-table .who:hover span { color: var(--pri); }
+.dm-table .m-avatar { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex: none; }
+.dm-table .m-avatar-fallback { display: grid; place-items: center; background: var(--pri-c); color: var(--on-pri-c); font: 600 13px var(--font); }
+
+@media (max-width: 1100px) { .vt-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dash-grid.wide { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .vt { padding: 16px; } .vt-ico { display: none; } .vt strong { font-size: 1.45rem; overflow-wrap: normal; } }
+@media (prefers-reduced-motion: reduce) {
+  .dash > *, .linechart .ln, .linechart .area, .linechart .dot, .donut .seg { animation: none !important; opacity: 1 !important; stroke-dashoffset: 0 !important; }
+  .vt, .vt-ico, .dash-block { transition: none; }
+}
+@media print { .vt-row { grid-template-columns: repeat(4, 1fr); } .dash > *, .linechart .ln { animation: none !important; opacity: 1 !important; stroke-dashoffset: 0 !important; } }
+
+/* theme-ios26.css re-colours every <button> in dark mode with a selector of
+   higher specificity than the shell's own classes, which turned the rail and
+   top-bar icons near-black on a dark surface. Pin them back. */
+:root[data-theme="dark"] { --g-gold-ink: var(--on-pri); }
+:root[data-theme="dark"] button.mu-menu, :root[data-theme="dark"] button.mu-iconbtn, :root[data-theme="dark"] button.mu-search { color: var(--on-sf-v); }
+:root[data-theme="dark"] button.mu-fab { color: var(--on-pri-c); }
+:root[data-theme="dark"] button.mu-sw, :root[data-theme="dark"] button.mu-act { color: inherit; }
+:root[data-theme="dark"] .dash-hero { background: linear-gradient(120deg, var(--pri-c), color-mix(in srgb, var(--pri-c) 60%, #7a2cff)); color: var(--on-pri-c); }
+.dash .dash-hero a.go { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
