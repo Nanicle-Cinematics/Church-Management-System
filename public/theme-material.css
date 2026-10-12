@@ -486,3 +486,36 @@ svg.chart .dot { fill: var(--sf) !important; stroke: var(--pri) !important; stro
 :root[data-theme="dark"] button.mu-sw, :root[data-theme="dark"] button.mu-act { color: inherit; }
 :root[data-theme="dark"] .dash-hero { background: linear-gradient(120deg, var(--pri-c), color-mix(in srgb, var(--pri-c) 60%, #7a2cff)); color: var(--on-pri-c); }
 .dash .dash-hero a.go { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+
+/* ==========================================================================
+   SHARED VIBRANT LAYER — the dashboard's look, carried to every page that uses
+   the stat row, cards and tables.
+   ========================================================================== */
+.hero-stat, .stat { flex-direction: row !important; align-items: center !important; justify-content: space-between !important; gap: 12px; transition: transform .25s cubic-bezier(.2, .7, .2, 1), box-shadow .25s !important; }
+.hero-stat:hover { transform: translateY(-4px) !important; box-shadow: 0 14px 28px color-mix(in srgb, var(--pri) 18%, transparent) !important; }
+.hero-stat > div:last-child { flex: 1; min-width: 0; }
+.hs-ico { display: grid !important; place-items: center; flex: none; order: 2; width: 52px; height: 52px; border-radius: 16px !important; background: color-mix(in srgb, #fff 55%, transparent) !important; border: 0 !important; box-shadow: none !important; transition: transform .35s cubic-bezier(.3, 1.6, .5, 1); }
+:root[data-theme="dark"] .hero-stat .hs-ico { background: color-mix(in srgb, #fff 10%, transparent) !important; }
+.hero-stat:hover .hs-ico { transform: rotate(-8deg) scale(1.08); }
+.hs-ico svg { width: 28px; height: 28px; }
+.hero-stat:nth-child(5n+1) .hs-ico { color: var(--pri) !important; } .hero-stat:nth-child(5n+2) .hs-ico { color: var(--on-sec-c) !important; }
+.hero-stat:nth-child(5n+3) .hs-ico { color: var(--on-ter-c) !important; } .hero-stat:nth-child(5n+4) .hs-ico { color: var(--on-sf-v) !important; }
+.hero-stat:nth-child(5n+5) { background: var(--warn-c) !important; color: var(--on-sf) !important; border-radius: 28px 8px 28px 28px !important; } .hero-stat:nth-child(5n+5) .hs-ico { color: var(--warn) !important; }
+.hero-stat .hs-value { font-weight: 600 !important; }
+
+.card, .list-card, .filters-card { background: var(--sf) !important; border: 1px solid color-mix(in srgb, var(--out-v) 60%, transparent) !important; box-shadow: 0 1px 0 var(--out-v), 0 8px 24px color-mix(in srgb, var(--on-sf) 5%, transparent) !important; }
+.filters-card { background: var(--sf-lo) !important; box-shadow: none !important; }
+.page > *, .page .card { animation: rise .5s cubic-bezier(.2, .7, .2, 1) both; }
+.page > :nth-child(2) { animation-delay: .05s; } .page > :nth-child(3) { animation-delay: .1s; } .page > :nth-child(4) { animation-delay: .15s; }
+
+.data-table tbody tr { transition: background-color .15s; }
+.data-table tbody tr:hover td { background: var(--sf-lo) !important; }
+.data-table tbody tr:hover td:first-child { border-radius: 16px 0 0 16px; } .data-table tbody tr:hover td:last-child { border-radius: 0 16px 16px 0; }
+.m-name-cell { gap: 14px; }
+.m-name-cell .m-avatar { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; flex: none; box-shadow: 0 0 0 2px var(--sf), 0 0 0 4px var(--pri-c); }
+.m-name-cell .m-avatar-fallback { display: grid; place-items: center; background: var(--pri-c); color: var(--on-pri-c); font: 600 14px var(--font); }
+.m-name { color: var(--on-sf) !important; font-weight: 600; } .m-sub { color: var(--on-sf-v); font-size: 12.5px; }
+.pill { padding: 6px 12px !important; border-radius: 100px !important; }
+
+@media (max-width: 700px) { .hs-ico { display: none !important; } }
+@media (prefers-reduced-motion: reduce) { .page > *, .page .card { animation: none !important; } .hero-stat, .hs-ico { transition: none !important; } }
