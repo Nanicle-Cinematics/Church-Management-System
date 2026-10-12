@@ -353,7 +353,56 @@ function register(app) {
           ${results}
         </div>
       </form>
+      <div class="pp-scrim" id="ppScrim" hidden></div>
+      <aside class="pp-drawer" id="ppDrawer" role="dialog" aria-modal="true" aria-labelledby="ppTitle" aria-hidden="true">
+        <div class="pp-top"><span>Member</span><span class="pp-grow"></span>
+          <a class="pc-ib" id="ppFull" href="/members" title="Open full profile" aria-label="Open full profile">${icon('external')}</a>
+          <button class="pc-ib" id="ppClose" type="button" aria-label="Close">${icon('x')}</button></div>
+        <div class="pp-body" id="ppBody" aria-live="polite"></div>
+      </aside>
       <script>
+        // Slide-in profile: clicking a name or row opens a summary without
+        // leaving the list. ?open=ID keeps it in the address bar, so Back
+        // closes it and the link can be shared. Ctrl/Cmd-click still opens
+        // the full profile as a normal link.
+        (function () {
+          var drawer = document.getElementById('ppDrawer'), scrim = document.getElementById('ppScrim'), bodyEl = document.getElementById('ppBody'), full = document.getElementById('ppFull');
+          var lastFocus = null, token = 0;
+          function urlWith(id) { var u = new URL(location.href); if (id) u.searchParams.set('open', id); else u.searchParams.delete('open'); return u.pathname + u.search; }
+          function show(id) {
+            var mine = ++token;
+            full.href = '/members/' + id;
+            bodyEl.innerHTML = '<div class="pp-loading">Loading…</div>';
+            drawer.setAttribute('aria-hidden', 'false'); drawer.classList.add('on'); scrim.hidden = false; document.body.classList.add('pp-open');
+            document.getElementById('ppClose').focus();
+            fetch('/members/' + id + '/panel', { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+              .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+              .then(function (r) { if (mine !== token) return; bodyEl.innerHTML = r.ok ? r.t : '<div class="pp-loading">' + r.t.replace(/</g, '&lt;') + '</div>'; })
+              .catch(function () { if (mine === token) bodyEl.innerHTML = '<div class="pp-loading">Could not load this member. Check your connection and try again.</div>'; });
+          }
+          function hide() {
+            drawer.classList.remove('on'); drawer.setAttribute('aria-hidden', 'true'); scrim.hidden = true; document.body.classList.remove('pp-open');
+            if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+            lastFocus = null;
+          }
+          function open(id) { if (!lastFocus) lastFocus = document.activeElement; history.pushState({ open: id }, '', urlWith(id)); show(id); }
+          function close() { if (new URL(location.href).searchParams.get('open')) history.back(); else hide(); }
+          document.addEventListener('click', function (e) {
+            var row = e.target.closest('.members-table tbody tr');
+            if (!row || e.target.closest('.row-actions, button, input, select') || (e.target.closest('a') && !e.target.closest('a.m-name'))) return;
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+            var link = row.querySelector('a.m-name'), m = link && link.getAttribute('href').match(/\\/members\\/(\\d+)/);
+            if (!m) return;
+            e.preventDefault(); lastFocus = link; open(m[1]);
+          });
+          document.getElementById('ppClose').addEventListener('click', close);
+          scrim.addEventListener('click', close);
+          document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('on')) { e.stopPropagation(); close(); } }, true);
+          window.addEventListener('popstate', function () { var id = new URL(location.href).searchParams.get('open'); if (id) show(id); else hide(); });
+          var first = new URL(location.href).searchParams.get('open');
+          // Opened from a shared link: put the plain list underneath, so Back closes the panel instead of leaving.
+          if (/^\\d+$/.test(first || '')) { history.replaceState(null, '', urlWith(null)); history.pushState({ open: first }, '', urlWith(first)); show(first); }
+        })();
         (function () {
           var btn = document.querySelector('.pm-fbtn'), body = document.body;
           function set(open) { body.classList.toggle('pm-sheet-open', open); btn.setAttribute('aria-expanded', open); }
@@ -385,6 +434,75 @@ function register(app) {
     if (orgIds.length) await saveMemberOrgs(db, member.id, orgIds);
     await logActivity(db, 'member_added', `New member added: ${b.firstName} ${b.lastName} (${externalId})`, `/members/${member.id}`, res.locals.user.id);
     res.redirect(`/members/${member.id}`);
+  }));
+
+  // Profile summary for the slide-in panel on the directory. Returns an HTML
+  // fragment (no page shell); the full profile stays at /members/:id. Scoped
+  // through res.locals.db like every member read, so another church's id is
+  // simply not found.
+  app.get('/members/:id/panel', asyncHandler(async (req, res) => {
+    if (!res.locals.user) return res.status(401).send('Sign in again to see this member.');
+    const db = res.locals.db;
+    const user = res.locals.user;
+    const isAdmin = user.role === 'ADMIN';
+    const canMoney = isAdmin || (user.financeRole && user.financeRole !== 'NONE');
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(404).send('Member not found.');
+    const m = await db.member.findFirst({
+      where: { id, deletedAt: null },
+      include: { bibleClass: { select: { name: true } }, orgMemberships: { select: { organization: { select: { name: true } } } } },
+    });
+    if (!m) return res.status(404).send('Member not found.');
+
+    const weekMs = 7 * 86400000;
+    const since = new Date(Date.now() - 12 * weekMs);
+    const yearStart = new Date(new Date().getFullYear(), 0, 1);
+    const [recent, checkins, tithes, income] = await Promise.all([
+      db.attendance.findMany({ where: { memberId: id }, include: { event: { select: { id: true, title: true, startsAt: true } } }, orderBy: { checkedInAt: 'desc' }, take: 5 }),
+      db.attendance.findMany({ where: { memberId: id, checkedInAt: { gte: since } }, select: { checkedInAt: true } }),
+      canMoney ? db.tithe.aggregate({ where: { memberId: id, deletedAt: null, titheDate: { gte: yearStart } }, _sum: { amount: true } }) : null,
+      canMoney ? db.incomeRecord.aggregate({ where: { memberId: id, deletedAt: null, transactionDate: { gte: yearStart } }, _sum: { amount: true } }) : null,
+    ]);
+    const seen = new Set(checkins.map((c) => Math.min(11, Math.floor((c.checkedInAt - since) / weekMs))));
+    const giving = canMoney ? Number((tithes && tithes._sum.amount) || 0) + Number((income && income._sum.amount) || 0) : null;
+    const name = `${m.firstName} ${m.lastName}`;
+    const day = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+    const orgNames = m.orgMemberships.map((o) => o.organization.name);
+    const avatar = memberAvatar({ photo_filename: m.photoFilename, first_name: m.firstName, last_name: m.lastName });
+    const facts = [
+      ['Phone', m.mobilePhone ? `<a href="tel:${esc(m.mobilePhone)}">${esc(m.mobilePhone)}</a>` : ''],
+      ['Email', m.email ? `<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>` : ''],
+      ['Bible class', esc(m.bibleClass && m.bibleClass.name)],
+      ['Day born', m.dayBorn ? `${esc(m.dayBorn)} <span class="muted-text">· ${esc(AKAN_NAMES[m.dayBorn] || '')}</span>` : ''],
+      ['Date of birth', esc(day(m.dateOfBirth))],
+      ['Member since', esc(day(m.joinDate))],
+      ['Gender', m.gender ? esc(({ M: 'Male', F: 'Female', O: 'Other' })[m.gender] || m.gender) : ''],
+      ['Emergency contact', m.emergencyContactName ? `${esc(m.emergencyContactName)}${m.emergencyContactPhone ? ` · <a href="tel:${esc(m.emergencyContactPhone)}">${esc(m.emergencyContactPhone)}</a>` : ''}` : ''],
+    ].filter(([, v]) => v);
+    const lastSeen = recent[0] ? recent[0].checkedInAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—';
+
+    res.send(`<div class="pp" data-member-name="${esc(name)}">
+      <div class="pp-head">${avatar}<div><h2 id="ppTitle">${esc(name)}</h2>
+        <div class="pp-chips"><span class="pill pill-${esc(m.membershipStatus.toLowerCase())}">${esc(MEMBER_STATUS_LABELS[m.membershipStatus] || m.membershipStatus)}</span>${orgNames.map((o) => `<span class="pm-chip">${esc(o)}</span>`).join('')}</div>
+        <p>${[m.externalId, m.dayBorn ? `${m.dayBorn}-born` : '', m.joinDate ? `joined ${day(m.joinDate)}` : ''].filter(Boolean).map(esc).join(' · ')}</p></div></div>
+      <div class="pp-actions">
+        <a class="btn" href="/members/${m.id}">Open full profile</a>
+        ${m.mobilePhone ? `<a class="btn ghost" href="tel:${esc(m.mobilePhone)}">${icon('phone')} Call</a>` : ''}
+        ${isAdmin ? `<a class="btn ghost" href="/communications/broadcast?member_id=${m.id}">${icon('message')} SMS</a><a class="btn ghost" href="/members/${m.id}#edit">Edit</a>` : ''}
+      </div>
+      <div class="pp-trio">
+        ${giving !== null ? `<div><small>Giving this year</small><b>${giving ? esc(`GH₵ ${Math.round(giving).toLocaleString('en-GH')}`) : '—'}</b></div>` : ''}
+        <div><small>Attendance, 12 wks</small><b>${Math.round(seen.size / 12 * 100)}%</b></div>
+        <div><small>Last seen</small><b>${esc(lastSeen)}</b></div>
+      </div>
+      <h3 class="pp-sec">Last 12 weeks</h3>
+      <div class="pp-weeks">${Array.from({ length: 12 }, (_, i) => `<span${seen.has(i) ? ' class="on"' : ''}></span>`).join('')}</div>
+      <div class="pp-weeks-l"><span>12 weeks ago</span><span>This week</span></div>
+      ${facts.length ? `<h3 class="pp-sec">Details</h3><dl class="pp-facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>` : ''}
+      <h3 class="pp-sec">Recent attendance</h3>
+      ${recent.length ? `<ul class="pp-list">${recent.map((a) => `<li><span>${esc(a.event ? a.event.title : 'Check-in')}</span><small>${esc(a.checkedInAt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }))}</small></li>`).join('')}</ul>` : '<p class="muted-text" style="margin:0">No check-ins recorded yet.</p>'}
+      ${m.notes ? `<h3 class="pp-sec">Notes</h3><p class="pp-notes">${esc(m.notes)}</p>` : ''}
+    </div>`);
   }));
 
   app.get('/members/:id', asyncHandler(async (req, res) => {
