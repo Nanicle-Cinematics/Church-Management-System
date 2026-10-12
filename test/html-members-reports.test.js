@@ -100,6 +100,36 @@ for (const [path, title] of [['/members', 'Members'], ['/reports', 'Reports']]) 
   });
 }
 
+test('members: profile panel is church-scoped, and the directory filters take several values', async () => {
+  const { client } = await signedInClient('html-mem-panel');
+  const csrf = extractCsrf((await client.getHtml('/members/new')).text);
+  const created = await client.postForm('/members', {
+    firstName: 'Esi', lastName: 'Quaye', mobilePhone: '0244000077', gender: 'F', membershipStatus: 'MEMBER', preferredChannel: 'EITHER', dayBorn: 'Sunday', _csrf: csrf,
+  });
+  assert.strictEqual(created.status, 302);
+  const memberId = created.location.match(/\/members\/(\d+)/)[1];
+
+  const panel = await client.getHtml(`/members/${memberId}/panel`);
+  assert.strictEqual(panel.status, 200);
+  assert.match(panel.text, /Esi Quaye/);
+  assert.match(panel.text, /Open full profile/);
+  assert.doesNotMatch(panel.text, /<html/i, 'the panel is a fragment, not a full page');
+
+  // Another church cannot read it, and a bad id is simply not found.
+  const { client: other } = await signedInClient('html-mem-panel-other');
+  assert.strictEqual((await other.getHtml(`/members/${memberId}/panel`)).status, 404);
+  assert.strictEqual((await client.getHtml('/members/not-a-number/panel')).status, 404);
+  assert.strictEqual((await htmlClient().getHtml(`/members/${memberId}/panel`)).status, 401);
+
+  // Repeated query values are ORed within a filter.
+  assert.match((await client.getHtml('/members?status=VISITOR&status=MEMBER')).text, /Esi Quaye/);
+  assert.doesNotMatch((await client.getHtml('/members?status=VISITOR')).text, /Esi Quaye/);
+  assert.match((await client.getHtml('/members?day_born=Monday&day_born=Sunday')).text, /Esi Quaye/);
+  assert.doesNotMatch((await client.getHtml('/members?day_born=Monday')).text, /Esi Quaye/);
+  // Other churches' members never leak into the directory.
+  assert.doesNotMatch((await other.getHtml('/members')).text, /Esi Quaye/);
+});
+
 test('members: create without CSRF is rejected, with CSRF succeeds, edit and archive', async () => {
   const { client } = await signedInClient('html-mem-create');
   const newPage = await client.getHtml('/members/new');

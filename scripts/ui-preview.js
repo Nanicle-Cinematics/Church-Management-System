@@ -416,6 +416,46 @@ async function dashboardReal() {
   return layout({ title: 'Dashboard', body, active: '/', user: USER, churchName: CHURCH, noHeader: true });
 }
 
+// The REAL members directory (routes-pg-html/members.js GET /members), run
+// against a stub database with the route's own handler.
+async function membersReal(query = {}) {
+  const handlers = {};
+  const fakeApp = { get: (p, ...fns) => { handlers[`GET ${p}`] = fns[fns.length - 1]; }, post: () => {} };
+  require('../routes-pg-html/members').register(fakeApp);
+  const people = [
+    ['Kwame', 'Mensah', 'MEMBER', 4, ["Men's Fellowship"], '024 412 7781', 4820, 11],
+    ['Akosua', 'Boateng', 'MEMBER', 2, ["Women's Fellowship", 'Singing Band'], '020 918 3342', 6150, 12],
+    ['Yaw', 'Owusu-Ansah', 'REGULAR', 7, ['Youth Fellowship'], '055 207 6610', 1240, 8],
+    ['Efua', 'Asante', 'MEMBER', 1, ['Choir'], '024 771 0923', 3980, 9],
+    ['Kofi', 'Adjei', 'VISITOR', null, [], '059 334 8812', 0, 1],
+    ['Abena', 'Darko', 'MEMBER', 3, ['Guild'], null, 2760, 10],
+    ['Adwoa', 'Sarpong', 'INACTIVE', 6, ["Women's Fellowship"], '027 119 5530', 320, 1],
+  ].map(([firstName, lastName, membershipStatus, cls, orgs, mobilePhone, giving, weeks], i) => ({
+    id: i + 1, firstName, lastName, membershipStatus, mobilePhone, externalId: `MBR-${String(i + 1).padStart(3, '0')}`, photoFilename: null,
+    bibleClass: cls ? { name: `Class ${cls}` } : null, orgMemberships: orgs.map((name) => ({ organization: { name } })), giving, weeks,
+  }));
+  const now = Date.now();
+  const db = {
+    member: {
+      count: async () => 1315,
+      findMany: async () => people,
+      groupBy: async ({ by }) => (by[0] === 'membershipStatus'
+        ? [{ membershipStatus: 'MEMBER', _count: 1110 }, { membershipStatus: 'REGULAR', _count: 128 }, { membershipStatus: 'VISITOR', _count: 46 }, { membershipStatus: 'INACTIVE', _count: 31 }]
+        : Array.from({ length: 8 }, (_, i) => ({ bibleClassId: i + 1, _count: 140 + i * 6 }))),
+    },
+    ministry: { findMany: async () => Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Class ${i + 1}` })) },
+    organization: { findMany: async () => ["Men's Fellowship", "Women's Fellowship", 'Youth Fellowship', 'Singing Band', 'Choir', 'Guild'].map((name, i) => ({ id: i + 1, name })) },
+    organizationMembership: { groupBy: async () => [168, 214, 187, 96, 58, 73].map((n, i) => ({ orgId: i + 1, _count: n })) },
+    attendance: { findMany: async () => people.flatMap((m) => Array.from({ length: m.weeks }, (_, w) => ({ memberId: m.id, checkedInAt: new Date(now - (w * 7 + 1) * 86400000) }))) },
+    tithe: { groupBy: async () => people.filter((m) => m.giving).map((m) => ({ memberId: m.id, _sum: { amount: m.giving } })) },
+    incomeRecord: { groupBy: async () => [] },
+  };
+  let html = '';
+  const res = { locals: { db, user: { role: 'ADMIN', financeRole: 'FINANCE_ADMIN' } }, page: (opts) => { html = layout({ ...opts, user: USER, churchName: CHURCH }); }, redirect: () => {} };
+  await handlers['GET /members']({ query }, res);
+  return html;
+}
+
 function memberProfile() {
   const { renderMemberProfile } = require('../lib/member-profile');
   const m = {
@@ -445,6 +485,7 @@ const PAGES = {
   dashboard, dashboardHero, members: membersPage, form: formPage,
   financeIndex, financeReceipt, attendancePage, attendanceEmpty,
   platformPortal, login: loginPage, landing, dashboardReal, memberProfile,
+  membersReal, membersFiltered: () => membersReal({ status: ['MEMBER'], org: ['2'], day_born: ['Sunday'] }),
 };
 
 async function main() {
