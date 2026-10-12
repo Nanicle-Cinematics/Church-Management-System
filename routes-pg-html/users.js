@@ -23,7 +23,6 @@ const { logSecurityEvent } = require('../lib/security-audit');
 const { revokeUserSessions } = require('../lib/auth');
 const { db: rawDb } = require('../lib/tenant');
 const { canAddUser, upgradeMessage } = require('../lib/plan');
-const { isPlatformAdminEmail } = require('../lib/platform-admins');
 
 const ROLES = ['ADMIN', 'EDITOR', 'VIEWER'];
 const FINANCE_ROLES = ['NONE', 'CASHIER', 'TREASURER', 'AUDITOR', 'FINANCE_ADMIN'];
@@ -95,7 +94,6 @@ function register(app) {
     const b = req.body || {};
     if (!b.username || !String(b.username).trim()) { flash(req, 'Username is required.'); return res.redirect('/users/new'); }
     if (typeof b.email !== 'string' || !/^\S+@\S+\.\S+$/.test(b.email)) { flash(req, 'A valid email is required.'); return res.redirect('/users/new'); }
-    if (isPlatformAdminEmail(b.email)) { flash(req, 'That email address is reserved.'); return res.redirect('/users/new'); }
     if (!b.password || String(b.password).length < 8) { flash(req, 'Password must be at least 8 characters.'); return res.redirect('/users/new'); }
     const role = ROLES.includes(b.role) ? b.role : 'VIEWER';
     const financeRole = FINANCE_ROLES.includes(b.financeRole) ? b.financeRole : 'NONE';

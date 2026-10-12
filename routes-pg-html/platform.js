@@ -10,17 +10,14 @@ const { db: rawDb } = require('../lib/tenant');
 const { isPro } = require('../routes-pg/settings');
 const { requestIp, requestUserAgent } = require('../lib/security-audit');
 const { icon } = require('../lib/icons');
+const { operatorLayout } = require('../lib/operator-shell');
+const { requireOperator, logPlatformEvent } = require('../lib/platform-operators');
 
-function platformAdminEmails() {
-  return String(process.env.PLATFORM_ADMIN_EMAILS || '')
-    .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
-}
-
-function requirePlatformAdmin(req, res, next) {
-  if (!res.locals.user) return res.redirect('/login');
-  const email = String(res.locals.user.email || '').toLowerCase();
-  if (platformAdminEmails().includes(email)) return next();
-  return res.status(403).send('Platform admin only');
+// Operators only (lib/platform-operators.js): church users never get here.
+function page(res, opts) {
+  return res.send(operatorLayout({
+    ...opts, operator: res.locals.operator, flash: res.locals.flash, flashType: res.locals.flashType,
+  }));
 }
 
 function isoDate(value) {
@@ -203,11 +200,7 @@ async function renderPlatformIndex(req, res) {
       take: 250,
       include: { _count: { select: { users: true, members: true, events: true, broadcasts: true } } },
     }),
-    rawDb.securityAuditLog.findMany({
-      orderBy: { occurredAt: 'desc' },
-      take: 8,
-      include: { church: { select: { name: true, slug: true } } },
-    }),
+    rawDb.platformAuditLog.findMany({ orderBy: { occurredAt: 'desc' }, take: 10 }),
     rawDb.errorLog.findMany({
       orderBy: { occurredAt: 'desc' },
       take: 6,
@@ -227,8 +220,8 @@ async function renderPlatformIndex(req, res) {
 
   const auditRows = recentAudit.map((a) => [
     esc(dateTime(a.occurredAt)),
-    a.church ? `<a href="/platform/churches/${a.churchId}">${esc(a.church.name)}</a><small>${esc(a.church.slug)}</small>` : '—',
-    esc(a.event),
+    esc(a.operatorEmail || '—'),
+    a.churchId ? `<a href="/platform/churches/${esc(a.churchId)}">${esc(a.event)}</a>` : esc(a.event),
     esc(a.subject || '—'),
   ]);
 
@@ -250,15 +243,15 @@ async function renderPlatformIndex(req, res) {
     })}
     <div class="platform-two-col">
       ${listCard({
-        title: 'Recent platform audit', count: recentAudit.length, countLabel: 'events',
-        inner: auditRows.length ? table(['When', 'Church', 'Event', 'Subject'], auditRows, { keyCols: 2 }) : '<p class="muted-text">No audit events yet.</p>',
+        title: 'Operator activity', count: recentAudit.length, countLabel: 'events',
+        inner: auditRows.length ? table(['When', 'Operator', 'Event', 'Subject'], auditRows, { keyCols: 2 }) : '<p class="muted-text">No audit events yet.</p>',
       })}
       ${listCard({
         title: 'Recent errors', count: recentErrors.length, countLabel: 'errors',
         inner: errorRows.length ? table(['When', 'Church', 'Path', 'Message'], errorRows, { keyCols: 2 }) : '<p class="muted-text">No recent errors.</p>',
       })}
     </div>`;
-  res.page({ title: 'SaaS Owner Portal', active: '/platform', noHeader: true, body });
+  page(res, { title: 'SaaS Owner Portal', active: '/platform', noHeader: true, body });
 }
 
 async function renderChurchDetail(req, res) {
@@ -300,7 +293,7 @@ async function renderChurchDetail(req, res) {
     esc(dateTime(a.occurredAt)), esc(a.event), esc(a.subject || '—'), esc(a.ip || '—'),
   ]);
   const activityRows = recentActivity.map((a) => [
-    esc(dateTime(a.occurredAt)), esc(a.kind), a.link ? `<a href="${esc(a.link)}">${esc(a.description)}</a>` : esc(a.description),
+    esc(dateTime(a.occurredAt)), esc(a.kind), esc(a.description),
   ]);
   const broadcastRows = recentBroadcasts.map((b) => [
     esc(dateTime(b.sentAt)), esc(b.channel), esc(b.audienceLabel),
@@ -377,14 +370,14 @@ async function renderChurchDetail(req, res) {
         inner: errorRows.length ? table(['When', 'Method', 'Path', 'Message'], errorRows, { keyCols: 2 }) : '<p class="muted-text">No errors logged.</p>',
       })}
     </div>`;
-  return res.page({ title: `${church.name} · Platform`, active: '/platform', noHeader: true, body });
+  return page(res, { title: `${church.name} · Platform`, active: '/platform', noHeader: true, body });
 }
 
 function register(app) {
-  app.get('/platform', requirePlatformAdmin, asyncHandler(renderPlatformIndex));
-  app.get('/platform/churches/:id', requirePlatformAdmin, asyncHandler(renderChurchDetail));
+  app.get('/platform', requireOperator, asyncHandler(renderPlatformIndex));
+  app.get('/platform/churches/:id', requireOperator, asyncHandler(renderChurchDetail));
 
-  app.post('/platform/churches/:id/plan', requirePlatformAdmin, asyncHandler(async (req, res) => {
+  app.post('/platform/churches/:id/plan', requireOperator, asyncHandler(async (req, res) => {
     const { plan, months } = req.body || {};
     if (!['free', 'pro'].includes(plan)) { flash(req, 'Plan must be "free" or "pro".'); return res.redirect(platformReturn(req)); }
     const data = { plan };
@@ -397,12 +390,13 @@ function register(app) {
     }
     try {
       const church = await rawDb.church.update({ where: { id: req.params.id }, data });
+      const event = plan === 'pro' ? 'platform.plan_upgraded' : 'platform.plan_downgraded';
+      const subject = `${church.name} (${church.slug}) -> ${plan}`;
       await rawDb.securityAuditLog.create({ data: {
-        churchId: church.id, actorId: res.locals.user.id,
-        event: plan === 'pro' ? 'platform.plan_upgraded' : 'platform.plan_downgraded',
-        subject: `${church.name} (${church.slug}) -> ${plan}`,
+        churchId: church.id, actorId: null, event, subject,
         ip: requestIp(req), userAgent: requestUserAgent(req),
       } });
+      await logPlatformEvent(req, { operator: res.locals.operator, event, subject, churchId: church.id });
       flash(req, plan === 'pro' ? 'Church upgraded to Pro.' : 'Church downgraded to Free.', 'success');
     } catch (e) {
       if (e.code !== 'P2025') throw e;
@@ -411,7 +405,7 @@ function register(app) {
     res.redirect(platformReturn(req));
   }));
 
-  app.post('/platform/churches/:id/access', requirePlatformAdmin, asyncHandler(async (req, res) => {
+  app.post('/platform/churches/:id/access', requireOperator, asyncHandler(async (req, res) => {
     const action = String(req.body?.action || '');
     const reason = String(req.body?.reason || '').trim().slice(0, 500);
     if (!['suspend', 'reactivate', 'delete', 'restore'].includes(action)) {
@@ -447,12 +441,12 @@ function register(app) {
         suspend: 'platform.church_suspended', reactivate: 'platform.church_reactivated',
         delete: 'platform.church_deleted', restore: 'platform.church_restored',
       };
+      const subject = ['suspend', 'delete'].includes(action) ? reason : `${church.name} ${action}d`;
       await rawDb.securityAuditLog.create({ data: {
-        churchId: church.id, actorId: res.locals.user.id,
-        event: events[action],
-        subject: ['suspend', 'delete'].includes(action) ? reason : `${church.name} ${action}d`,
+        churchId: church.id, actorId: null, event: events[action], subject,
         ip: requestIp(req), userAgent: requestUserAgent(req),
       } });
+      await logPlatformEvent(req, { operator: res.locals.operator, event: events[action], subject: `${church.name} (${church.slug}): ${subject}`, churchId: church.id });
       const messages = {
         suspend: 'Church access suspended.', reactivate: 'Church access reactivated.',
         delete: 'Church deleted. Its data remains recoverable.', restore: 'Church restored.',

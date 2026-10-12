@@ -1623,3 +1623,42 @@ model BankDeposit {
   @@index([depositDate])
   @@map("bank_deposits")
 }
+
+// Platform operators run the SaaS itself (every church's plan and access).
+// They are NOT church users: no church, no tenant data, their own sign-in at
+// /platform/login, and two-factor is mandatory (set up on first sign-in).
+// Accounts are created only with scripts/platform-operator.js on the server.
+model PlatformOperator {
+  id                Int       @id @default(autoincrement()) @map("operator_id")
+  email             String    @unique
+  displayName       String?   @map("display_name")
+  passwordHash      String    @map("password_hash")
+  totpSecret        String?   @map("totp_secret")
+  totpEnabled       Boolean   @default(false) @map("totp_enabled")
+  totpRecoveryCodes String?   @map("totp_recovery_codes")
+  failedAttempts    Int       @default(0) @map("failed_attempts")
+  lockedUntil       DateTime? @map("locked_until")
+  lastLoginAt       DateTime? @map("last_login_at")
+  disabledAt        DateTime? @map("disabled_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  @@map("platform_operators")
+}
+
+// Operator sign-ins and console actions. church_id is a plain reference (no
+// foreign key) so the history outlives a purged church.
+model PlatformAuditLog {
+  id            Int      @id @default(autoincrement()) @map("audit_id")
+  occurredAt    DateTime @default(now()) @map("occurred_at")
+  operatorId    Int?     @map("operator_id")
+  operatorEmail String?  @map("operator_email")
+  churchId      String?  @map("church_id")
+  event         String
+  subject       String?
+  ip            String?
+  userAgent     String?  @map("user_agent")
+
+  @@index([occurredAt(sort: Desc)])
+  @@index([churchId])
+  @@map("platform_audit_log")
+}

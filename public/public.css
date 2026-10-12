@@ -237,3 +237,12 @@ svg { flex: none; }
   .pa-main { align-items: flex-start; padding-top: clamp(28px, 6vw, 48px); }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+
+/* Platform console sign-in: one column, no marketing panel. */
+.pa-grid.op-auth { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr; }
+.op-auth-mark { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; color: var(--pu-text-2, #5b5b6b); font-weight: 600; font-size: 14px; }
+.op-auth-mark span { display: inline-grid; width: 26px; height: 26px; color: var(--pu-accent, #5b4cff); }
+.op-auth-mark svg { width: 26px; height: 26px; }
+.op-auth .op-qr { display: block; margin: 8px auto 12px; border-radius: 8px; background: #fff; padding: 6px; }
+.op-auth .op-key { display: block; overflow-wrap: anywhere; font: 500 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.op-auth .op-codes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; margin: 12px 0; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--pu-line, #e5e5ea); font: 500 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }

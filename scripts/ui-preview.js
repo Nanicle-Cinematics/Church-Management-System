@@ -328,7 +328,19 @@ function platformPortal() {
       ${V.listCard({ title: 'Recent security audit', count: 2, countLabel: 'events', inner: auditInner })}
       ${V.listCard({ title: 'Recent errors', count: 2, countLabel: 'errors', inner: errorInner })}
     </div>`;
-  return layout({ title: 'Platform', body, active: '/platform', user: USER, churchName: CHURCH, noHeader: true });
+  const { operatorLayout } = require('../lib/operator-shell');
+  return operatorLayout({ title: 'Platform', body, operator: { email: 'ops@example.org', displayName: 'Nana Aboagye' } });
+}
+
+// Operator sign-in (routes-pg-html/platform-auth.js).
+function operatorLogin() {
+  const { operatorAuthPage } = require('../lib/operator-shell');
+  return operatorAuthPage('Sign in', `<form class="form auth-form" method="post" action="#">
+      <label class="wide">Email<input type="email" name="email"></label>
+      <label class="wide">Password<input type="password" name="password"></label>
+      <div class="actions"><button type="submit">Continue</button></div>
+      <p class="auth-aux">For platform operators only. Church staff sign in at <a href="#">/login</a>.</p>
+    </form>`);
 }
 
 // The bare/auth shell is a separate template in lib/shell.js — worth its own
@@ -529,7 +541,7 @@ function memberProfile() {
 const PAGES = {
   dashboard, dashboardHero, members: membersPage, form: formPage,
   financeIndex, financeReceipt, attendancePage, attendanceEmpty,
-  platformPortal, login: loginPage, landing, dashboardReal, memberProfile,
+  platformPortal, operatorLogin, login: loginPage, landing, dashboardReal, memberProfile,
   financeReal, membersReal, membersFiltered: () => membersReal({ status: ['MEMBER'], org: ['2'], day_born: ['Sunday'] }),
 };
 

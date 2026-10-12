@@ -273,23 +273,6 @@ test('login: parallel wrong guesses still reach the lockout', async () => {
   assert.strictEqual(r.status, 'locked');
 });
 
-// ---- Platform operator addresses -------------------------------------------
-
-test('a platform-operator email cannot be registered once any church exists', async () => {
-  await newChurch('some-existing-church');
-  const reserved = uniqueEmail('operator');
-  const previous = process.env.PLATFORM_ADMIN_EMAILS;
-  process.env.PLATFORM_ADMIN_EMAILS = reserved;
-  try {
-    await assert.rejects(
-      () => signupChurch({ churchName: 'Squatter', name: 'Squatter', email: reserved, password: 'password123' }),
-      /reserved/,
-    );
-  } finally {
-    if (previous === undefined) delete process.env.PLATFORM_ADMIN_EMAILS; else process.env.PLATFORM_ADMIN_EMAILS = previous;
-  }
-});
-
 test('deleting a user frees their email for re-invitation', async () => {
   const { c } = await signedInClient('user-reinvite');
   const email = uniqueEmail('teammate');
