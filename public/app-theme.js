@@ -1,9 +1,8 @@
-/* Light/dark for the signed-in app (no dependencies).
+/* Light/dark for every page, signed in or not (no dependencies).
  *
  * Loaded synchronously in <head> so the first paint already has the right
  * theme. The saved choice ('theme' in localStorage) wins, otherwise the page
- * follows the system setting, live. It shares that key with the public pages'
- * material-theme.js, so a choice made on one side carries to the other.
+ * follows the system setting, live.
  */
 (function () {
   var root = document.documentElement;
