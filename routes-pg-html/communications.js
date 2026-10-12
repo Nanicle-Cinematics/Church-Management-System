@@ -34,7 +34,11 @@ const PREF_LABELS = { EITHER: 'Both', SMS_ONLY: 'SMS only', EMAIL_ONLY: 'Email o
 
 function isEmailish(s) { return /^\S+@\S+\.\S+$/.test(String(s || '')); }
 
-async function resolveAudience(db, { allMembers, orgIds, memberId }) {
+async function resolveAudience(db, { allMembers, orgIds, memberId, memberIds }) {
+  // People picked on the Members page: exactly those, whatever their status.
+  if (memberIds && memberIds.length) {
+    return db.member.findMany({ where: { id: { in: memberIds }, deletedAt: null }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] });
+  }
   if (memberId) {
     const m = await db.member.findFirst({ where: { id: memberId, deletedAt: null } });
     return m ? [m] : [];
@@ -49,17 +53,25 @@ async function resolveAudience(db, { allMembers, orgIds, memberId }) {
   });
 }
 
+// Most people the Members page can hand over in one go (?member_ids=1,2,3).
+const MAX_SELECTED_MEMBERS = 500;
+
 function parseOrgChoice(b) {
+  const none = { allMembers: false, orgIds: [], memberId: null, memberIds: [] };
+  const memberIds = [...new Set([].concat(b.member_ids || []).flatMap((v) => String(v).split(',')).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, MAX_SELECTED_MEMBERS);
+  if (memberIds.length) return { ...none, memberIds };
   const memberId = Number(b.member_id) || null;
-  if (memberId) return { allMembers: false, orgIds: [], memberId };
-  if (b.all_members === '1') return { allMembers: true, orgIds: [], memberId: null };
+  if (memberId) return { ...none, memberId };
+  if (b.all_members === '1') return { ...none, allMembers: true };
   let raw = b.org_ids;
-  if (!raw) return { allMembers: false, orgIds: [], memberId: null };
+  if (!raw) return none;
   const ids = (Array.isArray(raw) ? raw : [raw]).map((x) => Number(x)).filter(Boolean);
-  return { allMembers: false, orgIds: ids, memberId: null };
+  return { ...none, orgIds: ids };
 }
+const audienceChosenFor = (c) => c.allMembers || c.orgIds.length > 0 || !!c.memberId || c.memberIds.length > 0;
 
 function audienceLabel(orgs, choice, recipients = []) {
+  if (choice.memberIds && choice.memberIds.length) return `${recipients.length} selected member${recipients.length === 1 ? '' : 's'}`;
   if (choice.memberId) return recipients[0] ? `Single member: ${recipients[0].firstName} ${recipients[0].lastName}` : 'Single member';
   if (choice.allMembers) return 'All members';
   if (!choice.orgIds.length) return 'None';
@@ -159,7 +171,7 @@ function register(app) {
       db.member.findMany({ where: { deletedAt: null }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }], take: 500, select: { id: true, firstName: true, lastName: true, email: true, mobilePhone: true, preferredChannel: true } }),
     ]);
     const choice = parseOrgChoice(req.query);
-    const audienceChosen = choice.allMembers || choice.orgIds.length > 0 || !!choice.memberId;
+    const audienceChosen = audienceChosenFor(choice);
     const recipients = audienceChosen ? await resolveAudience(db, choice) : [];
 
     let bothCount = 0, smsOnlyCount = 0, emailOnlyCount = 0, noneCount = 0, excludedPref = 0;
@@ -183,7 +195,11 @@ function register(app) {
       ${emailReady ? '' : '<strong>Email dry-run mode.</strong> No email provider secret is configured for this channel — messages will be logged but not delivered.'}
     </div>`;
 
-    const audienceForm = `
+    const audienceForm = choice.memberIds.length ? `
+      <div class="card" style="margin-bottom:1rem">
+        <h2 style="margin-top:0">Audience</h2>
+        <p style="margin:0">${recipients.length} member${recipients.length === 1 ? '' : 's'} selected on the Members page. <a href="/members">Change the selection</a> or <a href="/communications/broadcast">choose a different audience</a>.</p>
+      </div>` : `
       <form method="get" action="/communications/broadcast" class="card" style="margin-bottom:1rem">
         <h2 style="margin-top:0">Audience</h2>
         <label class="check" style="background:none;padding:0;margin-bottom:0.5rem">
@@ -232,7 +248,9 @@ function register(app) {
       </details>` : ''}
     ` : '';
 
-    const audienceHidden = choice.memberId
+    const audienceHidden = choice.memberIds.length
+      ? `<input type="hidden" name="member_ids" value="${recipients.map((r) => r.id).join(',')}">`
+      : choice.memberId
       ? `<input type="hidden" name="member_id" value="${choice.memberId}">`
       : (choice.allMembers
         ? `<input type="hidden" name="all_members" value="1">`
@@ -275,13 +293,13 @@ function register(app) {
 
     const orgs = await db.organization.findMany({ where: { active: true }, select: { id: true, name: true } });
     const choice = parseOrgChoice(req.body);
-    if (!choice.memberId && !choice.allMembers && choice.orgIds.length === 0) return res.redirect('/communications/broadcast');
+    if (!audienceChosenFor(choice)) return res.redirect('/communications/broadcast');
     const audience = await resolveAudience(db, choice);
     if (!audience.length) return res.redirect('/communications/broadcast');
     const allowance = await checkBroadcastAllowance(db, res.locals.church, audience.length, channel);
     if (!allowance.ok) { flash(req, allowanceMessage(allowance)); return res.redirect('/communications/broadcast'); }
     const audienceLbl = audienceLabel(orgs, choice, audience);
-    const orgIdForRow = (!choice.memberId && !choice.allMembers && choice.orgIds.length === 1) ? choice.orgIds[0] : null;
+    const orgIdForRow = (!choice.memberId && !choice.memberIds.length && !choice.allMembers && choice.orgIds.length === 1) ? choice.orgIds[0] : null;
     const ignorePrefs = req.body.ignore_prefs === '1';
 
     const broadcast = await db.broadcast.create({

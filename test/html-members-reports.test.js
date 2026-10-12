@@ -130,6 +130,39 @@ test('members: profile panel is church-scoped, and the directory filters take se
   assert.doesNotMatch((await other.getHtml('/members')).text, /Esi Quaye/);
 });
 
+test('members: CSV export and selected-member SMS stay inside the church', async () => {
+  const add = async (client, firstName, lastName, membershipStatus) => {
+    const csrf = extractCsrf((await client.getHtml('/members/new')).text);
+    const r = await client.postForm('/members', { firstName, lastName, mobilePhone: '0244000123', gender: 'M', membershipStatus, preferredChannel: 'EITHER', _csrf: csrf });
+    assert.strictEqual(r.status, 302);
+    return r.location.match(/\/members\/(\d+)/)[1];
+  };
+  const { client } = await signedInClient('html-mem-bulk');
+  const a1 = await add(client, 'Yaw', 'Darko', 'MEMBER');
+  const a2 = await add(client, 'Ama', 'Serwaa', 'VISITOR');
+  const { client: other } = await signedInClient('html-mem-bulk-other');
+  const b1 = await add(other, 'Kwesi', 'Outsider', 'MEMBER');
+
+  // Everyone matching the filters...
+  const all = await client.getHtml('/members/export.csv?status=MEMBER');
+  assert.strictEqual(all.status, 200);
+  assert.match(all.text, /^Member ID,First name,Last name,Status/);
+  assert.match(all.text, /Yaw,Darko,Member/);
+  assert.doesNotMatch(all.text, /Serwaa/, 'the status filter applies to the export');
+  assert.doesNotMatch(all.text, /Outsider/);
+  // ...or exactly the selection, where another church's id finds nothing.
+  const picked = await client.getHtml(`/members/export.csv?ids=${a2},${b1}`);
+  assert.match(picked.text, /Ama,Serwaa,Visitor/);
+  assert.doesNotMatch(picked.text, /Darko|Outsider/);
+  assert.strictEqual((await htmlClient().getHtml('/members/export.csv')).status, 403);
+
+  const compose = await client.getHtml(`/communications/broadcast?member_ids=${a1},${a2},${b1}`);
+  assert.strictEqual(compose.status, 200);
+  assert.match(compose.text, /Audience preview · 2 members/);
+  assert.match(compose.text, new RegExp(`name="member_ids" value="${a1},${a2}"`), 'only this church\'s members are carried into the send');
+  assert.doesNotMatch(compose.text, /Outsider/);
+});
+
 test('members: create without CSRF is rejected, with CSRF succeeds, edit and archive', async () => {
   const { client } = await signedInClient('html-mem-create');
   const newPage = await client.getHtml('/members/new');

@@ -35,6 +35,7 @@ const { logActivity } = require('../lib/tenant-activity');
 const { icon } = require('../lib/icons');
 const { csrfValid } = require('../lib/tenant-csrf');
 const { renderMemberProfile } = require('../lib/member-profile');
+const { sendCsv } = require('../lib/csv');
 
 const PHOTO_DIR = process.env.PHOTO_DIR || path.join(__dirname, '..', 'photos');
 try { fs.mkdirSync(PHOTO_DIR, { recursive: true }); } catch (_) { /* already exists */ }
@@ -192,6 +193,39 @@ async function memberForm(db, member = {}, memberOrgIds, action) {
     </form>`;
 }
 
+// Directory filters, shared by the list and the CSV export so an export is
+// exactly what the list shows. Every filter takes several values (ORed).
+function memberFilters(query) {
+  const list = (v) => [].concat(v || []).map((x) => String(x).trim()).filter(Boolean);
+  const ids = (v) => list(v).map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  return {
+    q: String(query.q || '').trim(),
+    statuses: list(query.status).filter((st) => MEMBERSHIP_STATUSES.includes(st)),
+    orgIds: ids(query.org),
+    classIds: ids(query.class),
+    daysBorn: list(query.day_born).filter((d) => DAYS_OF_WEEK.includes(d)),
+  };
+}
+function memberWhere({ q, statuses, orgIds, classIds, daysBorn }) {
+  return {
+    deletedAt: null,
+    ...(statuses.length ? { membershipStatus: { in: statuses } } : {}),
+    ...(classIds.length ? { bibleClassId: { in: classIds } } : {}),
+    ...(daysBorn.length ? { dayBorn: { in: daysBorn } } : {}),
+    ...(orgIds.length ? { orgMemberships: { some: { orgId: { in: orgIds } } } } : {}),
+    ...(q ? { OR: [
+      { firstName: { contains: q, mode: 'insensitive' } }, { lastName: { contains: q, mode: 'insensitive' } },
+      { email: { contains: q, mode: 'insensitive' } }, { mobilePhone: { contains: q } }, { externalId: { contains: q, mode: 'insensitive' } },
+    ] } : {}),
+  };
+}
+// "1,2,3" or repeated ?ids= values, capped so a URL can't ask for the world.
+const MAX_SELECTED = 500;
+function selectedIds(raw) {
+  const out = [...new Set([].concat(raw || []).flatMap((v) => String(v).split(',')).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  return out.slice(0, MAX_SELECTED);
+}
+
 function register(app) {
   // Members directory, Precision layout: status tabs over a filter panel
   // (status, organisation, Bible class, day born — each multi-select) and a
@@ -204,25 +238,10 @@ function register(app) {
     const user = res.locals.user;
     const isAdmin = user.role === 'ADMIN';
     const canMoney = isAdmin || (user.financeRole && user.financeRole !== 'NONE');
-    const list = (v) => [].concat(v || []).map((x) => String(x).trim()).filter(Boolean);
-    const q = (req.query.q || '').trim();
-    const statuses = list(req.query.status).filter((s) => MEMBERSHIP_STATUSES.includes(s));
-    const orgIds = list(req.query.org).map(Number).filter((n) => Number.isInteger(n) && n > 0);
-    const classIds = list(req.query.class).map(Number).filter((n) => Number.isInteger(n) && n > 0);
-    const daysBorn = list(req.query.day_born).filter((d) => DAYS_OF_WEEK.includes(d));
+    const filters = memberFilters(req.query);
+    const { q, statuses, orgIds, classIds, daysBorn } = filters;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-
-    const where = {
-      deletedAt: null,
-      ...(statuses.length ? { membershipStatus: { in: statuses } } : {}),
-      ...(classIds.length ? { bibleClassId: { in: classIds } } : {}),
-      ...(daysBorn.length ? { dayBorn: { in: daysBorn } } : {}),
-      ...(orgIds.length ? { orgMemberships: { some: { orgId: { in: orgIds } } } } : {}),
-      ...(q ? { OR: [
-        { firstName: { contains: q, mode: 'insensitive' } }, { lastName: { contains: q, mode: 'insensitive' } },
-        { email: { contains: q, mode: 'insensitive' } }, { mobilePhone: { contains: q } }, { externalId: { contains: q, mode: 'insensitive' } },
-      ] } : {}),
-    };
+    const where = memberWhere(filters);
 
     const [matched, rows, byStatus, classes, orgs, orgCounts, classCounts] = await Promise.all([
       db.member.count({ where }),
@@ -295,7 +314,7 @@ function register(app) {
     // ---- table ----
     const weeksCell = (id) => {
       const seen = weeksSeen.get(id) || new Set();
-      return `<span class="pm-att" title="Present ${seen.size} of the last 12 weeks">${Array.from({ length: 12 }, (_, i) => `<i${seen.has(i) ? ' class="on"' : ''}></i>`).join('')}</span><span class="muted-text">${Math.round(seen.size / 12 * 100)}%</span>`;
+      return `<span class="pm-att" title="Present ${seen.size} of the last 12 weeks">${Array.from({ length: 12 }, (_, i) => `<i${seen.has(i) ? ' class="on"' : ''}></i>`).join('')}</span><span class="muted-text pm-attpct">${Math.round(seen.size / 12 * 100)}%</span>`;
     };
     const rowHtml = rows.map((r) => {
       const avatar = memberAvatar({ photo_filename: r.photoFilename, first_name: r.firstName, last_name: r.lastName });
@@ -309,6 +328,7 @@ function register(app) {
           </form>` : ''}
         </div>`;
       return `<tr>
+        ${isAdmin ? `<td class="pm-sel"><input type="checkbox" class="pm-box" value="${r.id}" aria-label="Select ${esc(r.firstName)} ${esc(r.lastName)}"></td>` : ''}
         <td data-label="Name"><div class="m-name-cell">${avatar}<div><a class="m-name" href="/members/${r.id}">${esc(r.firstName)} ${esc(r.lastName)}</a><div class="m-sub">${sub}</div></div></div></td>
         <td data-label="Status"><span class="pill pill-${esc(r.membershipStatus.toLowerCase())}">${esc(MEMBER_STATUS_LABELS[r.membershipStatus] || r.membershipStatus)}</span></td>
         <td data-label="Class">${esc(r.bibleClass && r.bibleClass.name) || '<span class="muted-text">—</span>'}</td>
@@ -326,9 +346,10 @@ function register(app) {
     orgIds.forEach((o) => pagerQuery.push(['org', String(o)]));
     classIds.forEach((c) => pagerQuery.push(['class', String(c)]));
     daysBorn.forEach((d) => pagerQuery.push(['day_born', d]));
+    const exportQs = pagerQuery.length ? `?${new URLSearchParams(pagerQuery).toString()}` : '';
     const results = `<section class="card pm-results" data-results>
         ${rows.length ? `<div class="table-wrap"><table class="data-table members-table">
-          <thead><tr><th>Name</th><th>Status</th><th>Class</th><th>Organisations</th><th>Attendance, 12 wks</th>${canMoney ? '<th class="pm-num">Giving YTD</th>' : ''}<th><span class="sr-only">Actions</span></th></tr></thead>
+          <thead><tr>${isAdmin ? '<th class="pm-sel"><input type="checkbox" class="pm-all" aria-label="Select everyone on this page"></th>' : ''}<th>Name</th><th>Status</th><th>Class</th><th>Organisations</th><th title="Weeks present out of the last 12">Attendance</th>${canMoney ? '<th class="pm-num">Giving YTD</th>' : ''}<th><span class="sr-only">Actions</span></th></tr></thead>
           <tbody>${rowHtml}</tbody></table></div>
           <div class="pm-foot"><span>Showing ${from.toLocaleString()}–${to.toLocaleString()} of ${matched.toLocaleString()}${filtered ? ' matching' : ''}</span>${pager('/members', pagerQuery, page, pages)}</div>`
         : `<div class="empty-state">
@@ -348,11 +369,55 @@ function register(app) {
         <div class="pm-main">
           <div class="pm-toolbar">
             <div class="search-field"><span aria-hidden="true">${icon('search')}</span><input type="search" name="q" value="${esc(q)}" placeholder="Search name, ID, phone or email…" aria-label="Search members"></div>
+            ${isAdmin ? `<span id="pmExport" data-live-sync><a class="btn ghost pm-export" href="/members/export.csv${exportQs}" title="Download everyone matching these filters as CSV">${icon('download')} Export</a></span>` : ''}
             <button class="btn ghost pm-fbtn" type="button" aria-controls="pmFacets" aria-expanded="false">${icon('menu')} Filters<span id="pmBadge" data-live-sync>${nFilters ? ` <span class="pm-badge">${nFilters}</span>` : ''}</span></button>
           </div>
           ${results}
         </div>
       </form>
+      ${isAdmin ? `<div class="pm-bulk" id="pmBulk" role="region" aria-label="Selected members" hidden>
+        <b><span id="pmBulkN">0</span> selected</b>
+        <a class="pm-bulk-btn" id="pmBulkSms" href="/communications/broadcast">${icon('message')} Send SMS</a>
+        <a class="pm-bulk-btn" id="pmBulkCsv" href="/members/export.csv">${icon('download')} Export</a>
+        <span class="pm-bulk-sep"></span>
+        <button class="pm-bulk-btn" id="pmBulkClear" type="button" aria-label="Clear selection">${icon('x')}</button>
+      </div>
+      <script>
+        // Selection survives paging and live filtering (kept for this tab in
+        // sessionStorage) and feeds the SMS composer and the CSV export.
+        (function () {
+          var KEY = 'cm-members-selected', MAX = ${MAX_SELECTED}, sel;
+          try { sel = JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch (e) { sel = []; }
+          sel = sel.filter(function (x) { return /^\\d+$/.test(String(x)); }).map(String);
+          var bar = document.getElementById('pmBulk');
+          function save() { try { sessionStorage.setItem(KEY, JSON.stringify(sel)); } catch (e) { /* private mode */ } }
+          function paint() {
+            document.querySelectorAll('.pm-box').forEach(function (b) { b.checked = sel.indexOf(b.value) > -1; b.closest('tr').classList.toggle('is-selected', b.checked); });
+            var boxes = Array.prototype.slice.call(document.querySelectorAll('.pm-box')), all = document.querySelector('.pm-all');
+            if (all) { var on = boxes.filter(function (b) { return b.checked; }).length; all.checked = boxes.length > 0 && on === boxes.length; all.indeterminate = on > 0 && on < boxes.length; }
+            bar.hidden = !sel.length;
+            document.body.classList.toggle('pm-bulk-on', sel.length > 0);
+            document.getElementById('pmBulkN').textContent = sel.length;
+            document.getElementById('pmBulkSms').href = '/communications/broadcast?member_ids=' + sel.join(',');
+            document.getElementById('pmBulkCsv').href = '/members/export.csv?ids=' + sel.join(',');
+          }
+          function toggle(id, on) {
+            var i = sel.indexOf(id);
+            if (on && i < 0) { if (sel.length >= MAX) { alert('You can select up to ' + MAX + ' people at a time.'); return false; } sel.push(id); }
+            if (!on && i > -1) sel.splice(i, 1);
+            return true;
+          }
+          document.addEventListener('change', function (e) {
+            if (e.target.classList.contains('pm-box')) { if (!toggle(e.target.value, e.target.checked)) e.target.checked = false; save(); paint(); e.stopPropagation(); }
+            else if (e.target.classList.contains('pm-all')) { document.querySelectorAll('.pm-box').forEach(function (b) { toggle(b.value, e.target.checked); }); save(); paint(); e.stopPropagation(); }
+          }, true);
+          // Ticking a box is not a filter change: keep it from the live search's input listener.
+          document.addEventListener('input', function (e) { if (e.target.classList.contains('pm-box') || e.target.classList.contains('pm-all')) e.stopPropagation(); }, true);
+          document.getElementById('pmBulkClear').addEventListener('click', function () { sel = []; save(); paint(); });
+          document.addEventListener('results:updated', paint);
+          paint();
+        })();
+      </script>` : ''}
       <div class="pp-scrim" id="ppScrim" hidden></div>
       <aside class="pp-drawer" id="ppDrawer" role="dialog" aria-modal="true" aria-labelledby="ppTitle" aria-hidden="true">
         <div class="pp-top"><span>Member</span><span class="pp-grow"></span>
@@ -389,7 +454,7 @@ function register(app) {
           function close() { if (new URL(location.href).searchParams.get('open')) history.back(); else hide(); }
           document.addEventListener('click', function (e) {
             var row = e.target.closest('.members-table tbody tr');
-            if (!row || e.target.closest('.row-actions, button, input, select') || (e.target.closest('a') && !e.target.closest('a.m-name'))) return;
+            if (!row || e.target.closest('.row-actions, .pm-sel, button, input, select') || (e.target.closest('a') && !e.target.closest('a.m-name'))) return;
             if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
             var link = row.querySelector('a.m-name'), m = link && link.getAttribute('href').match(/\\/members\\/(\\d+)/);
             if (!m) return;
@@ -434,6 +499,26 @@ function register(app) {
     if (orgIds.length) await saveMemberOrgs(db, member.id, orgIds);
     await logActivity(db, 'member_added', `New member added: ${b.firstName} ${b.lastName} (${externalId})`, `/members/${member.id}`, res.locals.user.id);
     res.redirect(`/members/${member.id}`);
+  }));
+
+  // CSV of the directory: the selected members (?ids=) or everyone matching
+  // the current filters. Admins only, since it carries contact details, and
+  // logged to the activity feed. Registered before /members/:id.
+  app.get('/members/export.csv', requireAdmin, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const ids = selectedIds(req.query.ids);
+    const where = ids.length ? { deletedAt: null, id: { in: ids } } : memberWhere(memberFilters(req.query));
+    const rows = await db.member.findMany({
+      where, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }], take: 20000,
+      include: { bibleClass: { select: { name: true } }, orgMemberships: { select: { organization: { select: { name: true } } } } },
+    });
+    const day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
+    await logActivity(db, 'members_exported', `Exported ${rows.length} member${rows.length === 1 ? '' : 's'} to CSV`, '/members', res.locals.user.id);
+    sendCsv(res, `members-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Member ID', 'First name', 'Last name', 'Status', 'Mobile', 'Email', 'Gender', 'Date of birth', 'Day born', 'Bible class', 'Organisations', 'Joined', 'Preferred channel'],
+      rows.map((m) => [m.externalId, m.firstName, m.lastName, MEMBER_STATUS_LABELS[m.membershipStatus] || m.membershipStatus, m.mobilePhone, m.email,
+        { M: 'Male', F: 'Female', O: 'Other' }[m.gender] || '', day(m.dateOfBirth), m.dayBorn, m.bibleClass && m.bibleClass.name,
+        m.orgMemberships.map((o) => o.organization.name).join('; '), day(m.joinDate), m.preferredChannel]));
   }));
 
   // Profile summary for the slide-in panel on the directory. Returns an HTML
