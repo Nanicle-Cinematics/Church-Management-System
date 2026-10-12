@@ -20,8 +20,9 @@ const { sparkline } = require('../lib/charts');
 const ROOT = path.join(__dirname, '..');
 const CSS = fs.readFileSync(path.join(ROOT, 'public', 'styles.css'), 'utf8');
 const THEME = fs.readFileSync(path.join(ROOT, 'public', 'theme-ios26.css'), 'utf8');
-const THEME_MU = fs.readFileSync(path.join(ROOT, 'public', 'theme-material.css'), 'utf8');
+const THEME_PC = fs.readFileSync(path.join(ROOT, 'public', 'theme-precision.css'), 'utf8');
 const MU_JS = fs.readFileSync(path.join(ROOT, 'public', 'material-theme.js'), 'utf8');
+const APP_JS = fs.readFileSync(path.join(ROOT, 'public', 'app-theme.js'), 'utf8');
 const EDITORIAL = fs.readFileSync(path.join(ROOT, 'public', 'editorial.css'), 'utf8');
 
 const USER = { role: 'admin', display_name: 'Nana Aboagye', username: 'nana' };
@@ -99,13 +100,15 @@ function page(html, { theme } = {}) {
   const inlined = html
     .replace(/<link rel="stylesheet" href="\/static\/styles\.css[^"]*">/, `<style>\n${CSS}\n</style>`)
     .replace(/<link rel="stylesheet" href="\/static\/theme-ios26\.css[^"]*">/, `<style>\n${THEME}\n</style>`)
-    .replace(/<link rel="stylesheet" href="\/static\/theme-material\.css[^"]*">/, `<style>\n${THEME_MU}\n</style>`)
+    .replace(/<link rel="stylesheet" href="\/static\/theme-precision\.css[^"]*">/, `<style>\n${THEME_PC}\n</style>`)
     .replace(/<link rel="stylesheet" href="\/static\/editorial\.css[^"]*">/, `<style>\n${EDITORIAL}\n</style>`);
-  // The palette engine (public/material-theme.js) is inlined so the file is
-  // self-contained. To pin the colour scheme for a deterministic screenshot,
-  // the saved choice is written first; the engine reads it on load.
+  // The theme scripts (public/app-theme.js for the app, material-theme.js for
+  // the public pages) are inlined so the file is self-contained. To pin the
+  // colour scheme for a deterministic screenshot, the saved choice is written
+  // first; both scripts read it on load.
   const pinned = theme ? `try{localStorage.setItem('theme',${JSON.stringify(theme)});}catch(e){}\n` : '';
   return inlined
+    .replace(/<script src="\/static\/app-theme\.js[^"]*"><\/script>/, `<script>${pinned}${APP_JS}</script>`)
     .replace(/<script src="\/static\/material-theme\.js[^"]*"><\/script>/, `<script>${pinned}${MU_JS}</script>`);
 }
 
@@ -354,36 +357,61 @@ function landing() {
 // lib/member-profile.js) so what is reviewed here is what ships.
 async function dashboardReal() {
   const day = 86400000;
+  const now = Date.now();
+  const ago = (d) => new Date(now - d * day);
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Ledger income for the last year: Sunday tithes and offerings, a day-born
+  // collection mid-week, harvest and special offerings now and then.
+  const income = [];
+  for (let w = 0; w < 53; w++) {
+    const sunday = ago(((new Date(now).getDay()) + 7 * w) % 400);
+    const wiggle = 1 + Math.sin(w * 1.7) * 0.12;
+    income.push({ day: iso(sunday), code: '4000', amount: Math.round(8600 * wiggle) });
+    income.push({ day: iso(sunday), code: '4010', amount: Math.round(3300 * wiggle) });
+    if (w % 2) income.push({ day: iso(new Date(sunday.getTime() - 4 * day)), code: '4020', amount: 380 });
+    if (w % 5 === 1) income.push({ day: iso(sunday), code: '4030', amount: 2400 });
+    if (w % 3 === 0) income.push({ day: iso(sunday), code: '4040', amount: 900 });
+    if (w % 4 === 2) income.push({ day: iso(sunday), code: '4900', amount: 450 });
+  }
+  const weekly = [693, 688, 702, 671, 715, 698, 730, 705, 719, 726, 711, 758, 214];
   let weekCall = 0;
-  const weekly = [312, 348, 331, 386, 402, 376];
+  const birthday = (offset, first, last, year) => { const d = new Date(now + offset * day); return { id: 40 + offset, firstName: first, lastName: last, photoFilename: null, dateOfBirth: new Date(Date.UTC(year, d.getMonth(), d.getDate())) }; };
   const stub = {
     member: {
-      count: async ({ where }) => (where.joinDate ? 46 : (where.email === null ? 12 : 1284)),
-      findMany: async () => [
-        { id: 1285, firstName: 'Ama', lastName: 'Serwaa', photoFilename: null, membershipStatus: 'MEMBER', joinDate: new Date(Date.now() - 2 * day), createdAt: new Date() },
-        { id: 1284, firstName: 'Kwame', lastName: 'Mensah', photoFilename: null, membershipStatus: 'VISITOR', joinDate: null, createdAt: new Date(Date.now() - 3 * day) },
-        { id: 1283, firstName: 'Akosua', lastName: 'Boateng', photoFilename: null, membershipStatus: 'REGULAR', joinDate: new Date(Date.now() - 6 * day), createdAt: new Date() },
-      ],
+      count: async ({ where }) => (where.joinDate ? 26 : (where.email === null ? 12 : 1284)),
+      findMany: async () => Array.from({ length: 64 }, (_, i) => ({ createdAt: ago(i * 1.3), membershipStatus: i % 3 === 0 ? 'VISITOR' : 'MEMBER' })),
       groupBy: async () => [
-        { membershipStatus: 'MEMBER', _count: 842 }, { membershipStatus: 'REGULAR', _count: 260 },
-        { membershipStatus: 'VISITOR', _count: 182 }, { membershipStatus: 'INACTIVE', _count: 31 },
+        { membershipStatus: 'MEMBER', _count: 1110 }, { membershipStatus: 'REGULAR', _count: 128 },
+        { membershipStatus: 'VISITOR', _count: 46 }, { membershipStatus: 'INACTIVE', _count: 31 },
       ],
     },
-    event: { findMany: async () => [
-      { id: 1, title: 'Sunday Worship Service', startsAt: new Date(Date.now() + 2 * day), eventType: 'SERVICE', location: 'Main sanctuary' },
-      { id: 2, title: 'Youth Fellowship', startsAt: new Date(Date.now() + 5 * day), eventType: 'YOUTH', location: 'Hall B' },
-      { id: 3, title: 'Harvest Planning Meeting', startsAt: new Date(Date.now() + 9 * day), eventType: 'OTHER', location: null },
-    ] },
-    attendance: { count: async ({ where }) => (where.checkedInAt.lt ? weekly[weekCall++ % 6] : 386) },
-    incomeRecord: { aggregate: async () => ({ _sum: { amount: 48920 } }) },
+    event: {
+      findMany: async () => [
+        { id: 1, title: 'First Service (English)', startsAt: new Date(now + 2 * day), eventType: 'SERVICE', location: 'Main sanctuary' },
+        { id: 2, title: 'Second Service (Twi)', startsAt: new Date(now + 2 * day + 2 * 3600000), eventType: 'SERVICE', location: 'Main sanctuary' },
+        { id: 3, title: 'Mid-week Bible Study', startsAt: new Date(now + 5 * day), eventType: 'BIBLE_STUDY', location: 'Chapel hall' },
+        { id: 4, title: 'Youth Fellowship Rally', startsAt: new Date(now + 7 * day), eventType: 'YOUTH', location: 'Church grounds' },
+        { id: 5, title: 'Harvest Thanksgiving', startsAt: new Date(now + 16 * day), eventType: 'OTHER', location: 'Main sanctuary' },
+      ],
+      count: async () => 9,
+    },
+    attendance: { count: async ({ where }) => (where.checkedInAt.lt ? weekly[weekCall++ % 13] : 742) },
     activityLog: { findMany: async () => [
-      { description: 'Sunday offering posted for ₵4,210', link: '/finance/income', occurredAt: new Date(Date.now() - day), kind: 'income_recorded' },
-      { description: 'New member added: Ama Serwaa (MBR-1285)', link: '/members/1', occurredAt: new Date(Date.now() - 2 * day), kind: 'member_added' },
-      { description: 'Attendance recorded for Wednesday service', link: null, occurredAt: new Date(Date.now() - 3 * day), kind: 'attendance_recorded' },
+      { description: 'Sunday offering posted: GH₵ 1,842.50 (1st Service)', link: '/finance/income', occurredAt: ago(0.1), kind: 'income_recorded' },
+      { description: 'New member added: Kofi Adjei (MBR-1285)', link: '/members/1', occurredAt: ago(1), kind: 'member_added' },
+      { description: 'November preaching plan published', link: null, occurredAt: ago(1), kind: 'preaching_published' },
+      { description: 'Attendance recorded for Class 4', link: null, occurredAt: ago(2), kind: 'attendance_recorded' },
+      { description: 'Harvest planning meeting scheduled', link: '/events/5', occurredAt: ago(3), kind: 'event_created' },
+      { description: 'Cash count for Sunday verified', link: null, occurredAt: ago(6), kind: 'expense_approved' },
     ] },
-    expense: { count: async () => 3 }, cashCountSheet: { count: async () => 1 }, bankDeposit: { count: async () => 2 },
+    expense: { aggregate: async () => ({ _count: 3, _sum: { amount: 4860 } }) },
+    cashCountSheet: { count: async () => 2 }, bankDeposit: { count: async () => 1 },
+    // Two raw queries: the ledger's income-by-day (lib/ledger-pg.js) and birthdays.
+    $queryRaw: async (strings) => (strings.join('').includes('journal_lines')
+      ? income.map((r) => ({ ...r }))
+      : [birthday(0, 'Akua', 'Nyarko', 1991), birthday(2, 'Kojo', 'Badu', 1978), birthday(5, 'Efua', 'Asante', 2004)]),
   };
-  const user = { role: 'ADMIN', financeRole: 'FINANCE_ADMIN', displayName: 'Nana Aboagye', username: 'nana' };
+  const user = { role: 'ADMIN', financeRole: 'FINANCE_ADMIN', displayName: 'Nana Aboagye', username: 'nana', churchId: 'preview', church: { name: CHURCH } };
   const body = await require('../lib/tenant-dashboard').renderDashboard(stub, user);
   return layout({ title: 'Dashboard', body, active: '/', user: USER, churchName: CHURCH, noHeader: true });
 }
