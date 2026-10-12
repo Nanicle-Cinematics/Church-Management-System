@@ -558,6 +558,61 @@ a.pd-row:hover, li.pd-row:hover { background: var(--pc-hover); }
 .pd-chart.fill > div[data-chart]:not([hidden]) { flex: 1; display: flex; }
 
 /* ==========================================================================
+   Finance overview
+   ========================================================================== */
+.pf .pm-tabs a span { background: var(--pc-warn-soft); color: var(--pc-warn); }
+.pf-neg { color: var(--pc-bad); }
+.pf-start { align-items: start; }
+.pf-table { margin-top: 10px; overflow-x: auto; }
+.pf-table table thead th:first-child, .pf-table table tbody td:first-child { padding-left: 18px; }
+.pf-table table thead th:last-child, .pf-table table tbody td:last-child { padding-right: 18px; }
+.pf-table td { white-space: nowrap; }
+.pf-tbl thead th { text-transform: none !important; letter-spacing: 0 !important; font: 500 12.5px/1.2 var(--pc-font) !important; }
+.pf .pf-tbl a { color: var(--pc-text) !important; text-decoration: none; }
+.pf .pf-tbl a:hover { color: var(--pc-accent-ink) !important; text-decoration: underline; }
+.pf-table td a b { font-weight: 500; }
+.pf-sub { font-size: 12px; margin-top: 1px; }
+.pf-num { text-align: right !important; font-variant-numeric: tabular-nums; }
+.pf-num b { font-weight: 600; }
+.pf-pos b { color: var(--pc-ok); }
+.pf-stage { display: inline-flex; align-items: center; gap: 3px; }
+.pf-stage i { width: 20px; height: 6px; border-radius: 99px; background: var(--pc-line); }
+.pf-stage i.on { background: var(--pc-ok); }
+.pf-stage small { margin-left: 8px; font-size: 12.5px; font-weight: 500; color: var(--pc-text-2); }
+.pf form { margin: 0; display: inline; }
+.pf .btn.pf-sm { height: 28px !important; padding: 0 11px !important; font-size: 12.5px !important; }
+.pf-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 18px 14px; border-top: 1px solid var(--pc-line-2); font-size: 13px; color: var(--pc-text-3); }
+.pf-foot b { color: var(--pc-warn); font-weight: 600; }
+.pf-mix { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 16px 18px 18px; }
+.pf-mix ul { list-style: none; margin: 0; padding: 0; width: 100%; }
+.pf-mix li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--pc-line-2); font-size: 13.5px; }
+.pf-mix li:first-child { border-top: 0; }
+.pf-mix li i { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.pf-mix li b { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pf-mix li small { width: 40px; text-align: right; color: var(--pc-text-3); font-variant-numeric: tabular-nums; }
+.pf-mix li i.s1 { background: var(--pc-c1); } .pf-mix li i.s2 { background: var(--pc-c2); } .pf-mix li i.s3 { background: var(--pc-c3); } .pf-mix li i.s4 { background: var(--pc-c4); }
+.pf-track { stroke: var(--pc-hover); }
+.pf-seg.s1 { stroke: var(--pc-c1); } .pf-seg.s2 { stroke: var(--pc-c2); } .pf-seg.s3 { stroke: var(--pc-c3); } .pf-seg.s4 { stroke: var(--pc-c4); }
+.pf-appr { list-style: none; margin: 0; padding: 6px 8px 10px; }
+.pf-appr li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; padding: 10px; border-radius: 9px; }
+.pf-appr li:hover { background: var(--pc-hover); }
+.pf-appr li > div b { display: block; font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-appr li > div small { display: block; font-size: 12.5px; color: var(--pc-text-3); }
+.pf-appr li > .pf-num { padding-top: 2px; white-space: nowrap; }
+.pf-appr-act { margin-top: 8px; }
+.pf-appr-act > div { gap: 6px !important; }
+body.pc .pf-appr-act .btn-link { height: 28px; padding: 0 11px; border-radius: 7px !important; border: 1px solid var(--pc-line) !important; background: var(--pc-panel) !important; color: var(--pc-text) !important; font: 500 12.5px var(--pc-font); cursor: pointer; box-shadow: var(--pc-sh-1) !important; }
+body.pc .pf-appr-act .btn-link:hover { background: var(--pc-hover) !important; }
+.pf-appr-act .muted-text { font-size: 12px !important; }
+.pf-funds { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; }
+.pf a.pf-fund { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; align-items: center; padding: 16px 18px; border-radius: var(--pc-r); background: var(--pc-panel); border: 1px solid var(--pc-line); box-shadow: var(--pc-sh-2); color: var(--pc-text) !important; text-decoration: none !important; transition: border-color .12s; }
+.pf a.pf-fund:hover { border-color: color-mix(in srgb, var(--pc-accent) 40%, var(--pc-line)); }
+.pf-fund .pd-ti { grid-row: span 3; align-self: start; }
+.pf-fund b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-fund strong { font-size: 19px; font-weight: 650; letter-spacing: -.015em; font-variant-numeric: tabular-nums; }
+.pf-fund small { font-size: 12.5px; color: var(--pc-text-3); }
+
+/* ==========================================================================
    Members directory: status tabs, filter panel, table
    ========================================================================== */
 .pm-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
