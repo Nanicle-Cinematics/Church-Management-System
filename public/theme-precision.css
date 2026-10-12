@@ -22,7 +22,8 @@
   --pc-accent: #5b4cff; --pc-accent-h: #4b3cf0; --pc-accent-soft: #efedff; --pc-accent-ink: #4436e0; --pc-on-accent: #fff;
   --pc-ok: #0f8a5f; --pc-ok-soft: #e5f6ee; --pc-warn: #b4610b; --pc-warn-soft: #fdf2e2;
   --pc-bad: #d42f43; --pc-bad-soft: #fdebee; --pc-info: #2563eb; --pc-info-soft: #e8effd;
-  --pc-c1: #5b4cff; --pc-c2: #a99bff; --pc-c3: #f0a33a; --pc-c4: #20b2aa;
+  --pc-c1: #5b4cff; --pc-c2: #14b8a6; --pc-c3: #f59e0b; --pc-c4: #f43f5e;
+  --pc-teal: #0d9488; --pc-teal-soft: #e0f5f2; --pc-gold: #b7791f; --pc-gold-soft: #fdf3dc; --pc-rose: #e11d48; --pc-rose-soft: #fde8ec; --pc-sky: #0284c7; --pc-sky-soft: #e3f2fb;
   --pc-sh-1: 0 1px 2px rgba(20, 20, 40, .05);
   --pc-sh-2: 0 1px 3px rgba(20, 20, 40, .06), 0 1px 2px rgba(20, 20, 40, .04);
   --pc-sh-pop: 0 24px 60px -16px rgba(20, 20, 40, .3), 0 0 0 1px rgba(20, 20, 40, .06);
@@ -36,7 +37,8 @@
   --pc-accent: #7466ff; --pc-accent-h: #8478ff; --pc-accent-soft: #1f1c3d; --pc-accent-ink: #b9b1ff; --pc-on-accent: #fff;
   --pc-ok: #3ccf91; --pc-ok-soft: #0f2a20; --pc-warn: #f2a94a; --pc-warn-soft: #2d2111;
   --pc-bad: #ff6b7d; --pc-bad-soft: #341419; --pc-info: #6ea0ff; --pc-info-soft: #14203a;
-  --pc-c1: #7d70ff; --pc-c2: #4c4396; --pc-c3: #f2b04f; --pc-c4: #3cc8bf;
+  --pc-c1: #7d70ff; --pc-c2: #2dd4bf; --pc-c3: #fbbf24; --pc-c4: #fb7185;
+  --pc-teal: #2dd4bf; --pc-teal-soft: #0f2a27; --pc-gold: #fbbf24; --pc-gold-soft: #2c2310; --pc-rose: #fb7185; --pc-rose-soft: #35151d; --pc-sky: #38bdf8; --pc-sky-soft: #0f2333;
   --pc-sh-1: none; --pc-sh-2: none;
   --pc-sh-pop: 0 24px 60px -12px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .08);
 }
@@ -795,3 +797,99 @@ body.pp-open { overflow: hidden; }
   .pd-card, .card, .pd-kpis { box-shadow: none !important; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+
+
+/* ==========================================================================
+   Colour layer — a little more colour across the app (in the spirit of the
+   brand-led sample): a brand stripe, a coloured dashboard banner, colour-coded
+   navigation and menu tiles, accented key figures and varied avatars.
+   ========================================================================== */
+/* a thin brand stripe across the top of every page */
+.pc-top { box-shadow: inset 0 2px 0 0 transparent; }
+.pc-main::before { content: ""; position: sticky; top: 0; z-index: 31; display: block; height: 3px; margin-bottom: -3px; background: linear-gradient(90deg, #5b4cff, #9a5cff 40%, #ff6ba8 70%, #f59e0b); }
+
+/* sidebar: icons colour-coded by section, active item a soft tint of its own colour */
+.pc-item[href="/"] { --ic: var(--pc-accent); --ic-soft: var(--pc-accent-soft); }
+.pc-item[href="/members"], .pc-item[href="/attendance"], .pc-item[href="/bible-classes"], .pc-item[href="/organizations"] { --ic: var(--pc-sky); --ic-soft: var(--pc-sky-soft); }
+.pc-item[href="/finance"], .pc-item[href="/inventory"] { --ic: var(--pc-teal); --ic-soft: var(--pc-teal-soft); }
+.pc-item[href="/events"], .pc-item[href="/preaching"], .pc-item[href="/communications"] { --ic: var(--pc-gold); --ic-soft: var(--pc-gold-soft); }
+.pc-item[href="/reports"] { --ic: var(--pc-rose); --ic-soft: var(--pc-rose-soft); }
+.pc-item svg { color: var(--ic, var(--pc-text-3)); opacity: .9; }
+.pc-item:hover svg { opacity: 1; }
+.pc-item[aria-current="page"] { background: var(--ic-soft, var(--pc-accent-soft)); color: var(--pc-text); font-weight: 600; }
+.pc-item[aria-current="page"] svg { color: var(--ic, var(--pc-accent)); opacity: 1; }
+.pc-nav-label { display: flex; align-items: center; gap: 6px; }
+.pc-nav-label::before { content: ""; width: 6px; height: 6px; border-radius: 2px; background: var(--lbl, var(--pc-line)); }
+.pc-nav-label:nth-of-type(1) { --lbl: var(--pc-sky); }
+.pc-nav-label:nth-of-type(2) { --lbl: var(--pc-teal); }
+.pc-nav-label:nth-of-type(3) { --lbl: var(--pc-gold); }
+.pc-nav-label:nth-of-type(4) { --lbl: var(--pc-rose); }
+.pc-nav-label:nth-of-type(5) { --lbl: var(--pc-text-3); }
+
+/* "New" menu and command palette: coloured tiles */
+.pc-mi:nth-child(6n+1) .ic { background: var(--pc-accent-soft); color: var(--pc-accent); }
+.pc-mi:nth-child(6n+2) .ic { background: var(--pc-gold-soft); color: var(--pc-gold); }
+.pc-mi:nth-child(6n+3) .ic { background: var(--pc-sky-soft); color: var(--pc-sky); }
+.pc-mi:nth-child(6n+4) .ic { background: var(--pc-teal-soft); color: var(--pc-teal); }
+.pc-mi:nth-child(6n+5) .ic { background: var(--pc-rose-soft); color: var(--pc-rose); }
+.pc-mi:nth-child(6n+6) .ic { background: var(--pc-ok-soft); color: var(--pc-ok); }
+
+/* dashboard: the greeting becomes a banner */
+.pd-head { position: relative; overflow: hidden; align-items: center; padding: 24px 26px; border-radius: 16px; color: #fff;
+  background: radial-gradient(520px 260px at 100% 0%, rgba(255, 107, 168, .55), transparent 60%), radial-gradient(420px 220px at 0% 120%, rgba(245, 158, 11, .35), transparent 60%), linear-gradient(135deg, #3b2fd9 0%, #5b4cff 50%, #8a5cff 100%);
+  box-shadow: 0 18px 40px -22px rgba(60, 40, 200, .65); }
+.pd-head::after { content: ""; position: absolute; right: -40px; bottom: -70px; width: 220px; height: 220px; border-radius: 50%; border: 28px solid rgba(255, 255, 255, .07); pointer-events: none; }
+.pd-head .eyebrow { color: rgba(255, 255, 255, .78) !important; }
+.pd-head h1 { color: #fff; }
+.pd-head p.sub { color: rgba(255, 255, 255, .85); }
+.pd-head .pd-actions { position: relative; z-index: 1; }
+.pd-head .pd-actions .btn.ghost { background: rgba(255, 255, 255, .12) !important; border-color: rgba(255, 255, 255, .28) !important; color: #fff !important; box-shadow: none !important; }
+.pd-head .pd-actions .btn.ghost:hover { background: rgba(255, 255, 255, .2) !important; }
+body.pc .pd .pd-head .pd-actions a.btn:not(.ghost):not(.danger):not(.disabled):not(.quiet):not(.secondary) { background: #fff !important; color: #2d2470 !important; box-shadow: 0 6px 16px -6px rgba(0, 0, 0, .35) !important; }
+body.pc .pd .pd-head .pd-actions a.btn:not(.ghost):not(.danger):not(.disabled):not(.quiet):not(.secondary):hover { background: #f1efff !important; }
+.pd-head .pd-actions svg { color: currentColor; }
+:root[data-theme="dark"] .pd-head { background: radial-gradient(520px 260px at 100% 0%, rgba(255, 107, 168, .3), transparent 60%), linear-gradient(135deg, #241c8a 0%, #3b2fd9 55%, #5b3fc7 100%); }
+
+/* key figures: a coloured strip on each */
+.pd-kpi, .finance-kpi { position: relative; }
+.pd-kpi::before { content: ""; position: absolute; left: 18px; right: 18px; top: 0; height: 3px; border-radius: 0 0 3px 3px; background: var(--k, var(--pc-accent)); }
+.pd-kpi:nth-child(4n+1) { --k: var(--pc-accent); }
+.pd-kpi:nth-child(4n+2) { --k: var(--pc-teal); }
+.pd-kpi:nth-child(4n+3) { --k: var(--pc-gold); }
+.pd-kpi:nth-child(4n+4) { --k: var(--pc-rose); }
+.pd-kpi:nth-child(4n+2) .pd-spark .sl { stroke: var(--pc-teal); } .pd-kpi:nth-child(4n+2) .pd-spark .sa { fill: var(--pc-teal); }
+.pd-kpi:nth-child(4n+3) .pd-spark .sl { stroke: var(--pc-gold); } .pd-kpi:nth-child(4n+3) .pd-spark .sa { fill: var(--pc-gold); }
+.pd-kpi:nth-child(4n+4) .pd-spark .sl { stroke: var(--pc-rose); } .pd-kpi:nth-child(4n+4) .pd-spark .sa { fill: var(--pc-rose); }
+.hero-stat { position: relative; overflow: hidden; }
+.hero-stat::after { content: "" !important; display: block !important; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--k, var(--pc-accent)); }
+.hero-stat:nth-child(5n+2) { --k: var(--pc-ok); } .hero-stat:nth-child(5n+3) { --k: var(--pc-warn); } .hero-stat:nth-child(5n+4) { --k: var(--pc-info); } .hero-stat:nth-child(5n+5) { --k: var(--pc-bad); }
+
+/* card titles: a small coloured mark */
+.pd-ch h2::before, .card-head h2::before, .pm-fh b::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 3px; background: var(--mk, var(--pc-accent)); vertical-align: 1px; }
+.pd-grid > :nth-child(3n+2) .pd-ch h2::before, .pd-stack > :nth-child(2n+2) .pd-ch h2::before { --mk: var(--pc-teal); }
+.pd-grid > :nth-child(3n+3) .pd-ch h2::before { --mk: var(--pc-gold); }
+.pd-stack > :first-child .pd-ch h2::before { --mk: var(--pc-rose); }
+
+/* avatars: a spread of colours instead of one */
+tr:nth-child(6n+1) .m-avatar-fallback { background: var(--pc-accent-soft); color: var(--pc-accent-ink); }
+tr:nth-child(6n+2) .m-avatar-fallback { background: var(--pc-teal-soft); color: var(--pc-teal); }
+tr:nth-child(6n+3) .m-avatar-fallback { background: var(--pc-gold-soft); color: var(--pc-gold); }
+tr:nth-child(6n+4) .m-avatar-fallback { background: var(--pc-rose-soft); color: var(--pc-rose); }
+tr:nth-child(6n+5) .m-avatar-fallback { background: var(--pc-sky-soft); color: var(--pc-sky); }
+tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: var(--pc-ok); }
+.pd-list li:nth-child(5n+2) .pd-av { background: var(--pc-teal-soft); color: var(--pc-teal); }
+.pd-list li:nth-child(5n+3) .pd-av { background: var(--pc-gold-soft); color: var(--pc-gold); }
+.pd-list li:nth-child(5n+4) .pd-av { background: var(--pc-rose-soft); color: var(--pc-rose); }
+.pd-list li:nth-child(5n+5) .pd-av { background: var(--pc-sky-soft); color: var(--pc-sky); }
+
+/* tabs: the active one carries the brand gradient */
+.pm-tabs a[aria-current]::after { background: linear-gradient(90deg, #5b4cff, #ff6ba8); height: 3px; }
+
+/* finance: fund cards and the overview banner-style header get a touch of colour */
+.pf a.pf-fund { border-top: 3px solid var(--k, var(--pc-accent)); }
+.pf a.pf-fund:nth-child(6n+2) { --k: var(--pc-teal); } .pf a.pf-fund:nth-child(6n+3) { --k: var(--pc-gold); } .pf a.pf-fund:nth-child(6n+4) { --k: var(--pc-sky); } .pf a.pf-fund:nth-child(6n+5) { --k: var(--pc-rose); } .pf a.pf-fund:nth-child(6n+6) { --k: var(--pc-ok); }
+.pd-delta.up { background: var(--pc-ok-soft); }
+
+/* the signed-in user's avatar and the workspace logo frame */
+.pc-ws img { box-shadow: 0 0 0 1px var(--pc-line), 0 4px 10px -4px rgba(91, 76, 255, .5); }
+@media print { .pc-main::before { display: none; } .pd-head { background: none !important; color: inherit; box-shadow: none; } .pd-head h1, .pd-head .eyebrow, .pd-head p.sub { color: inherit !important; } }

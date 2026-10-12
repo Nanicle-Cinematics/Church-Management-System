@@ -9,6 +9,12 @@ All notable changes to this project are documented here.
 - New "Precision" look for the signed-in app, stage 1 of 3 (shell and dashboard). A light sidebar with grouped sections, a top bar with breadcrumbs, a "New" menu and a light/dark switch, and a ⌘K / Ctrl K search over pages, actions, members and events. It replaces the Material You theme (`public/theme-material.css` removed; `public/theme-precision.css` and `public/app-theme.js` added). The colour picker is gone; the light/dark choice carries over. Cards, buttons, forms, tables and badges on every page use the new style. The sign-in and landing pages are unchanged for now.
 - The dashboard has four key figures with trend lines, giving by type over 12 weeks or 12 months, what needs your attention, birthdays in the next 7 days (with a Wish shortcut to a one-person SMS for admins), attendance over the last 12 full weeks, upcoming events with the membership mix, and recent activity. Giving now comes from the finance ledger, so it matches the Finance page (it used to count general income records only).
 - Platform operators see the Platform link in the sidebar again.
+- More colour across the app:
+  - A brand stripe along the top of every page, and the dashboard greeting as a gradient banner.
+  - Sidebar icons colour-coded by section, and coloured tiles in the New menu.
+  - Key figures and stat tiles with coloured top strips, and a coloured mark beside each card title.
+  - Varied avatar colours, coloured fund cards, and a wider chart palette (violet, teal, gold, rose).
+  - Styling only (`public/theme-precision.css`).
 - Finance overview, stage 3 of 3:
   - Key figures for the month compared with last month so far, Sunday collections (cash count sheets, counted then verified, with Verify for a second officer), and income by type from the ledger.
   - Recent ledger entries, expenses waiting for approval (Approve/Reject in place), financial checks, fund balance cards, and the tools directory.
