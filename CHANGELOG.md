@@ -9,6 +9,7 @@ All notable changes to this project are documented here.
 - New "Precision" look for the signed-in app, stage 1 of 3 (shell and dashboard). A light sidebar with grouped sections, a top bar with breadcrumbs, a "New" menu and a light/dark switch, and a ⌘K / Ctrl K search over pages, actions, members and events. It replaces the Material You theme (`public/theme-material.css` removed; `public/theme-precision.css` and `public/app-theme.js` added). The colour picker is gone; the light/dark choice carries over. Cards, buttons, forms, tables and badges on every page use the new style. The sign-in and landing pages are unchanged for now.
 - The dashboard has four key figures with trend lines, giving by type over 12 weeks or 12 months, what needs your attention, birthdays in the next 7 days (with a Wish shortcut to a one-person SMS for admins), attendance over the last 12 full weeks, upcoming events with the membership mix, and recent activity. Giving now comes from the finance ledger, so it matches the Finance page (it used to count general income records only).
 - Platform operators see the Platform link in the sidebar again.
+- Phones (900px wide and under) get a floating Liquid Glass tab bar instead of the side menu: Home, Members, Finance, Events and More, with the current section highlighted in its colour. More opens a sheet with the other sections plus Search, Light/dark, Profile and Sign out; a floating New button opens the quick actions. The phone top bar keeps just the page title and search. Computers keep the sidebar.
 - More colour across the app:
   - A brand stripe along the top of every page, and the dashboard greeting as a gradient banner.
   - Sidebar icons colour-coded by section, and coloured tiles in the New menu.
@@ -28,6 +29,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Members on phones: the filter sheet showed open over the list on load; it now stays hidden until Filters is tapped.
 - Member photo upload wrote the file before checking the member belonged to the caller's church (cross-tenant overwrite/delete) and had no CSRF check.
 - Expense approval and journal reversal are now claimed atomically; concurrent requests can no longer pay an expense or reverse an entry twice (`approveAndPayExpense`, `reverseJournal`).
 - Tithes reject non-positive amounts and invalid dates before any row is created; pledge payments use an atomic increment; receipt numbers retry on a clash.
