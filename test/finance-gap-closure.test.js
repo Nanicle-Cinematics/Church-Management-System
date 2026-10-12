@@ -363,3 +363,28 @@ test('every logActivity kind written by the finance routes is listed on the audi
   const missing = [...used].filter((k) => !listed.has(k));
   assert.deepStrictEqual(missing, [], `finance activity kinds missing from the audit page: ${missing.join(', ')}`);
 });
+
+test('finance overview: shows collections, income by type and approvals; actions return only to /finance', async () => {
+  const { client: c, churchId } = await signedInChurch('fin-overview');
+  const { fund, cat } = await seedFundAndCat(churchId);
+  await submitExpense(c, fund, cat, '150', 'Overview fuel');
+  await submitExpense(c, fund, cat, '90', 'Overview paper');
+
+  const page = await c.getHtml('/finance');
+  assert.strictEqual(page.status, 200);
+  for (const text of ['Sunday collections', 'Income by type', 'Waiting for approval', 'Recent transactions', 'Overview fuel']) {
+    assert.match(page.text, new RegExp(text), `overview shows ${text}`);
+  }
+  // The admin recorded both, so they cannot approve them; the two-person rule shows here too.
+  assert.match(page.text, /Awaiting another fund manager/);
+  assert.match(page.text, /name="return_to" value="\/finance"/);
+
+  const [first, second] = await db.expense.findMany({ where: { churchId }, orderBy: { id: 'asc' } });
+  const csrf = csrfOf(page.text);
+  const back = await c.postForm(`/finance/expenses/${first.id}/reject`, { _csrf: csrf, return_to: '/finance' });
+  assert.strictEqual(back.status, 302);
+  assert.strictEqual(back.location, '/finance');
+  const elsewhere = await c.postForm(`/finance/expenses/${second.id}/reject`, { _csrf: csrf, return_to: 'https://evil.example/' });
+  assert.strictEqual(elsewhere.status, 302);
+  assert.strictEqual(elsewhere.location, '/finance/expenses', 'any other return_to falls back to the register');
+});

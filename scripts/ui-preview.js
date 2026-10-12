@@ -453,6 +453,54 @@ async function membersReal(query = {}) {
   return html;
 }
 
+// The REAL finance overview (routes-pg-html/finance.js GET /finance), run
+// against a stub database through the route's own handler and the real
+// ledger helpers.
+async function financeReal() {
+  const handlers = {};
+  const fakeApp = { get: (p, ...fns) => { handlers[`GET ${p}`] = fns[fns.length - 1]; }, post: () => {}, use: () => {} };
+  require('../routes-pg-html/finance').register(fakeApp);
+  const now = new Date();
+  const day = (d) => new Date(now.getFullYear(), now.getMonth(), now.getDate() - d);
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const funds = [['General Fund', 92410, false, 'Treasurer'], ['Building Fund', 61300, true, 'Building committee'], ['Harvest 2026', 181400, true, null], ['Welfare Fund', 14820, true, 'Welfare secretary']]
+    .map(([name, bal, restricted, responsibleOfficer], i) => ({ id: i + 1, name, restricted, responsibleOfficer, openingBalance: bal }));
+  const db = {
+    fund: { findMany: async () => funds, findUnique: async ({ where }) => funds.find((f) => f.id === where.id) },
+    pledge: { aggregate: async () => ({ _sum: { pledgedAmount: 250000, paidAmount: 181400 }, _count: 642 }) },
+    financialPeriod: { findUnique: async () => ({ status: 'OPEN' }) },
+    financeBudget: { findFirst: async () => null },
+    journalEntry: { findMany: async () => [
+      ['Tithe · Nana Yaw Bonsu', 'TITHE', 0, 650, 'INCOME'], ['1st Service offering', 'SERVICE', 1, 1842.5, 'INCOME'], ['2nd Service offering', 'SERVICE', 1, 1607, 'INCOME'],
+      ['Harvest pledge · Akosua Boateng', 'PLEDGE_PAYMENT', 1, 1000, 'INCOME'], ['ECG electricity bill', 'EXPENSE', 2, 1264.8, 'EXPENSE'], ['Bereavement · Sarpong family', 'EXPENSE', 4, 1500, 'EXPENSE'],
+      ['Bank deposit DEP-2026-0041', 'BANK_DEPOSIT', 5, 6100, 'ASSET'], ['Wednesday-born collection', 'DAY_BORN', 6, 386, 'INCOME'],
+    ].map(([memo, sourceType, d, amt, type], i) => ({ id: 100 - i, entryNo: `JE-2026-${String(812 - i).padStart(4, '0')}`, entryDate: day(d), memo, sourceType, status: 'POSTED',
+      lines: [{ debit: type === 'INCOME' ? amt : type === 'EXPENSE' ? amt : amt, credit: 0, account: { accountType: type === 'INCOME' ? 'ASSET' : type === 'EXPENSE' ? 'EXPENSE' : 'ASSET' } }, { debit: 0, credit: amt, account: { accountType: type === 'INCOME' ? 'INCOME' : 'ASSET' } }] })) },
+    cashCountSheet: { findMany: async () => [
+      [1, '1st Service · English', 'Esi Quaye & Kojo Badu', 'COUNTED', 1842.5, 7], [1, '2nd Service · Twi', 'Akua Nyarko & Kwesi Appiah', 'COUNTED', 1607, 7],
+      [1, 'Youth Service', 'Kofi Antwi & Ama Frimpong', 'VERIFIED', 412.2, 9], [8, '1st Service · English', 'Esi Quaye & Kojo Badu', 'VERIFIED', 2104, 7], [8, '2nd Service · Twi', 'Akua Nyarko & Kwesi Appiah', 'VERIFIED', 1796.4, 7],
+    ].map(([d, serviceLabel, countedBy, status, countedAmount, enteredBy], i) => ({ id: i + 1, sheetNo: `CC-2026-${String(88 - i).padStart(4, '0')}`, serviceDate: day(d), serviceLabel, countedBy, status, countedAmount, enteredBy })) },
+    bankDeposit: { groupBy: async () => [{ status: 'PENDING', _count: 1 }, { status: 'DEPOSITED', _count: 1 }] },
+    expense: {
+      findMany: async () => [['Sound equipment repair', 'Repairs', 'Kumi Audio', 2150, 3], ['Generator servicing', 'Repairs & maintenance', 'PowerTech', 1850, 2], ["Children's ministry materials", 'Children', null, 860, 0]]
+        .map(([description, category, paidTo, amount, d], i) => ({ id: i + 1, description, category, paidTo, amount, spentOn: day(d), approvalStatus: 'SUBMITTED', recordedBy: 7 })),
+      aggregate: async () => ({ _count: 3, _sum: { amount: 4860 } }),
+    },
+    financeSetting: { findFirst: async () => null },
+    $queryRaw: async (strings, ...values) => {
+      const sql = strings.join('');
+      if (sql.includes('GROUP BY je.entry_date')) return [['4000', 21700], ['4010', 6200], ['4020', 1150], ['4030', 3000], ['4040', 1200], ['4900', 1600]].map(([code, amount], i) => ({ day: iso(day(i)), code, amount }));
+      if (sql.includes('a.account_type, jl.debit')) return [];
+      if (sql.includes('SELECT jl.debit, jl.credit')) return values.includes('INCOME') ? [{ debit: 0, credit: 34850 }] : [{ debit: 12430, credit: 0 }];
+      return [];
+    },
+  };
+  let html = '';
+  const res = { locals: { db, churchId: 'preview', user: { id: 1, role: 'ADMIN', financeRole: 'FINANCE_ADMIN' } }, page: (opts) => { html = layout({ ...opts, user: USER, churchName: CHURCH }); }, redirect: () => {}, status() { return this; }, send: () => {} };
+  await handlers['GET /finance']({ query: {} }, res);
+  return html;
+}
+
 function memberProfile() {
   const { renderMemberProfile } = require('../lib/member-profile');
   const m = {
@@ -482,7 +530,7 @@ const PAGES = {
   dashboard, dashboardHero, members: membersPage, form: formPage,
   financeIndex, financeReceipt, attendancePage, attendanceEmpty,
   platformPortal, login: loginPage, landing, dashboardReal, memberProfile,
-  membersReal, membersFiltered: () => membersReal({ status: ['MEMBER'], org: ['2'], day_born: ['Sunday'] }),
+  financeReal, membersReal, membersFiltered: () => membersReal({ status: ['MEMBER'], org: ['2'], day_born: ['Sunday'] }),
 };
 
 async function main() {

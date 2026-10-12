@@ -243,7 +243,7 @@ function register(app) {
   app.post('/finance/cash-counts/:id(\\d+)/verify', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const id = Number(req.params.id);
-    const back = `/finance/cash-counts/${id}`;
+    const back = (req.body && req.body.return_to) === '/finance' ? '/finance' : `/finance/cash-counts/${id}`;
     const sheet = await db.cashCountSheet.findFirst({ where: { id } });
     if (!sheet) return res.status(404).send('Not found');
     if (sheet.status !== 'COUNTED') { flash(req, 'Only a counted sheet can be verified.'); return res.redirect(back); }
@@ -252,7 +252,7 @@ function register(app) {
       where: { id, status: 'COUNTED' }, data: { status: 'VERIFIED', verifiedBy: res.locals.user.id, verifiedAt: new Date() },
     });
     if (!claim.count) { flash(req, 'This sheet was just updated by someone else.'); return res.redirect(back); }
-    await logActivity(db, 'cash_count_verified', `Cash count ${sheet.sheetNo} verified (${fmtMoney(sheet.countedAmount)})`, back, res.locals.user.id);
+    await logActivity(db, 'cash_count_verified', `Cash count ${sheet.sheetNo} verified (${fmtMoney(sheet.countedAmount)})`, `/finance/cash-counts/${id}`, res.locals.user.id);
     flash(req, 'Cash count verified.', 'success');
     res.redirect(back);
   }));
