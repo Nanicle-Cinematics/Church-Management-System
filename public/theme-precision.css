@@ -999,3 +999,30 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
 @media (max-width: 560px) {
   .op-who { display: none; }
 }
+
+/* ==========================================================================
+   Phones: the top bar as a floating clear-glass capsule, matching the tab bar
+   ========================================================================== */
+@media (max-width: 900px) {
+  .pc-top {
+    position: sticky; top: calc(8px + env(safe-area-inset-top)); z-index: 30; isolation: isolate;
+    height: 50px; margin: 8px 12px 0; padding: 0 6px 0 18px !important; border: 0; border-radius: 25px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .18), rgba(255, 255, 255, .05));
+    -webkit-backdrop-filter: blur(4px) saturate(1.9) brightness(1.1) contrast(1.04) !important; backdrop-filter: blur(4px) saturate(1.9) brightness(1.1) contrast(1.04) !important;
+    box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .5), inset 0 0 16px rgba(255, 255, 255, .28), inset 0 -10px 18px -14px rgba(255, 255, 255, .7), 0 12px 32px -12px rgba(20, 20, 60, .28), 0 1px 3px rgba(20, 20, 60, .1);
+  }
+  .pc-top::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; background: radial-gradient(70% 70% at 18% 0%, rgba(255, 255, 255, .5), transparent 62%), radial-gradient(40% 60% at 96% 110%, rgba(255, 255, 255, .25), transparent 60%); }
+  .pc-top::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; padding: 1.25px; background: linear-gradient(170deg, rgba(255, 255, 255, .95), rgba(255, 255, 255, .25) 30%, rgba(255, 255, 255, .06) 55%, rgba(255, 255, 255, .55) 85%, rgba(255, 255, 255, .9)); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+  .pc-top .pc-crumbs b, .op-brand { font-weight: 600; text-shadow: 0 0 6px rgba(255, 255, 255, .9), 0 0 2px rgba(255, 255, 255, .8); }
+  .pc-top .pc-ib svg { filter: drop-shadow(0 0 3px rgba(255, 255, 255, .85)); }
+  body.pc .pc-top button.pc-ib, body.pc .pc-top .pc-ib { border-radius: 50% !important; }
+  .pc-main::before { display: none; }
+  :root[data-theme="dark"] .pc-top { background: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .03)); -webkit-backdrop-filter: blur(4px) saturate(1.7) brightness(.92) !important; backdrop-filter: blur(4px) saturate(1.7) brightness(.92) !important; box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .22), inset 0 0 16px rgba(255, 255, 255, .07), inset 0 -10px 18px -14px rgba(255, 255, 255, .3), 0 14px 34px -12px rgba(0, 0, 0, .7); }
+  :root[data-theme="dark"] .pc-top::before { background: radial-gradient(70% 70% at 18% 0%, rgba(255, 255, 255, .16), transparent 62%); }
+  :root[data-theme="dark"] .pc-top::after { background: linear-gradient(170deg, rgba(255, 255, 255, .6), rgba(255, 255, 255, .12) 30%, rgba(255, 255, 255, .03) 55%, rgba(255, 255, 255, .3) 85%, rgba(255, 255, 255, .55)); }
+  :root[data-theme="dark"] .pc-top .pc-crumbs b, :root[data-theme="dark"] .op-brand { text-shadow: 0 0 6px rgba(0, 0, 0, .85), 0 0 2px rgba(0, 0, 0, .7); }
+  :root[data-theme="dark"] .pc-top .pc-ib svg { filter: drop-shadow(0 0 3px rgba(0, 0, 0, .8)); }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (max-width: 900px) { .pc-top { background: color-mix(in srgb, var(--pc-panel) 94%, transparent); } }
+}
