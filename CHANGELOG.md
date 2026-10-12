@@ -29,6 +29,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Phones: the dashboard greeting buttons no longer squeeze their labels onto two lines (they wrap to a second row instead), and the Settings logo upload and the member profile no longer push the page wider than the screen on small phones.
 - Members on phones: the Filters button was cut off at the right edge (search now gets its own row, with Export and Filters side by side below it), and long names and phone numbers ran out of the member card instead of trimming with an ellipsis.
 - Members on phones: the filter sheet showed open over the list on load; it now stays hidden until Filters is tapped.
 - Member photo upload wrote the file before checking the member belonged to the caller's church (cross-tenant overwrite/delete) and had no CSRF check.

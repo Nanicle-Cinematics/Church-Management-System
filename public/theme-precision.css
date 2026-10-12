@@ -329,7 +329,7 @@ svg.chart text { fill: var(--pc-text-3) !important; font-size: 11px; font-family
 .profile-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .profile-actions form { margin: 0; }
 .profile-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-.profile-main, .profile-side { display: grid; gap: 16px; }
+.profile-main, .profile-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .profile-section, .side-card, .edit-panel { background: var(--pc-panel); border: 1px solid var(--pc-line); border-radius: var(--pc-r); box-shadow: var(--pc-sh-2); }
 .profile-section { padding: 18px 20px; }
 .profile-section h2 { margin: 0 0 12px; font: 600 14.5px/1.4 var(--pc-font); }
@@ -351,7 +351,7 @@ svg.chart text { fill: var(--pc-text-3) !important; font-size: 11px; font-family
 .side-card p { margin: 0 0 6px; }
 .side-card .e-name { font: 600 15px/1.3 var(--pc-font); }
 .side-card.emergency { background: var(--pc-warn-soft); border-color: color-mix(in srgb, var(--pc-warn) 22%, transparent); }
-.side-card .photo-form { display: grid; gap: 8px; margin-bottom: 8px; }
+.side-card .photo-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-bottom: 8px; }
 .side-card, .side-card form { min-width: 0; }
 .side-card input[type="file"] { width: 100%; max-width: 100%; min-height: 0; border: 0 !important; box-shadow: none !important; background: none !important; }
 .side-card .photo-form button { width: 100%; }
@@ -738,6 +738,10 @@ body.pp-open { overflow: hidden; }
   .btn.pm-fbtn { display: inline-flex !important; }
   .pm-toolbar .search-field { flex: 1 1 auto; }
 }
+@media (max-width: 620px) {
+  .church-logo-settings { grid-template-columns: minmax(0, 1fr); }
+  .church-logo-form input[type="file"] { width: 100%; min-width: 0; }
+}
 @media (max-width: 560px) {
   .pm-toolbar { flex-wrap: wrap; }
   .pm-toolbar .search-field { flex: 1 1 100%; min-width: 0; }
@@ -754,7 +758,7 @@ body.pp-open { overflow: hidden; }
 /* The verse is a nicety; on short screens it would push the profile link out of reach. */
 @media (max-height: 960px) and (min-width: 901px) { .pc-verse { display: none; } }
 @media (max-width: 1180px) { .pd-3 { grid-template-columns: 1fr 1fr; } .pd-3 > :last-child { grid-column: 1 / -1; } }
-@media (max-width: 1100px) { .profile-grid, .finance-dashboard-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .profile-grid, .finance-dashboard-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 1020px) {
   .pd-21 { grid-template-columns: 1fr; }
   .pd-kpis { grid-template-columns: 1fr 1fr; }
@@ -793,7 +797,7 @@ body.pp-open { overflow: hidden; }
   .pd-kpi-v { font-size: 21px; }
   .pd-spark { display: none; }
   .pd-actions { width: 100%; }
-  .pd-actions .btn { flex: 1; }
+  .pd-actions .btn { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
   .pd-callout { flex-wrap: wrap; }
   .pc-menu { position: fixed; left: 12px; right: 12px; top: 60px; width: auto; }
 }
