@@ -11,6 +11,7 @@
 // integration — see communications module's header).
 
 const asyncHandler = require('../lib/async-handler');
+const { loginLabel } = require('../lib/phone');
 const { esc, looksLikeImage } = require('../lib/format');
 const { pageHero, statsRow } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
@@ -93,6 +94,7 @@ function register(app) {
         <dl class="stats">
           <dt>Name</dt><dd>${esc(user.displayName || user.username)}</dd>
           <dt>Email</dt><dd>${esc(user.email || '—')}</dd>
+          ${user.phone ? `<dt>Phone</dt><dd>${esc(user.phone)}</dd>` : ''}
           <dt>Role</dt><dd>${esc(user.role)}</dd>
         </dl>
       </section>
@@ -197,7 +199,7 @@ function register(app) {
   }));
 
   app.post('/settings/mfa/start', requireAuth, asyncHandler(async (req, res) => {
-    const enrollment = createTotpSecret(res.locals.user.email);
+    const enrollment = createTotpSecret(loginLabel(res.locals.user));
     req.session.mfaSetupSecret = enrollment.secret;
     req.session.mfaSetupUri = enrollment.uri;
     res.redirect('/settings/mfa/setup');
@@ -234,7 +236,7 @@ function register(app) {
     delete req.session.mfaSetupUri;
     await logSecurityEvent(res.locals.db, req, {
       event: 'auth.mfa_enabled',
-      subject: res.locals.user.email,
+      subject: loginLabel(res.locals.user),
       actorId: res.locals.user.id,
     });
     const body = `
@@ -262,7 +264,7 @@ function register(app) {
     });
     await logSecurityEvent(res.locals.db, req, {
       event: 'auth.mfa_disabled',
-      subject: user.email,
+      subject: loginLabel(user),
       actorId: user.id,
     });
     flash(req, 'Two-factor authentication disabled.', 'success');

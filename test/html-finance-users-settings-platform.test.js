@@ -64,6 +64,9 @@ function htmlClient() {
     async postForm(p, form) {
       const res = await fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) }, body: new URLSearchParams(form).toString(), redirect: 'manual' });
       remember(res);
+      // Read to the end: the session (and any flash message) is saved before
+      // the response finishes, and the next request must see it.
+      await res.text();
       return { status: res.status, location: res.headers.get('location') };
     },
   };

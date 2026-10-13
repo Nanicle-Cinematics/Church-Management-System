@@ -851,6 +851,8 @@ model User {
   church            Church      @relation(fields: [churchId], references: [id])
   username          String
   email             String?     @unique
+  // Alternative sign-in for staff without an email. Stored as +<country><number>.
+  phone             String?     @unique
   emailVerifiedAt   DateTime?   @map("email_verified_at")
   passwordHash      String      @map("password_hash")
   displayName       String?     @map("display_name")

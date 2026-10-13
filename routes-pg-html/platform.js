@@ -272,7 +272,7 @@ async function renderChurchDetail(req, res) {
       where: { churchId: id, deletedAt: null },
       orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
       take: 50,
-      select: { id: true, username: true, email: true, displayName: true, role: true, financeRole: true, createdAt: true, totpEnabled: true },
+      select: { id: true, username: true, email: true, phone: true, displayName: true, role: true, financeRole: true, createdAt: true, totpEnabled: true },
     }),
     rawDb.securityAuditLog.findMany({ where: { churchId: id }, orderBy: { occurredAt: 'desc' }, take: 12 }),
     rawDb.activityLog.findMany({ where: { churchId: id }, orderBy: { occurredAt: 'desc' }, take: 10 }),
@@ -283,7 +283,7 @@ async function renderChurchDetail(req, res) {
 
   const userRows = users.map((u) => [
     `<strong>${esc(u.displayName || u.username)}</strong><small>${esc(u.username)}</small>`,
-    esc(u.email || '—'),
+    [u.email, u.phone].filter(Boolean).map(esc).join('<br>') || '—',
     `<span class="pill">${esc(u.role)}</span>`,
     esc(u.financeRole),
     u.totpEnabled ? '<span class="pill pill-fulfilled">2FA</span>' : '<span class="muted-text">—</span>',
@@ -349,7 +349,7 @@ async function renderChurchDetail(req, res) {
     </div>
     ${listCard({
       title: 'Users and roles', count: users.length, countLabel: 'users',
-      inner: userRows.length ? table(['Name', 'Email', 'Role', 'Finance', 'Security', 'Created'], userRows, { keyCols: 2 }) : '<p class="muted-text">No active users.</p>',
+      inner: userRows.length ? table(['Name', 'Signs in with', 'Role', 'Finance', 'Security', 'Created'], userRows, { keyCols: 2 }) : '<p class="muted-text">No active users.</p>',
     })}
     <div class="platform-two-col">
       ${listCard({
@@ -453,10 +453,10 @@ function register(app) {
       await logPlatformEvent(req, { operator: res.locals.operator, event: events[action], subject: `${church.name} (${church.slug}): ${subject}`, churchId: church.id });
       const messages = {
         suspend: 'Church access suspended.', reactivate: 'Church access reactivated.',
-        delete: `Church deleted. Its data remains recoverable for 30 days, and its ${released} login email${released === 1 ? ' is' : 's are'} free to use again.`,
+        delete: `Church deleted. Its data remains recoverable for 30 days, and its login emails and phone numbers (${released}) are free to use again.`,
         restore: reclaimed && reclaimed.taken.length
-          ? `Church restored. These login emails are now used by other accounts, so those users need a new email before they can sign in: ${reclaimed.taken.join(', ')}.`
-          : 'Church restored, with its login emails.',
+          ? `Church restored. These logins are now used by other accounts, so those users need a new email or phone before they can sign in: ${reclaimed.taken.join(', ')}.`
+          : 'Church restored, with its logins.',
       };
       flash(req, messages[action], reclaimed && reclaimed.taken.length ? 'error' : 'success');
     } catch (e) {

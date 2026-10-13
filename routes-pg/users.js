@@ -1,4 +1,5 @@
 'use strict';
+const { normalizePhone, loginLabel } = require('../lib/phone');
 // Phase 6, module 1: Postgres/Prisma port of the /users section of
 // server.js. Same coexistence approach as every prior phase.
 //
@@ -32,7 +33,7 @@ function requireAuth(req, res, next) {
 
 function shapeUser(u) {
   return {
-    id: u.id, username: u.username, email: u.email, displayName: u.displayName,
+    id: u.id, username: u.username, email: u.email, phone: u.phone || null, displayName: u.displayName,
     role: u.role, financeRole: u.financeRole, totpEnabled: u.totpEnabled, createdAt: u.createdAt,
   };
 }
@@ -47,7 +48,12 @@ function register(app) {
     const db = res.locals.db;
     const b = req.body || {};
     if (!b.username || !String(b.username).trim()) return res.status(400).json({ error: 'username is required' });
-    if (typeof b.email !== 'string' || !/^\S+@\S+\.\S+$/.test(b.email)) return res.status(400).json({ error: 'a valid email is required' });
+    const email = typeof b.email === 'string' ? b.email.toLowerCase().trim() : '';
+    const phoneInput = typeof b.phone === 'string' ? b.phone.trim() : '';
+    const phone = phoneInput ? normalizePhone(phoneInput) : null;
+    if (!email && !phoneInput) return res.status(400).json({ error: 'an email or a phone number is required' });
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'a valid email is required' });
+    if (phoneInput && !phone) return res.status(400).json({ error: 'a valid phone number is required' });
     if (!b.password || String(b.password).length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
     const role = ROLES.includes(b.role) ? b.role : 'VIEWER';
     const financeRole = FINANCE_ROLES.includes(b.financeRole) ? b.financeRole : 'NONE';
@@ -56,8 +62,11 @@ function register(app) {
     // see lib/provision.js), so this check must use the RAW client, not the
     // church-scoped one, to catch a collision with a DIFFERENT church's user.
     const { db: rawDb } = require('../lib/tenant');
-    const existing = await rawDb.user.findUnique({ where: { email: b.email.toLowerCase().trim() } });
-    if (existing) return res.status(409).json({ error: existing.churchId === res.locals.churchId ? 'That email is already a user in your church' : 'That email is already used by an account in another church' });
+    for (const [field, value, noun] of [['email', email, 'email'], ['phone', phone, 'phone number']]) {
+      if (!value) continue;
+      const existing = await rawDb.user.findUnique({ where: { [field]: value } });
+      if (existing) return res.status(409).json({ error: existing.churchId === res.locals.churchId ? `That ${noun} is already a user in your church` : `That ${noun} is already used by an account in another church` });
+    }
 
     // Same seat limit as the HTML form. Enforcing on only one of the two
     // surfaces would leave the API as a way around the plan.
@@ -69,9 +78,9 @@ function register(app) {
     const passwordHash = await bcrypt.hash(String(b.password), 10);
     try {
       const user = await db.user.create({
-        data: { username: String(b.username).trim(), email: b.email.toLowerCase().trim(), passwordHash, displayName: b.displayName || null, role, financeRole },
+        data: { username: String(b.username).trim(), email: email || null, phone, passwordHash, displayName: b.displayName || null, role, financeRole },
       });
-      await logSecurityEvent(db, req, { event: 'user.created', subject: `${user.email} (${role}/${financeRole})`, actorId: res.locals.user.id });
+      await logSecurityEvent(db, req, { event: 'user.created', subject: `${loginLabel(user)} (${role}/${financeRole})`, actorId: res.locals.user.id });
       res.status(201).json(shapeUser(user));
     } catch (e) {
       if (e.code === 'P2002') return res.status(409).json({ error: 'That username is already taken in this church' });
@@ -96,7 +105,7 @@ function register(app) {
     }
     try {
       const user = await db.user.update({ where: { id }, data: { role, financeRole } });
-      await logSecurityEvent(db, req, { event: 'user.role_changed', subject: `${user.email} -> ${role}/${financeRole}`, actorId: res.locals.user.id });
+      await logSecurityEvent(db, req, { event: 'user.role_changed', subject: `${loginLabel(user)} -> ${role}/${financeRole}`, actorId: res.locals.user.id });
       res.json(shapeUser(user));
     } catch (e) {
       if (e.code === 'P2025') return res.status(404).json({ error: 'Not found' });
@@ -114,7 +123,7 @@ function register(app) {
       // usual reason to reset a password is that the old one may be known.
       const target = await res.locals.db.user.update({ where: { id }, data: { passwordHash, failedAttempts: 0, lockedUntil: null } });
       if (id !== res.locals.user.id) await revokeUserSessions(id);
-      await logSecurityEvent(res.locals.db, req, { event: 'user.password_reset_by_admin', subject: target.email, actorId: res.locals.user.id });
+      await logSecurityEvent(res.locals.db, req, { event: 'user.password_reset_by_admin', subject: loginLabel(target), actorId: res.locals.user.id });
       res.status(204).end();
     } catch (e) {
       if (e.code === 'P2025') return res.status(404).json({ error: 'Not found' });
@@ -125,7 +134,7 @@ function register(app) {
   app.post('/api/users/:id/disable-2fa', requireOwner, asyncHandler(async (req, res) => {
     try {
       const target = await res.locals.db.user.update({ where: { id: Number(req.params.id) }, data: { totpSecret: null, totpEnabled: false, totpRecoveryCodes: null } });
-      await logSecurityEvent(res.locals.db, req, { event: 'user.mfa_disabled_by_admin', subject: target.email, actorId: res.locals.user.id });
+      await logSecurityEvent(res.locals.db, req, { event: 'user.mfa_disabled_by_admin', subject: loginLabel(target), actorId: res.locals.user.id });
       res.status(204).end();
     } catch (e) {
       if (e.code === 'P2025') return res.status(404).json({ error: 'Not found' });
@@ -141,8 +150,8 @@ function register(app) {
     // Soft delete frees the login email (it is globally unique) so the person
     // can be re-invited; the original stays embedded for the audit trail.
     if (!target.deletedAt) {
-      await res.locals.db.user.update({ where: { id }, data: { deletedAt: new Date(), email: `deleted+${id}+${target.email}` } });
-      await logSecurityEvent(res.locals.db, req, { event: 'user.deleted', subject: target.email, actorId: res.locals.user.id });
+      await res.locals.db.user.update({ where: { id }, data: { deletedAt: new Date(), email: target.email ? `deleted+${id}+${target.email}` : null, phone: target.phone ? `deleted+${id}+${target.phone}` : null } });
+      await logSecurityEvent(res.locals.db, req, { event: 'user.deleted', subject: loginLabel(target), actorId: res.locals.user.id });
     }
     res.status(204).end();
   }));
