@@ -53,6 +53,12 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).send('Forbidden');
 }
+// Editors can add and edit members; archiving, export and messaging stay
+// with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).send('Forbidden');
+}
 
 const MEMBERSHIP_STATUSES = ['VISITOR', 'REGULAR', 'MEMBER', 'INACTIVE', 'TRANSFERRED', 'DECEASED', 'OTHER'];
 const MEMBER_STATUS_LABELS = { VISITOR: 'Visitor', REGULAR: 'Regular', MEMBER: 'Member', INACTIVE: 'Inactive', TRANSFERRED: 'Transferred', DECEASED: 'Deceased', OTHER: 'Other' };
@@ -237,6 +243,7 @@ function register(app) {
     const db = res.locals.db;
     const user = res.locals.user;
     const isAdmin = user.role === 'ADMIN';
+    const canEdit = isAdmin || user.role === 'EDITOR';
     const canMoney = isAdmin || (user.financeRole && user.financeRole !== 'NONE');
     const filters = memberFilters(req.query);
     const { q, statuses, orgIds, classIds, daysBorn } = filters;
@@ -322,8 +329,8 @@ function register(app) {
       const sub = [r.externalId, r.mobilePhone].filter(Boolean).map(esc).join(' · ') || 'No phone';
       const actions = `<div class="row-actions">
           <a class="icon-btn view" href="/members/${r.id}" title="View" aria-label="View ${esc(r.firstName)}">${ICON_EYE}</a>
-          ${isAdmin ? `<a class="icon-btn edit" href="/members/${r.id}#edit" title="Edit" aria-label="Edit">${ICON_PENCIL}</a>
-          <form method="post" action="/members/${r.id}/delete" onsubmit="return confirm('Archive this member? They will be hidden but not permanently deleted.')">
+          ${canEdit ? `<a class="icon-btn edit" href="/members/${r.id}#edit" title="Edit" aria-label="Edit">${ICON_PENCIL}</a>` : ''}
+          ${isAdmin ? `<form method="post" action="/members/${r.id}/delete" onsubmit="return confirm('Archive this member? They will be hidden but not permanently deleted.')">
             <button class="icon-btn del" type="submit" title="Archive" aria-label="Archive">${ICON_TRASH}</button>
           </form>` : ''}
         </div>`;
@@ -355,13 +362,13 @@ function register(app) {
         : `<div class="empty-state">
           <h3>${filtered ? 'No one matches these filters' : 'No members yet'}</h3>
           <p>${filtered ? 'Try removing a filter, or search by phone number.' : 'Add your first member and the directory will start filling up.'}</p>
-          ${filtered ? '<a class="btn ghost" href="/members">Clear all filters</a>' : (isAdmin ? '<a class="btn" href="/members/new">Add member</a>' : '')}
+          ${filtered ? '<a class="btn ghost" href="/members">Clear all filters</a>' : (canEdit ? '<a class="btn" href="/members/new">Add member</a>' : '')}
         </div>`}
       </section>`;
 
     const head = `<header class="pm-head">
         <div><h1>Members</h1><p class="subtitle">${active.toLocaleString()} active people${classes.length ? ` across ${classes.length} Bible class${classes.length === 1 ? '' : 'es'}` : ''}${orgs.length ? ` and ${orgs.length} organisation${orgs.length === 1 ? '' : 's'}` : ''}.</p></div>
-        <div class="pm-actions"><a class="btn ghost" href="/bible-classes">${icon('book')} Bible classes</a>${isAdmin ? `<a class="btn" href="/members/new">${icon('plus')} Add member</a>` : ''}</div>
+        <div class="pm-actions"><a class="btn ghost" href="/bible-classes">${icon('book')} Bible classes</a>${canEdit ? `<a class="btn" href="/members/new">${icon('plus')} Add member</a>` : ''}</div>
       </header>`;
     const body = `${head}${tabs}
       <form class="pm-layout" method="get" action="/members" data-live-search role="search">
@@ -481,11 +488,11 @@ function register(app) {
     res.page({ title: 'Members', active: '/members', noHeader: true, body });
   }));
 
-  app.get('/members/new', requireAdmin, asyncHandler(async (req, res) => {
+  app.get('/members/new', requireEditor, asyncHandler(async (req, res) => {
     res.page({ title: 'New member', active: '/members', noHeader: true, body: `${pageHero('New member', '')}${await memberForm(res.locals.db, {}, [], '/members')}` });
   }));
 
-  app.post('/members', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/members', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const b = req.body || {};
     const err = memberErrors(b);
@@ -530,6 +537,7 @@ function register(app) {
     const db = res.locals.db;
     const user = res.locals.user;
     const isAdmin = user.role === 'ADMIN';
+    const canEdit = isAdmin || user.role === 'EDITOR';
     const canMoney = isAdmin || (user.financeRole && user.financeRole !== 'NONE');
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id < 1) return res.status(404).send('Member not found.');
@@ -573,7 +581,7 @@ function register(app) {
       <div class="pp-actions">
         <a class="btn" href="/members/${m.id}">Open full profile</a>
         ${m.mobilePhone ? `<a class="btn ghost" href="tel:${esc(m.mobilePhone)}">${icon('phone')} Call</a>` : ''}
-        ${isAdmin ? `<a class="btn ghost" href="/communications/broadcast?member_id=${m.id}">${icon('message')} SMS</a><a class="btn ghost" href="/members/${m.id}#edit">Edit</a>` : ''}
+        ${isAdmin ? `<a class="btn ghost" href="/communications/broadcast?member_id=${m.id}">${icon('message')} SMS</a>` : ''}${canEdit ? `<a class="btn ghost" href="/members/${m.id}#edit">Edit</a>` : ''}
       </div>
       <div class="pp-trio">
         ${giving !== null ? `<div><small>Giving this year</small><b>${giving ? esc(`GH₵ ${Math.round(giving).toLocaleString('en-GH')}`) : '—'}</b></div>` : ''}
@@ -594,6 +602,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
     const id = Number(req.params.id);
     const m = await db.member.findFirst({ where: { id, deletedAt: null }, include: { bibleClass: { select: { name: true } } } });
     if (!m) return res.status(404).send('Not found');
@@ -616,15 +625,15 @@ function register(app) {
           <button class="link" type="submit">Remove photo</button>
         </form>` : ''}`;
     const body = renderMemberProfile({
-      m, orgs: memberOrgsNamed, ministries, sacraments, attendance, isAdmin,
+      m, orgs: memberOrgsNamed, ministries, sacraments, attendance, isAdmin, canEdit,
       akanName: m.dayBorn ? (AKAN_NAMES[m.dayBorn] || '') : '',
       photoControlsHtml,
-      editFormHtml: isAdmin ? await memberForm(db, m, memberOrgIds, `/members/${id}`) : '',
+      editFormHtml: canEdit ? await memberForm(db, m, memberOrgIds, `/members/${id}`) : '',
     });
     res.page({ title: `${m.firstName} ${m.lastName}`, active: '/members', noHeader: true, body });
   }));
 
-  app.post('/members/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/members/:id', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const id = Number(req.params.id);
     const b = req.body || {};
@@ -657,7 +666,7 @@ function register(app) {
     res.redirect('/members');
   }));
 
-  app.post('/members/:id/photo', requireAdmin, photoUpload.single('photo'), asyncHandler(async (req, res) => {
+  app.post('/members/:id/photo', requireEditor, photoUpload.single('photo'), asyncHandler(async (req, res) => {
     // Multipart bodies skip the global CSRF middleware (the body isn't parsed
     // yet when it runs), so the token is checked here, as /settings/logo does.
     if (!csrfValid(req)) return res.status(403).send('Security check failed. Refresh the page and try again.');
@@ -687,7 +696,7 @@ function register(app) {
     res.redirect(`/members/${id}`);
   }));
 
-  app.post('/members/:id/photo/delete', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/members/:id/photo/delete', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const id = Number(req.params.id);
     const m = await db.member.findFirst({ where: { id }, select: { photoFilename: true } });

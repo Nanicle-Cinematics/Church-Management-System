@@ -57,7 +57,7 @@ function register(app) {
     ]);
     const body = `
       ${pageHero('Users & Roles', 'Admin-only access control for staff and ministry administrators.')}
-      <p class="muted-text">Any administrator can set a user's access level: <strong>Admin</strong> = full read &amp; write; <strong>Viewer</strong> = read-only.</p>
+      <p class="muted-text">Any administrator can set a user's access level: <strong>Admin</strong> = everything, including users, settings, deleting and sending messages; <strong>Editor</strong> = add and edit members, attendance, events, classes, organizations, inventory, the preaching plan and announcements; <strong>Viewer</strong> = read-only.</p>
       <p class="muted-text">Finance roles are separate: <strong>Cashiers</strong> record income/expenses, <strong>Treasurers</strong> record and review accounting, <strong>Auditors</strong> review accounting only, and <strong>Finance admins</strong> can do both.</p>
       <div class="page-actions"><a class="btn primary" href="/users/new">＋ New user</a></div>
       ${table(['Username', 'Display name', 'Role', 'Finance role', '2FA', 'Created', 'Actions'], rows)}`;
@@ -73,10 +73,10 @@ function register(app) {
         <label>Password<input type="password" name="password" required minlength="8"></label>
         <label>Role<select name="role">
           <option value="ADMIN">admin (full access)</option>
-          <option value="EDITOR">editor (currently read-only, same as viewer)</option>
+          <option value="EDITOR">editor (add and edit)</option>
           <option value="VIEWER" selected>viewer (read-only)</option>
         </select>
-        <span class="hint">Admins manage everything incl. users &amp; settings. Editor and Viewer are both read-only today; edit rights beyond that come from the Finance role below.</span></label>
+        <span class="hint">Admins manage everything, including users and settings. Editors add and edit records but cannot delete, export or send messages. Viewers read only. Money is controlled by the Finance role below.</span></label>
         <label>Finance role<select name="financeRole">
           ${Object.entries(FINANCE_ROLE_LABELS).map(([v, l]) => `<option value="${v}"${v === 'NONE' ? ' selected' : ''}>${esc(l)}</option>`).join('')}
         </select>

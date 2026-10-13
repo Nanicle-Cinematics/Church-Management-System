@@ -17,6 +17,12 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).json({ error: 'forbidden' });
 }
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).json({ error: 'forbidden' });
+}
 
 function requireAuth(req, res, next) {
   if (!res.locals.user) return res.status(401).json({ error: 'not logged in' });
@@ -87,7 +93,7 @@ function register(app) {
     res.json(shapeService(ev));
   }));
 
-  app.post('/api/attendance', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/attendance', requireEditor, asyncHandler(async (req, res) => {
     const v = parseServiceBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
       return res.status(400).json({ error: 'title and startsAt are required' });
@@ -98,7 +104,7 @@ function register(app) {
     res.status(201).json(shapeService(ev));
   }));
 
-  app.put('/api/attendance/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.put('/api/attendance/:id', requireEditor, asyncHandler(async (req, res) => {
     const v = parseServiceBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
       return res.status(400).json({ error: 'title and startsAt are required' });

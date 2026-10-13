@@ -31,6 +31,12 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).json({ error: 'forbidden' });
 }
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).json({ error: 'forbidden' });
+}
 
 function requireAuth(req, res, next) {
   if (!res.locals.user) return res.status(401).json({ error: 'not logged in' });
@@ -161,7 +167,7 @@ function register(app) {
     res.json({ total, page, pages: Math.max(1, Math.ceil(total / MEMBERS_PER_PAGE)), members: rows.map(publicMember) });
   }));
 
-  app.post('/api/members', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/members', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const b = req.body || {};
     const err = memberErrors(b);
@@ -205,7 +211,7 @@ function register(app) {
     });
   }));
 
-  app.put('/api/members/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.put('/api/members/:id', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const id = Number(req.params.id);
     const b = req.body || {};

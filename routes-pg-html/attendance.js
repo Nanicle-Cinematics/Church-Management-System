@@ -20,6 +20,12 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).send('Forbidden');
 }
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).send('Forbidden');
+}
 
 function toIntOrNull(v) {
   if (v === undefined || v === null || String(v).trim() === '') return null;
@@ -106,6 +112,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
 
     const services = await db.event.findMany({
       where: { eventType: 'SERVICE' },
@@ -132,7 +139,7 @@ function register(app) {
       { cls: 'blue', icon: icon('ledger'), value: recorded.toLocaleString(), label: 'Counts recorded' },
       { cls: 'purple', icon: icon('members'), value: total.toLocaleString(), label: 'Total attendance' },
       { cls: change >= 0 ? 'green' : 'orange', icon: icon('delta'), value: previous ? `${change >= 0 ? '+' : ''}${change}` : '—', label: 'Last service change' },
-    ], isAdmin ? '<a class="btn primary" href="/attendance/new">＋ Add Service</a>' : '');
+    ], canEdit ? '<a class="btn primary" href="/attendance/new">＋ Add Service</a>' : '');
 
     const trendCard = `<div class="card">
       <div class="card-head"><h2>Attendance trend</h2><span class="meta">Last ${trend.length} services</span></div>
@@ -145,26 +152,26 @@ function register(app) {
           ['When', 'Title', 'Men', 'Women', 'Children', 'Total', 'Actions'],
           services.map((s) => [
             esc(isoLocal(s.startsAt).replace('T', ' ')),
-            isAdmin ? `<a href="/attendance/${s.id}/edit">${esc(s.title)}</a>` : esc(s.title),
+            canEdit ? `<a href="/attendance/${s.id}/edit">${esc(s.title)}</a>` : esc(s.title),
             cell(s.attendanceMen), cell(s.attendanceWomen), cell(s.attendanceChildren), cell(s.attendanceTotal),
-            isAdmin ? `<a class="btn ghost" href="/attendance/${s.id}/edit">Edit →</a>` : '<span class="muted-text">—</span>',
+            canEdit ? `<a class="btn ghost" href="/attendance/${s.id}/edit">Edit →</a>` : '<span class="muted-text">—</span>',
           ]))
       : `<div class="empty-state">
           <div class="empty-ico" aria-hidden="true">✓</div>
           <h3>No services tracked yet</h3>
           <p>Add your first service to start recording attendance counts.</p>
-          ${isAdmin ? '<a class="btn primary" href="/attendance/new">＋ Add Service</a>' : ''}
+          ${canEdit ? '<a class="btn primary" href="/attendance/new">＋ Add Service</a>' : ''}
         </div>`;
     const recentCard = listCard({ title: 'Recent services', count: services.length, countLabel: 'services', inner: recent });
 
     res.page({ title: 'Attendance', active: '/attendance', noHeader: true, body: `${hero}${stats}${trendCard}${recentCard}` });
   }));
 
-  app.get('/attendance/new', requireAdmin, (req, res) => {
+  app.get('/attendance/new', requireEditor, (req, res) => {
     res.page({ title: 'New service', active: '/attendance', noHeader: true, body: `${pageHero('New service', '')}${serviceForm(null, '/attendance')}` });
   });
 
-  app.post('/attendance', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/attendance', requireEditor, asyncHandler(async (req, res) => {
     const v = parseServiceBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
       flash(req, 'Service title and date are required.');
@@ -178,23 +185,24 @@ function register(app) {
     res.redirect('/attendance');
   }));
 
-  app.get('/attendance/:id/edit', requireAdmin, asyncHandler(async (req, res) => {
+  app.get('/attendance/:id/edit', requireEditor, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
+    const isAdmin = res.locals.user.role === 'ADMIN';
     const ev = await res.locals.db.event.findFirst({ where: { id, eventType: 'SERVICE' } });
     if (!ev) return res.status(404).send('Not found');
-    const extra = `<div class="form-extra-actions" style="grid-column:1/-1;margin-top:0.6rem">
+    const extra = isAdmin ? `<div class="form-extra-actions" style="grid-column:1/-1;margin-top:0.6rem">
       <form method="post" action="/attendance/${id}/delete"
             onsubmit="return confirm('Delete this service and its counts? This cannot be undone.')" style="display:inline">
         <button class="danger" type="submit">Delete service</button>
       </form>
-    </div>`;
+    </div>` : '';
     res.page({
       title: `Edit service · ${ev.title}`, active: '/attendance', noHeader: true,
       body: `${pageHero(`Edit service · ${ev.title}`, '')}${serviceForm(ev, `/attendance/${id}`, { extraButtons: extra })}`,
     });
   }));
 
-  app.post('/attendance/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/attendance/:id', requireEditor, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const v = parseServiceBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {

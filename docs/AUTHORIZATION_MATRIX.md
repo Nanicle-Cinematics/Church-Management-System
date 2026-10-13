@@ -11,7 +11,9 @@ Two independent settings decide access: the user **role** and the **finance role
 
 | Area | Admin | Editor | Viewer |
 | --- | --- | --- | --- |
-| Dashboard, members, attendance, events, Bible classes, organizations, inventory, preaching, announcements | Read/write | Read | Read |
+| Dashboard, members, attendance, events, Bible classes, organizations, inventory, preaching, announcements: add and edit | Yes | Yes | Read only |
+| The same areas: delete or archive (editors may still remove a member photo) | Yes | No | No |
+| Member data export (CSV), bulk SMS/email from Members | Yes | No | No |
 | Communications: send broadcasts, email settings | Read/write | Blocked | Blocked |
 | Communications: view history | Read | Read | Read |
 | Users and roles, church settings, data export | Read/write | Blocked | Blocked |
@@ -20,9 +22,7 @@ Two independent settings decide access: the user **role** and the **finance role
 No church account, whatever its role, can open the platform console. See
 **Platform operators** below.
 
-`editor` is currently identical to `viewer`: no route grants it write access.
-It is kept so existing accounts do not break; give a user write access either by
-making them an Admin or, for money only, a finance role.
+Editors add and edit everyday records (members and their photos, attendance, events with check-ins and RSVPs, Bible classes, organizations and their members, inventory, the preaching plan, announcements). Deleting or archiving, exporting member data, sending broadcasts or preacher reminders, email settings, users and church settings stay with admins. Money is governed by the finance role, not by this one.
 
 ## Finance role (`financeRole`)
 

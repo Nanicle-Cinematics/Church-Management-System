@@ -23,6 +23,12 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).json({ error: 'forbidden' });
 }
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).json({ error: 'forbidden' });
+}
 
 function requireAuth(req, res, next) {
   if (!res.locals.user) return res.status(401).json({ error: 'not logged in' });
@@ -66,7 +72,7 @@ function register(app) {
     res.json(rows.map((e) => ({ ...e, _count: undefined, attendees: e._count.attendance })));
   }));
 
-  app.post('/api/events', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/events', requireEditor, asyncHandler(async (req, res) => {
     const v = parseEventBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
       return res.status(400).json({ error: 'title and startsAt are required' });
@@ -105,7 +111,7 @@ function register(app) {
     });
   }));
 
-  app.put('/api/events/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.put('/api/events/:id', requireEditor, asyncHandler(async (req, res) => {
     const v = parseEventBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
       return res.status(400).json({ error: 'title and startsAt are required' });
@@ -120,7 +126,7 @@ function register(app) {
     }
   }));
 
-  app.put('/api/events/:id/counts', requireAdmin, asyncHandler(async (req, res) => {
+  app.put('/api/events/:id/counts', requireEditor, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const db = res.locals.db;
     if (req.body && req.body.clear === true) {
@@ -154,7 +160,7 @@ function register(app) {
     }
   }));
 
-  app.post('/api/events/:id/rsvp', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/events/:id/rsvp', requireEditor, asyncHandler(async (req, res) => {
     const eventId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     const response = RSVP_RESPONSES.includes(req.body.response) ? req.body.response : 'GOING';
@@ -174,7 +180,7 @@ function register(app) {
     res.status(201).json(rsvp);
   }));
 
-  app.delete('/api/events/:id/rsvp/:memberId', requireAdmin, asyncHandler(async (req, res) => {
+  app.delete('/api/events/:id/rsvp/:memberId', requireEditor, asyncHandler(async (req, res) => {
     try {
       await res.locals.db.eventRsvp.delete({
         where: { eventId_memberId: { eventId: Number(req.params.id), memberId: Number(req.params.memberId) } },
@@ -186,7 +192,7 @@ function register(app) {
     }
   }));
 
-  app.post('/api/events/:id/check', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/events/:id/check', requireEditor, asyncHandler(async (req, res) => {
     const eventId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     if (!memberId) return res.status(400).json({ error: 'memberId is required' });
@@ -206,7 +212,7 @@ function register(app) {
     res.status(201).json(attendance);
   }));
 
-  app.delete('/api/events/:id/check/:memberId', requireAdmin, asyncHandler(async (req, res) => {
+  app.delete('/api/events/:id/check/:memberId', requireEditor, asyncHandler(async (req, res) => {
     try {
       await res.locals.db.attendance.delete({
         where: { eventId_memberId: { eventId: Number(req.params.id), memberId: Number(req.params.memberId) } },
