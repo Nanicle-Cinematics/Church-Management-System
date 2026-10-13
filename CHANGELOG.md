@@ -40,6 +40,10 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- iPhone (iOS 26 Safari):
+  - The phone tab bar was hidden behind Safari's own bottom toolbar. Pages no longer extend under Safari's toolbars (`viewport-fit=cover` removed), so the bar sits above them.
+  - The glass bars smeared ghost copies of the page while scrolling. The glass is now drawn on a layer inside each bar instead of on the bar itself, without the masked rim or brightness/contrast filters that Safari draws badly. This also stops Safari tinting its toolbar from the bar.
+  - Tapping a text field made Safari zoom in, and the zoom carried over to the next page, cutting the layout off on the right. Fields are 16px on phones and touch screens, which Safari does not zoom, and the app clips anything wider than the screen instead of widening the page.
 - Phones: the dashboard greeting buttons no longer squeeze their labels onto two lines (they wrap to a second row instead), and the Settings logo upload and the member profile no longer push the page wider than the screen on small phones.
 - Members on phones: the Filters button was cut off at the right edge (search now gets its own row, with Export and Filters side by side below it), and long names and phone numbers ran out of the member card instead of trimming with an ellipsis.
 - Members on phones: the filter sheet showed open over the list on load; it now stays hidden until Filters is tapped.

@@ -246,3 +246,8 @@ svg { flex: none; }
 .op-auth .op-qr { display: block; margin: 8px auto 12px; border-radius: 8px; background: #fff; padding: 6px; }
 .op-auth .op-key { display: block; overflow-wrap: anywhere; font: 500 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .op-auth .op-codes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; margin: 12px 0; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--pu-line, #e5e5ea); font: 500 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* iOS Safari zooms in on focus when a field's text is under 16px. */
+@media (max-width: 900px), (pointer: coarse) {
+  .pa-card input:not([type="checkbox"]):not([type="radio"]), .pa-card select, .pa-card textarea, .pu input:not([type="checkbox"]):not([type="radio"]), .pu select, .pu textarea { font-size: 16px; }
+}
