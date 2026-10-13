@@ -1065,3 +1065,52 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
 @media (max-width: 900px) {
   .pc-main { overflow-x: clip; }
 }
+
+/* ==========================================================================
+   Phones: iOS 26 look (matched against system apps in light and dark).
+   - Glass: a light veil with a small blur so the page stays readable behind
+     it, a hairline edge and a soft shadow; dark mode is smoky dark glass.
+   - Plain labels and icons (no glow); the current tab is a soft grey pill.
+   - Top: no bar. The title sits centred over a fade of the page colour and
+     actions are separate round glass buttons.
+   - The New button is a round glass button with just a plus.
+   ========================================================================== */
+@media (max-width: 900px) {
+  .pc-tabbar::before, .pc-fab::before, .pc-top .pc-ib::before {
+    background: linear-gradient(180deg, rgba(255, 255, 255, .5), rgba(255, 255, 255, .32));
+    border: 1px solid rgba(255, 255, 255, .75);
+    -webkit-backdrop-filter: blur(2.5px) saturate(1.8) !important; backdrop-filter: blur(2.5px) saturate(1.8) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 0 0 .5px rgba(0, 0, 0, .07), 0 10px 26px -10px rgba(0, 0, 0, .22);
+  }
+  :root[data-theme="dark"] .pc-tabbar::before, :root[data-theme="dark"] .pc-fab::before, :root[data-theme="dark"] .pc-top .pc-ib::before {
+    background: linear-gradient(180deg, rgba(44, 44, 48, .62), rgba(26, 26, 28, .55));
+    border-color: rgba(255, 255, 255, .14);
+    -webkit-backdrop-filter: blur(2.5px) saturate(1.5) !important; backdrop-filter: blur(2.5px) saturate(1.5) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 10px 26px -10px rgba(0, 0, 0, .7);
+  }
+
+  .pc-tabbar a, body.pc .pc-tabbar button, :root[data-theme="dark"] .pc-tabbar a, :root[data-theme="dark"] body.pc .pc-tabbar button { color: #1c1c1e !important; font-weight: 500; text-shadow: none; }
+  :root[data-theme="dark"] .pc-tabbar a, :root[data-theme="dark"] body.pc .pc-tabbar button { color: #f5f5f7 !important; }
+  .pc-tabbar svg, .pc-fab svg, .pc-top .pc-ib svg, :root[data-theme="dark"] .pc-tabbar svg, :root[data-theme="dark"] .pc-fab svg, :root[data-theme="dark"] .pc-top .pc-ib svg { filter: none; }
+  .pc-tabbar a[aria-current], body.pc .pc-tabbar button[aria-current] { color: var(--tc) !important; background: rgba(120, 120, 128, .16) !important; box-shadow: none !important; }
+  :root[data-theme="dark"] .pc-tabbar a[aria-current], :root[data-theme="dark"] body.pc .pc-tabbar button[aria-current] { color: color-mix(in srgb, var(--tc) 55%, #fff) !important; background: rgba(0, 0, 0, .4) !important; box-shadow: none !important; }
+  :root[data-theme="dark"] .pc-tabbar a[aria-current] svg, :root[data-theme="dark"] .pc-tabbar button[aria-current] svg { color: inherit; }
+
+  body.pc button.pc-fab, :root[data-theme="dark"] body.pc button.pc-fab { width: 54px; height: 54px; padding: 0; justify-content: center; border-radius: 50% !important; color: #1c1c1e !important; text-shadow: none; }
+  :root[data-theme="dark"] body.pc button.pc-fab { color: #f5f5f7 !important; }
+  .pc-fab svg { width: 24px; height: 24px; }
+  .pc-fab span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  .pc-top, :root[data-theme="dark"] .pc-top {
+    top: 0; height: 64px; margin: 0; padding: 0 12px !important; border-radius: 0; justify-content: flex-end;
+    background: linear-gradient(180deg, var(--pc-bg) 0%, color-mix(in srgb, var(--pc-bg) 86%, transparent) 50%, transparent 100%) !important;
+  }
+  .pc-top::before, :root[data-theme="dark"] .pc-top::before { display: none; }
+  .pc-top .pc-crumbs { position: absolute; left: 64px; right: 64px; justify-content: center; pointer-events: none; }
+  .pc-top .pc-crumbs a, .pc-top .pc-crumbs svg { display: none; }
+  .pc-top .pc-crumbs b, :root[data-theme="dark"] .pc-top .pc-crumbs b, .op-brand, :root[data-theme="dark"] .op-brand { font: 600 17px/1.2 var(--pc-font); letter-spacing: -.01em; color: var(--pc-text); text-shadow: none; }
+  body.pc .pc-top button.pc-ib, body.pc .pc-top .pc-ib { position: relative; width: 44px; height: 44px; color: var(--pc-text) !important; background: none !important; }
+  .pc-top .pc-ib::before { content: ""; position: absolute; inset: 0; z-index: -1; box-sizing: border-box; border-radius: 50%; pointer-events: none; }
+  .pc-top .pc-ib svg { width: 20px; height: 20px; }
+  .pc-op .pc-top { justify-content: flex-start; gap: 8px; }
+}
