@@ -75,6 +75,12 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).send('Forbidden');
 }
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).send('Forbidden');
+}
 
 function iso(d) {
   if (!d) return '';
@@ -142,6 +148,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
     const q = (req.query.q || '').trim();
 
     const [rows, totalEvents, upcoming, checkins] = await Promise.all([
@@ -160,7 +167,7 @@ function register(app) {
       { cls: 'gold', icon: icon('events'), value: totalEvents.toLocaleString(), label: 'Total Events' },
       { cls: 'green', icon: icon('clock'), value: upcoming.toLocaleString(), label: 'Upcoming' },
       { cls: 'blue', icon: icon('attendance'), value: checkins.toLocaleString(), label: 'Check-ins Recorded' },
-    ], isAdmin ? `<a class="btn primary" href="/events/new">＋ New Event</a>` : '');
+    ], canEdit ? `<a class="btn primary" href="/events/new">＋ New Event</a>` : '');
     const filters = filterCard({ q, placeholder: 'Search events by title…' });
 
     const rowHtml = rows.map((r) => {
@@ -175,7 +182,7 @@ function register(app) {
         <td data-label="Attendees"><span class="count-badge">${r._count.attendance}</span></td>
         <td data-label="Actions"><div class="row-actions">
           <a class="icon-btn view" href="/events/${r.id}" title="View" aria-label="View">${ICON_EYE}</a>
-          ${isAdmin ? `<a class="icon-btn edit" href="/events/${r.id}/edit" title="Edit" aria-label="Edit">${ICON_PENCIL}</a>` : ''}
+          ${canEdit ? `<a class="icon-btn edit" href="/events/${r.id}/edit" title="Edit" aria-label="Edit">${ICON_PENCIL}</a>` : ''}
         </div></td>
       </tr>`;
     }).join('');
@@ -189,7 +196,7 @@ function register(app) {
           <div class="empty-ico" aria-hidden="true">📅</div>
           <h3>${q ? `No events match "${esc(q)}"` : 'No events scheduled yet'}</h3>
           <p>${q ? 'Try a different search term, or schedule a new event.' : 'Add your first event and it will appear here.'}</p>
-          ${isAdmin ? '<a class="btn primary" href="/events/new">＋ New Event</a>' : ''}
+          ${canEdit ? '<a class="btn primary" href="/events/new">＋ New Event</a>' : ''}
           ${q ? '<div style="margin-top:0.6rem"><a class="link" href="/events">Clear search →</a></div>' : ''}
         </div>`,
     });
@@ -197,11 +204,11 @@ function register(app) {
     res.page({ title: 'Events', active: '/events', noHeader: true, body: `${hero}${stats}${filters}${list}` });
   }));
 
-  app.get('/events/new', requireAdmin, (req, res) => {
+  app.get('/events/new', requireEditor, (req, res) => {
     res.page({ title: 'New event', active: '/events', noHeader: true, body: `${pageHero('New event', '')}${eventForm(null, '/events')}` });
   });
 
-  app.get('/events/:id/edit', requireAdmin, asyncHandler(async (req, res) => {
+  app.get('/events/:id/edit', requireEditor, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const ev = await res.locals.db.event.findUnique({ where: { id } });
     if (!ev) return res.status(404).send('Not found');
@@ -211,7 +218,7 @@ function register(app) {
     });
   }));
 
-  app.post('/events/:id/edit', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events/:id/edit', requireEditor, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const v = parseEventBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
@@ -233,7 +240,7 @@ function register(app) {
     res.redirect(`/events/${id}`);
   }));
 
-  app.post('/events', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events', requireEditor, asyncHandler(async (req, res) => {
     const v = parseEventBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
       flash(req, 'Title and start time are required.');
@@ -252,6 +259,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
     const id = Number(req.params.id);
     const ev = await db.event.findUnique({ where: { id } });
     if (!ev) return res.status(404).send('Not found');
@@ -271,7 +279,7 @@ function register(app) {
       }),
     ]);
 
-    const removeForm = (mid) => isAdmin
+    const removeForm = (mid) => canEdit
       ? `<form method="post" action="/events/${id}/uncheck">
            <input type="hidden" name="memberId" value="${mid}">
            <button class="link" type="submit">remove</button>
@@ -281,7 +289,7 @@ function register(app) {
       : '<p>No one checked in yet.</p>';
 
     const otherOpts = others.map((o) => `<option value="${o.id}">${esc(o.firstName + ' ' + o.lastName)}</option>`).join('');
-    const checkInPanel = isAdmin
+    const checkInPanel = canEdit
       ? `<h2>Check in</h2>
          <form method="post" action="/events/${id}/check">
            <select name="memberId" required><option value="">— pick a member —</option>${otherOpts}</select>
@@ -290,7 +298,7 @@ function register(app) {
          <p><a class="btn" href="/events/${id}/qr">📱 QR check-in page</a>
             <a class="btn ghost" href="/checkin/${esc(ev.checkinToken || '')}" target="_blank" rel="noopener">Preview self-check-in</a></p>` : '';
 
-    const rsvpLink = isAdmin
+    const rsvpLink = canEdit
       ? `<p class="muted-text" style="margin-top:0.4rem">Public RSVP link:
          <a href="/rsvp/${esc(ev.checkinToken || '')}" target="_blank" rel="noopener">/rsvp/${esc(ev.checkinToken || '')}</a></p>`
       : '';
@@ -301,12 +309,12 @@ function register(app) {
       ? `<ul class="check-list">${rsvps.map((r) => `<li>
           <a href="/members/${r.member.id}">${esc(r.member.firstName + ' ' + r.member.lastName)}</a>
           <span class="pill ${RSVP_PILL_CLASS[r.response]}">${RSVP_LABELS[r.response]}</span>
-          ${isAdmin ? `<form method="post" action="/events/${id}/rsvp/remove">
+          ${canEdit ? `<form method="post" action="/events/${id}/rsvp/remove">
             <input type="hidden" name="memberId" value="${r.member.id}">
             <button class="link" type="submit">remove</button></form>` : ''}
         </li>`).join('')}</ul>`
       : '<p class="muted-text">No responses yet.</p>';
-    const rsvpAdmin = isAdmin
+    const rsvpAdmin = canEdit
       ? `<form method="post" action="/events/${id}/rsvp" class="filter-bar" style="margin-top:0.6rem">
            <select name="memberId" required style="flex:1;min-width:180px"><option value="">— pick a member —</option>${otherOpts}</select>
            <select name="response">${RSVP_RESPONSES.map((v) => `<option value="${v}">${RSVP_LABELS[v]}</option>`).join('')}</select>
@@ -324,7 +332,7 @@ function register(app) {
           <div><h2>Attendance counts</h2><div class="meta">Head-count for the service · editable</div></div>
           ${hasCounts ? `<span class="pill pill-ok">⚬ Recorded</span>` : ''}
         </div>
-        ${isAdmin ? `<form method="post" action="/events/${id}/counts" class="counts-form" data-no-confirm="1">
+        ${canEdit ? `<form method="post" action="/events/${id}/counts" class="counts-form" data-no-confirm="1">
           <label class="counts-field"><span>Men</span><input type="number" name="attendanceMen" min="0" step="1" value="${esc(men)}"></label>
           <label class="counts-field"><span>Women</span><input type="number" name="attendanceWomen" min="0" step="1" value="${esc(women)}"></label>
           <label class="counts-field"><span>Children</span><input type="number" name="attendanceChildren" min="0" step="1" value="${esc(children)}"></label>
@@ -348,7 +356,7 @@ function register(app) {
           <div class="evt-type">${esc(ev.eventType)}</div>
           <div class="event-detail-meta">${esc(fmtDt(ev.startsAt))}${ev.location ? ` · ${esc(ev.location)}` : ''}</div>
         </div>
-        ${isAdmin ? `<a class="btn primary" href="/events/${id}/edit">✎ Edit event</a>` : ''}
+        ${canEdit ? `<a class="btn primary" href="/events/${id}/edit">✎ Edit event</a>` : ''}
       </div>
       ${countsCard}
       <div class="card" style="margin-bottom:1rem">
@@ -371,7 +379,7 @@ function register(app) {
     res.page({ title: ev.title, active: '/events', noHeader: true, body: `${pageHero(ev.title, '')}${body}` });
   }));
 
-  app.post('/events/:id/counts', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events/:id/counts', requireEditor, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const ev = await res.locals.db.event.findUnique({ where: { id } });
     if (!ev) return res.status(404).send('Not found');
@@ -391,7 +399,7 @@ function register(app) {
     res.redirect(`/events/${id}`);
   }));
 
-  app.post('/events/:id/rsvp', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events/:id/rsvp', requireEditor, asyncHandler(async (req, res) => {
     const eventId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     const response = RSVP_RESPONSES.includes(req.body.response) ? req.body.response : 'GOING';
@@ -408,7 +416,7 @@ function register(app) {
     res.redirect(`/events/${eventId}`);
   }));
 
-  app.post('/events/:id/rsvp/remove', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events/:id/rsvp/remove', requireEditor, asyncHandler(async (req, res) => {
     const eventId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     try {
@@ -421,7 +429,7 @@ function register(app) {
     res.redirect(`/events/${eventId}`);
   }));
 
-  app.post('/events/:id/check', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events/:id/check', requireEditor, asyncHandler(async (req, res) => {
     const eventId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     if (memberId) {
@@ -433,7 +441,7 @@ function register(app) {
     res.redirect(`/events/${eventId}`);
   }));
 
-  app.post('/events/:id/uncheck', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events/:id/uncheck', requireEditor, asyncHandler(async (req, res) => {
     const eventId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     try {
@@ -447,7 +455,7 @@ function register(app) {
   }));
 
   // ---------- QR check-in (admin display) ----------
-  app.get('/events/:id/qr', requireAdmin, asyncHandler(async (req, res) => {
+  app.get('/events/:id/qr', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const id = Number(req.params.id);
     let ev = await db.event.findUnique({ where: { id } });

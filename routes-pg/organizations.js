@@ -12,6 +12,12 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).json({ error: 'forbidden' });
 }
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).json({ error: 'forbidden' });
+}
 
 function requireAuth(req, res, next) {
   if (!res.locals.user) return res.status(401).json({ error: 'not logged in' });
@@ -50,7 +56,7 @@ function register(app) {
     res.json(shaped);
   }));
 
-  app.post('/api/organizations', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/organizations', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const b = req.body || {};
     if (!b.name || !String(b.name).trim()) return res.status(400).json({ error: 'name is required' });
@@ -87,7 +93,7 @@ function register(app) {
     res.json({ ...org, members: members.map((m) => ({ ...m.member, role: m.role })) });
   }));
 
-  app.post('/api/organizations/:id/add', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/organizations/:id/add', requireEditor, asyncHandler(async (req, res) => {
     const orgId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     if (!memberId) return res.status(400).json({ error: 'memberId is required' });
@@ -114,7 +120,7 @@ function register(app) {
     }
   }));
 
-  app.post('/api/organizations/:id/remove', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/organizations/:id/remove', requireEditor, asyncHandler(async (req, res) => {
     const orgId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     try {
@@ -126,7 +132,7 @@ function register(app) {
     }
   }));
 
-  app.put('/api/organizations/:id/leader', requireAdmin, asyncHandler(async (req, res) => {
+  app.put('/api/organizations/:id/leader', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const leaderCheck = await checkLeaderId(db, req.body.leaderId);
     if (!leaderCheck.ok) return res.status(400).json({ error: 'Leader not found' });

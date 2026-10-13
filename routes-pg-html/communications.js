@@ -29,6 +29,12 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).send('Forbidden');
 }
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).send('Forbidden');
+}
 
 const PREF_LABELS = { EITHER: 'Both', SMS_ONLY: 'SMS only', EMAIL_ONLY: 'Email only', NONE: 'Do not contact' };
 
@@ -90,6 +96,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
 
     const [announcements, announcementCount, broadcastCount, contactable, failedRecipients] = await Promise.all([
       db.announcement.findMany({ orderBy: { postedAt: 'desc' }, take: 50 }),
@@ -106,7 +113,7 @@ function register(app) {
       : [];
     const posterName = (id) => { const u = posters.find((p) => p.id === id); return u ? (u.displayName || u.username) : 'system'; };
 
-    const newForm = isAdmin
+    const newForm = canEdit
       ? `<div class="card" style="margin-bottom:1rem">
            <div class="card-head"><h2>Post an announcement</h2></div>
            <form class="form" method="post" action="/communications" style="box-shadow:none;border:0;padding:0">
@@ -132,7 +139,7 @@ function register(app) {
       : `<div class="empty-state">
           <div class="empty-ico" aria-hidden="true">✉</div>
           <h3>No announcements yet</h3>
-          <p>${isAdmin ? 'Use the form above to post your first announcement.' : 'Once an admin posts an announcement it will appear here.'}</p>
+          <p>${canEdit ? 'Use the form above to post your first announcement.' : 'Once an admin posts an announcement it will appear here.'}</p>
         </div>`;
 
     const broadcastCta = isAdmin
@@ -156,7 +163,7 @@ function register(app) {
     });
   }));
 
-  app.post('/communications', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/communications', requireEditor, asyncHandler(async (req, res) => {
     const { title, body, audience } = req.body || {};
     if (!title || !body) return res.redirect('/communications');
     await res.locals.db.announcement.create({ data: { title, body, audience: audience || 'all', postedBy: res.locals.user.id } });

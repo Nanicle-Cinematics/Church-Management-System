@@ -31,6 +31,12 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).json({ error: 'forbidden' });
 }
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).json({ error: 'forbidden' });
+}
 
 function requireAuth(req, res, next) {
   if (!res.locals.user) return res.status(401).json({ error: 'not logged in' });
@@ -146,7 +152,7 @@ function register(app) {
     res.json(plan);
   }));
 
-  app.post('/api/preaching', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/preaching', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const v = parsePlanBody(req.body || {});
     if (!v.preachDate || Number.isNaN(v.preachDate.getTime())) {
@@ -158,7 +164,7 @@ function register(app) {
     res.status(201).json(plan);
   }));
 
-  app.put('/api/preaching/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.put('/api/preaching/:id', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const v = parsePlanBody(req.body || {});
     if (!v.preachDate || Number.isNaN(v.preachDate.getTime())) {

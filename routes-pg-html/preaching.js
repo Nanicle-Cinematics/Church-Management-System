@@ -5,10 +5,8 @@
 // recipe. Reuses lib/views.js/lib/format.js verbatim; data access is copied
 // from routes-pg/preaching.js's already-correct Prisma queries.
 //
-// Role model: admin-only writes (res.locals.user.role === 'ADMIN'), matching
-// routes-pg/preaching.js — NOT the original's three-tier admin/editor/viewer
-// isAdmin (admin-or-editor) distinction. See the Phase 8 plan's "Recommended
-// architecture" section for why.
+// Role model: admins and editors schedule and edit; sending reminders and
+// archiving stay with admins (the same split in routes-pg/preaching.js).
 //
 // Phase 9a: /preaching/:id/remind (SMS/email reminder) is now wired in via
 // lib/delivery.js (see routes-pg/preaching.js's sendPreachingReminder).
@@ -22,6 +20,12 @@ const { icon } = require('../lib/icons');
 
 function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
+  return res.status(403).send('Forbidden');
+}
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
   return res.status(403).send('Forbidden');
 }
 
@@ -108,6 +112,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const [upcoming, past] = await Promise.all([
       db.preachingPlan.findMany({
@@ -150,10 +155,10 @@ function register(app) {
       : `<div class="empty-state">
           <div class="empty-ico" aria-hidden="true">📣</div>
           <h3>No upcoming preaching appointments</h3>
-          <p>${isAdmin ? 'Use the form below to schedule the first one.' : 'Once the preaching plan is set, it will appear here.'}</p>
+          <p>${canEdit ? 'Use the form below to schedule the first one.' : 'Once the preaching plan is set, it will appear here.'}</p>
         </div>`;
 
-    const newForm = isAdmin
+    const newForm = canEdit
       ? `<details class="form-toggle" id="schedule" style="margin-bottom:1rem">
            <summary><strong>＋ Schedule a preaching appointment</strong></summary>
            <div style="margin-top:0.75rem">${await preachingForm(db, {}, '/preaching')}</div>
@@ -166,21 +171,21 @@ function register(app) {
         <td>${preacherLabel(p)}</td>
         <td>${esc(p.serviceLabel || '—')}</td>
         <td>${p.topic ? esc(p.topic) : '—'}</td>
-        ${isAdmin ? `<td style="white-space:nowrap">
+        ${canEdit ? `<td style="white-space:nowrap">
           <a href="/preaching/${p.id}/edit" class="link">Edit</a>
-          ${preachingHasContact(p)
+          ${isAdmin && preachingHasContact(p)
             ? `<form method="post" action="/preaching/${p.id}/remind" class="inline"
                     onsubmit="return confirm('Send an SMS / email reminder to this preacher?')">
                  <button type="submit" class="link">Remind</button>
                </form>` : ''}
-          <form method="post" action="/preaching/${p.id}/delete" class="inline"
+          ${isAdmin ? `<form method="post" action="/preaching/${p.id}/delete" class="inline"
                 onsubmit="return confirm('Archive this appointment? It will be hidden but not permanently deleted.')">
             <button type="submit" class="link">Archive</button>
-          </form>
+          </form>` : ''}
         </td>` : ''}
       </tr>`).join('');
 
-    const head = `<thead><tr><th>Date</th><th>Preacher</th><th>Service</th><th>Topic</th>${isAdmin ? '<th></th>' : ''}</tr></thead>`;
+    const head = `<thead><tr><th>Date</th><th>Preacher</th><th>Service</th><th>Topic</th>${canEdit ? '<th></th>' : ''}</tr></thead>`;
     const upcomingTable = upcoming.length
       ? `<section class="card" style="margin-bottom:1rem"><div class="card-head"><h2>Upcoming</h2><span class="meta">${upcoming.length} scheduled</span></div><table>${head}<tbody>${renderRows(upcoming)}</tbody></table></section>`
       : '';
@@ -224,7 +229,7 @@ function register(app) {
     return res.redirect('/preaching?reminder=' + (delivered ? 'ok' : 'fail'));
   }));
 
-  app.post('/preaching', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/preaching', requireEditor, asyncHandler(async (req, res) => {
     const v = parsePlanBody(req.body || {});
     if (!v.preachDate || Number.isNaN(v.preachDate.getTime())) return res.redirect('/preaching');
     const memberCheck = await checkMemberId(res.locals.db, v.memberId);
@@ -235,7 +240,7 @@ function register(app) {
     res.redirect('/preaching');
   }));
 
-  app.get('/preaching/:id/edit', requireAdmin, asyncHandler(async (req, res) => {
+  app.get('/preaching/:id/edit', requireEditor, asyncHandler(async (req, res) => {
     const plan = await res.locals.db.preachingPlan.findFirst({
       where: { id: Number(req.params.id), deletedAt: null },
     });
@@ -246,7 +251,7 @@ function register(app) {
     });
   }));
 
-  app.post('/preaching/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/preaching/:id', requireEditor, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const v = parsePlanBody(req.body || {});
     if (!v.preachDate || Number.isNaN(v.preachDate.getTime())) return res.redirect(`/preaching/${id}/edit`);

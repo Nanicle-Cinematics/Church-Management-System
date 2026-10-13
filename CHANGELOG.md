@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- The Editor role can now add and edit: members (and their photos), attendance, events (including check-ins, RSVPs, counts and the QR code), Bible classes, organizations and their members, inventory, the preaching plan and announcements. Deleting or archiving, exporting member data, sending broadcasts and preacher reminders, email settings, users and church settings stay with admins. Editors' "New" menu offers New member and Schedule event. The New user page and Users & Roles describe the roles accordingly. Previously Editor was the same as Viewer.
 - Platform operators are now separate accounts, not church accounts:
   - They sign in at `/platform/login` and must use two-factor; the first sign-in sets it up and shows recovery codes. Five wrong passwords lock the account for 15 minutes, and 30 minutes without activity signs them out.
   - An operator has no church and cannot open church pages; no church account can open `/platform` or `/api/platform`, whatever its email. The church sidebar no longer shows a Platform link.
