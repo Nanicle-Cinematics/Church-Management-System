@@ -729,10 +729,13 @@ body.pp-open { overflow: hidden; }
 .pp-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--pc-line-2); font-size: 13.5px; }
 .pp-list small { color: var(--pc-text-3); white-space: nowrap; }
 .pp-notes { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--pc-bg); border: 1px solid var(--pc-line-2); white-space: pre-wrap; font-size: 13.5px; }
-@media (max-width: 560px) { .pp-drawer { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 88vh; border-radius: 16px 16px 0 0; transform: translateY(105%); } .pp-facts { grid-template-columns: 110px minmax(0, 1fr); } }
+/* phones: a bottom sheet held 64px below the top of the visible screen, so it
+   never covers the whole screen (a vh height can be taller than Safari's
+   visible area while its toolbars show) */
+@media (max-width: 560px) { .pp-drawer { top: 64px; left: 0; right: 0; bottom: 0; width: auto; height: auto; border-radius: 16px 16px 0 0; transform: translateY(105%); } .pp-facts { grid-template-columns: 110px minmax(0, 1fr); } }
 @media (max-width: 900px) {
   .pm-layout { grid-template-columns: minmax(0, 1fr); }
-  .card.pm-facets { position: fixed; left: 0; right: 0; bottom: 0; top: auto; max-height: 82vh; z-index: 58; border-radius: 16px 16px 0 0 !important; box-shadow: var(--pc-sh-pop) !important; transform: translateY(105%) !important; transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
+  .card.pm-facets { position: fixed; left: 0; right: 0; bottom: 0; top: auto; max-height: 82vh; max-height: 82dvh; z-index: 58; border-radius: 16px 16px 0 0 !important; box-shadow: var(--pc-sh-pop) !important; transform: translateY(105%) !important; transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
   body.pm-sheet-open .card.pm-facets { transform: none !important; }
   body.pm-sheet-open .pc-scrim { display: block; }
   /* closed: hidden too, so Safari doesn't tint its toolbar from it */
@@ -953,7 +956,7 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
   .pc-sheet-scrim { display: block; position: fixed; inset: 0; z-index: 60; background: rgba(10, 10, 20, .4); opacity: 0; transition: opacity .2s; }
   .pc-sheet-scrim.on { opacity: 1; }
   .pc-sheet-scrim[hidden], .pc-sheet[hidden] { display: none; }
-  .pc-sheet { display: block; position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 61; max-height: 78vh; overflow-y: auto; padding: 10px 16px 18px; border-radius: 26px; background: var(--pc-panel); box-shadow: var(--pc-sh-pop); transform: translateY(110%); transition: transform .32s cubic-bezier(.2, .8, .2, 1); }
+  .pc-sheet { display: block; position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 61; max-height: 78vh; max-height: 78dvh; overflow-y: auto; padding: 10px 16px 18px; border-radius: 26px; background: var(--pc-panel); box-shadow: var(--pc-sh-pop); transform: translateY(110%); transition: transform .32s cubic-bezier(.2, .8, .2, 1); }
   .pc-sheet.on { transform: none; }
   .pc-grab { width: 38px; height: 5px; margin: 0 auto 12px; border-radius: 9px; background: var(--pc-line); }
   .pc-sheet-h { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--pc-text-3); text-transform: uppercase; letter-spacing: .06em; }
@@ -1149,3 +1152,51 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
   .hero-stat-group .hero-stat .hs-value { font-size: 21px !important; }
   .hero-stat-group .hero-stat { padding: 14px !important; }
 }
+
+/* Search dialog: the field stays a bare line of text. The app's input rules
+   mark border and focus ring !important, which beat 'all: unset' and drew a
+   box (with a tint) between the search icon and Esc while typing. */
+.pc-pal-in input, .pc-pal-in input:hover, .pc-pal-in input:focus { border: 0 !important; box-shadow: none !important; background: transparent !important; outline: none !important; min-height: 0; padding: 0; }
+
+/* Search dialog as glass */
+.pc-pal-wrap { background: rgba(12, 12, 24, .16); }
+.pc-pal {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .62), rgba(255, 255, 255, .5));
+  -webkit-backdrop-filter: blur(20px) saturate(1.8) !important; backdrop-filter: blur(20px) saturate(1.8) !important;
+  border: 1px solid rgba(255, 255, 255, .7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 30px 70px -20px rgba(20, 20, 60, .4), 0 0 0 .5px rgba(0, 0, 0, .06);
+}
+.pc-pal-in { border-bottom-color: rgba(120, 120, 140, .18); }
+.pc-pal li.o[aria-selected="true"] { background: rgba(255, 255, 255, .55); }
+.pc-pal li.o .ic { background: rgba(255, 255, 255, .6); }
+:root[data-theme="dark"] .pc-pal-wrap { background: rgba(0, 0, 0, .28); }
+:root[data-theme="dark"] .pc-pal { background: linear-gradient(180deg, rgba(40, 40, 46, .62), rgba(24, 24, 28, .55)); border-color: rgba(255, 255, 255, .14); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 30px 70px -20px rgba(0, 0, 0, .8); }
+:root[data-theme="dark"] .pc-pal-in { border-bottom-color: rgba(255, 255, 255, .1); }
+:root[data-theme="dark"] .pc-pal li.o[aria-selected="true"] { background: rgba(255, 255, 255, .1); }
+:root[data-theme="dark"] .pc-pal li.o .ic { background: rgba(255, 255, 255, .08); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .pc-pal, :root[data-theme="dark"] .pc-pal { background: var(--pc-panel); } }
+
+/* More and New sheets: much clearer glass */
+@media (max-width: 900px) {
+  .pc-sheet {
+    background: radial-gradient(70% 40% at 20% 0%, rgba(255, 255, 255, .4), transparent 65%), linear-gradient(180deg, rgba(255, 255, 255, .24), rgba(255, 255, 255, .12));
+    -webkit-backdrop-filter: blur(10px) saturate(1.9) !important; backdrop-filter: blur(10px) saturate(1.9) !important;
+  }
+  :root[data-theme="dark"] .pc-sheet {
+    background: radial-gradient(70% 40% at 20% 0%, rgba(255, 255, 255, .08), transparent 65%), linear-gradient(180deg, rgba(30, 30, 36, .38), rgba(18, 18, 22, .3));
+    -webkit-backdrop-filter: blur(10px) saturate(1.6) !important; backdrop-filter: blur(10px) saturate(1.6) !important;
+  }
+  .pc-sheet-scrim { background: rgba(10, 10, 20, .08); }
+  :root[data-theme="dark"] .pc-sheet-scrim { background: rgba(0, 0, 0, .18); }
+}
+
+/* Collapsible "Record …" forms: a card with a full-width header and a chevron
+   (was a pill with a small grey button in it). */
+details.form-toggle { margin-bottom: 16px; padding: 2px 18px !important; background: var(--pc-panel) !important; border: 1px solid var(--pc-line) !important; border-radius: var(--pc-r) !important; box-shadow: var(--pc-sh-2) !important; transform: none !important; }
+details.form-toggle > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; background: none; border-radius: 0; cursor: pointer; color: var(--pc-text); font: 600 14.5px/1.3 var(--pc-font); }
+details.form-toggle > summary::-webkit-details-marker { display: none; }
+details.form-toggle > summary strong { font-weight: 600; }
+details.form-toggle > summary::after { content: ""; flex: none; width: 7px; height: 7px; margin-right: 4px; border-right: 2px solid var(--pc-text-3); border-bottom: 2px solid var(--pc-text-3); transform: rotate(45deg) translateY(-2px); transition: transform .15s; }
+details.form-toggle[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
+details.form-toggle[open] > summary { border-bottom: 1px solid var(--pc-line-2); margin-bottom: 14px; }
+details.form-toggle > .form, details.form-toggle > form { border: 0 !important; box-shadow: none !important; padding: 0 0 16px !important; background: none !important; }
