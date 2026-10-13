@@ -22,6 +22,7 @@ const { logActivity } = require('../lib/tenant-activity');
 const { logSecurityEvent } = require('../lib/security-audit');
 const { revokeUserSessions } = require('../lib/auth');
 const { db: rawDb } = require('../lib/tenant');
+const { normalizePhone, loginLabel } = require('../lib/phone');
 const { canAddUser, upgradeMessage } = require('../lib/plan');
 
 const ROLES = ['ADMIN', 'EDITOR', 'VIEWER'];
@@ -39,6 +40,7 @@ function register(app) {
     const users = await res.locals.db.user.findMany({ where: { deletedAt: null }, orderBy: { username: 'asc' } });
     const rows = users.map((u) => [
       esc(u.username), esc(u.displayName) || '—',
+      [u.email, u.phone].filter(Boolean).map(esc).join('<br>') || '—',
       `<span class="role-badge role-${esc(u.role.toLowerCase())}">${esc(u.role)}</span>`,
       esc(FINANCE_ROLE_LABELS[u.financeRole || 'NONE'] || u.financeRole),
       u.totpEnabled ? '<span class="pill pill-admin" title="2FA active">2FA ✓</span>' : '<span class="muted-text">—</span>',
@@ -60,7 +62,7 @@ function register(app) {
       <p class="muted-text">Any administrator can set a user's access level: <strong>Admin</strong> = everything, including users, settings, deleting and sending messages; <strong>Editor</strong> = add and edit members, attendance, events, classes, organizations, inventory, the preaching plan and announcements; <strong>Viewer</strong> = read-only.</p>
       <p class="muted-text">Finance roles are separate: <strong>Cashiers</strong> record income/expenses, <strong>Treasurers</strong> record and review accounting, <strong>Auditors</strong> review accounting only, and <strong>Finance admins</strong> can do both.</p>
       <div class="page-actions"><a class="btn primary" href="/users/new">＋ New user</a></div>
-      ${table(['Username', 'Display name', 'Role', 'Finance role', '2FA', 'Created', 'Actions'], rows)}`;
+      ${table(['Username', 'Display name', 'Signs in with', 'Role', 'Finance role', '2FA', 'Created', 'Actions'], rows)}`;
     res.page({ title: 'Users', active: '/users', noHeader: true, body });
   }));
 
@@ -69,7 +71,9 @@ function register(app) {
       <form class="form" method="post" action="/users">
         <label>Username<input name="username" required></label>
         <label>Display name<input name="displayName"></label>
-        <label>Email<input type="email" name="email" required></label>
+        <label>Email<input type="email" name="email" autocomplete="off"></label>
+        <label>Phone number<input type="tel" name="phone" inputmode="tel" placeholder="e.g. 024 412 7781" autocomplete="off"></label>
+        <p class="hint" style="grid-column:1/-1;margin:-4px 0 0">Give an email, a phone number, or both: they sign in with either. Without an email they cannot reset a forgotten password themselves; you reset it for them here.</p>
         <label>Password<input type="password" name="password" required minlength="8"></label>
         <label>Role<select name="role">
           <option value="ADMIN">admin (full access)</option>
@@ -93,17 +97,25 @@ function register(app) {
     const db = res.locals.db;
     const b = req.body || {};
     if (!b.username || !String(b.username).trim()) { flash(req, 'Username is required.'); return res.redirect('/users/new'); }
-    if (typeof b.email !== 'string' || !/^\S+@\S+\.\S+$/.test(b.email)) { flash(req, 'A valid email is required.'); return res.redirect('/users/new'); }
+    // Sign-in is by email, by phone number, or either: at least one is needed.
+    const email = typeof b.email === 'string' ? b.email.toLowerCase().trim() : '';
+    const phoneInput = typeof b.phone === 'string' ? b.phone.trim() : '';
+    const phone = phoneInput ? normalizePhone(phoneInput) : null;
+    if (!email && !phoneInput) { flash(req, 'Give an email or a phone number for this user to sign in with.'); return res.redirect('/users/new'); }
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) { flash(req, 'That email does not look right.'); return res.redirect('/users/new'); }
+    if (phoneInput && !phone) { flash(req, 'That phone number does not look right. Use a number like 024 412 7781 or +233 24 412 7781.'); return res.redirect('/users/new'); }
     if (!b.password || String(b.password).length < 8) { flash(req, 'Password must be at least 8 characters.'); return res.redirect('/users/new'); }
     const role = ROLES.includes(b.role) ? b.role : 'VIEWER';
     const financeRole = FINANCE_ROLES.includes(b.financeRole) ? b.financeRole : 'NONE';
 
-    const existing = await rawDb.user.findUnique({ where: { email: b.email.toLowerCase().trim() } });
-    if (existing) {
-      // Emails are unique across every church, so say which case it is.
+    // Emails and phone numbers are unique across every church, so say which case it is.
+    for (const [field, value, noun] of [['email', email, 'email'], ['phone', phone, 'phone number']]) {
+      if (!value) continue;
+      const existing = await rawDb.user.findUnique({ where: { [field]: value } });
+      if (!existing) continue;
       flash(req, existing.churchId === res.locals.churchId
-        ? (existing.deletedAt ? 'That email belonged to a user who was removed; ask for help to bring them back, or use another email.' : 'That email is already a user in your church. Find them in Users & Roles.')
-        : 'That email is already used by an account in another church. Each email can only have one account. Use a different email, or ask the platform operator to free it.');
+        ? (existing.deletedAt ? `That ${noun} belonged to a user who was removed; use another ${noun}.` : `That ${noun} is already a user in your church. Find them in Users & Roles.`)
+        : `That ${noun} is already used by an account in another church. Each ${noun} can only have one account. Use a different ${noun}, or ask the platform operator to free it.`);
       return res.redirect('/users/new');
     }
 
@@ -119,10 +131,10 @@ function register(app) {
     const passwordHash = await bcrypt.hash(String(b.password), 10);
     try {
       const user = await db.user.create({
-        data: { username: String(b.username).trim(), email: b.email.toLowerCase().trim(), passwordHash, displayName: b.displayName || null, role, financeRole },
+        data: { username: String(b.username).trim(), email: email || null, phone, passwordHash, displayName: b.displayName || null, role, financeRole },
       });
       await logActivity(db, 'user_created', `User created: ${user.username} (${role})`, '/users', res.locals.user.id);
-      await logSecurityEvent(db, req, { event: 'user.created', subject: `${user.email} (${role}/${financeRole})`, actorId: res.locals.user.id });
+      await logSecurityEvent(db, req, { event: 'user.created', subject: `${loginLabel(user)} (${role}/${financeRole})`, actorId: res.locals.user.id });
     } catch (e) {
       if (e.code !== 'P2002') throw e;
       flash(req, 'That username is already taken in this church.');
@@ -154,7 +166,7 @@ function register(app) {
       // trail (with IP/user-agent) the MFA changes in settings.js write to.
       await logSecurityEvent(db, req, {
         event: 'user.role_changed',
-        subject: `${updated.email} -> ${role}/${financeRole}`,
+        subject: `${loginLabel(updated)} -> ${role}/${financeRole}`,
         actorId: res.locals.user.id,
       });
     } catch (e) {
@@ -176,7 +188,7 @@ function register(app) {
       await logActivity(res.locals.db, 'user_password_reset', `Password reset for ${target.username}`, '/users', res.locals.user.id);
       await logSecurityEvent(res.locals.db, req, {
         event: 'user.password_reset_by_admin',
-        subject: target.email,
+        subject: loginLabel(target),
         actorId: res.locals.user.id,
       });
       flash(req, 'Password reset.', 'success');
@@ -195,7 +207,7 @@ function register(app) {
       // an admin disabling it on someone else's account.
       await logSecurityEvent(res.locals.db, req, {
         event: 'user.mfa_disabled_by_admin',
-        subject: target.email,
+        subject: loginLabel(target),
         actorId: res.locals.user.id,
       });
     } catch (e) {
@@ -215,11 +227,11 @@ function register(app) {
       if (!current) return res.status(404).send('Not found');
       const target = current.deletedAt
         ? current
-        : await res.locals.db.user.update({ where: { id }, data: { deletedAt: new Date(), email: `deleted+${id}+${current.email}` } });
+        : await res.locals.db.user.update({ where: { id }, data: { deletedAt: new Date(), email: current.email ? `deleted+${id}+${current.email}` : null, phone: current.phone ? `deleted+${id}+${current.phone}` : null } });
       await logActivity(res.locals.db, 'user_deleted', `User account deleted: ${target.username}`, '/users', res.locals.user.id);
       await logSecurityEvent(res.locals.db, req, {
         event: 'user.deleted',
-        subject: target.email,
+        subject: loginLabel(target),
         actorId: res.locals.user.id,
       });
     } catch (e) {
