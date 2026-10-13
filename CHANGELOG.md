@@ -17,6 +17,11 @@ All notable changes to this project are documented here.
 - New "Precision" look for the signed-in app, stage 1 of 3 (shell and dashboard). A light sidebar with grouped sections, a top bar with breadcrumbs, a "New" menu and a light/dark switch, and a ⌘K / Ctrl K search over pages, actions, members and events. It replaces the Material You theme (`public/theme-material.css` removed; `public/theme-precision.css` and `public/app-theme.js` added). The colour picker is gone; the light/dark choice carries over. Cards, buttons, forms, tables and badges on every page use the new style. The sign-in and landing pages are unchanged for now.
 - The dashboard has four key figures with trend lines, giving by type over 12 weeks or 12 months, what needs your attention, birthdays in the next 7 days (with a Wish shortcut to a one-person SMS for admins), attendance over the last 12 full weeks, upcoming events with the membership mix, and recent activity. Giving now comes from the finance ledger, so it matches the Finance page (it used to count general income records only).
 - Platform operators see the Platform link in the sidebar again.
+- Phones now follow iOS 26's own look, matched against system apps in light and dark mode:
+  - The tab bar and buttons use a light veil with a small blur, a hairline edge and a soft shadow; in dark mode, smoky dark glass.
+  - Labels and icons are plain black or white with no glow, and the current tab sits in a soft grey pill.
+  - The top bar is gone: the page title sits centred over a fade of the page colour, and search is a round glass button.
+  - The New button is a round glass button with just a plus.
 - On phones the More and New sheets are Liquid Glass too: frostier than the bars so every label stays easy to read, with the page's colours glowing through, the same bright rim and highlight, glassy tile icons, and a lighter backdrop behind the sheet.
 - On phones the top bar is now a floating clear-glass capsule matching the tab bar, with the page scrolling underneath; the thin brand stripe is hidden on phones so it doesn't sit above the capsule.
 - The phone tab bar and New button are now clear glass, closer to iOS 26: almost no tint and a light blur so the page shows through, a bright rim and edge glow for the shape, and a soft glow behind the labels and icons so they stay readable over any content.
