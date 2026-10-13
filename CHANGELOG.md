@@ -48,6 +48,10 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Deleting a church from the platform console now frees its users' login emails straight away (emails are unique across all churches, so a deleted church used to keep them taken for 30 days). Restoring the church gives them back, except any another account has claimed meanwhile, which the console lists.
+- Clearer messages:
+  - A form opened before you last signed in or out (for example in another tab) used to end on a bare "Security check failed" page. It now returns you to the form and explains why nothing was saved.
+  - Adding a user whose email is taken says whether it is already a user in your church or belongs to an account in another church.
 - Desktop:
   - The Show/Hide button in password fields (New user, profile) sat below the field; it is inside the field again.
   - Finance › Services: the 7-day day-born breakdown forced the form wide and pushed Service type off the page.

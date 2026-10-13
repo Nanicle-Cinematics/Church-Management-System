@@ -24,6 +24,7 @@ const { isPro } = require('./settings');
 const { requestIp, requestUserAgent } = require('../lib/security-audit');
 
 const { requireOperatorJson, logPlatformEvent } = require('../lib/platform-operators');
+const { releaseChurchEmails, reclaimChurchEmails } = require('../lib/church-emails');
 
 function register(app) {
   app.get('/api/platform/churches', requireOperatorJson, asyncHandler(async (req, res) => {
@@ -113,6 +114,8 @@ function register(app) {
         where: { id: req.params.id },
         data,
       });
+      const releasedEmails = action === 'delete' ? await releaseChurchEmails(rawDb, church.id) : undefined;
+      const reclaimed = action === 'restore' ? await reclaimChurchEmails(rawDb, church.id) : undefined;
       const events = {
         suspend: 'platform.church_suspended', reactivate: 'platform.church_reactivated',
         delete: 'platform.church_deleted', restore: 'platform.church_restored',
@@ -129,6 +132,8 @@ function register(app) {
         id: church.id, suspendedAt: church.suspendedAt, suspensionReason: church.suspensionReason,
         deletedAt: church.deletedAt, deletionReason: church.deletionReason,
         deletionPurgeAfter: church.deletionPurgeAfter,
+        ...(releasedEmails !== undefined ? { releasedEmails } : {}),
+        ...(reclaimed ? { restoredEmails: reclaimed.restored, emailsTakenMeanwhile: reclaimed.taken } : {}),
       });
     } catch (e) {
       if (e.code === 'P2025') return res.status(404).json({ error: 'Not found' });

@@ -99,7 +99,13 @@ function register(app) {
     const financeRole = FINANCE_ROLES.includes(b.financeRole) ? b.financeRole : 'NONE';
 
     const existing = await rawDb.user.findUnique({ where: { email: b.email.toLowerCase().trim() } });
-    if (existing) { flash(req, 'An account with that email already exists.'); return res.redirect('/users/new'); }
+    if (existing) {
+      // Emails are unique across every church, so say which case it is.
+      flash(req, existing.churchId === res.locals.churchId
+        ? (existing.deletedAt ? 'That email belonged to a user who was removed; ask for help to bring them back, or use another email.' : 'That email is already a user in your church. Find them in Users & Roles.')
+        : 'That email is already used by an account in another church. Each email can only have one account. Use a different email, or ask the platform operator to free it.');
+      return res.redirect('/users/new');
+    }
 
     // Seat limit. Checked against active accounts only, so a soft-deleted user
     // frees its seat, and enforced here rather than by disabling anyone: a

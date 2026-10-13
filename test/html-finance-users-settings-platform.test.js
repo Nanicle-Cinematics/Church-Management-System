@@ -50,6 +50,7 @@ function htmlClient() {
     for (const c of set) if (c.startsWith('connect.sid=')) cookie = c.split(';')[0];
   };
   return {
+    cookie: () => cookie,
     async postJson(p, jsonBody) {
       const res = await fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(jsonBody) });
       remember(res);
@@ -200,4 +201,29 @@ test('settings: update church name', async () => {
   assert.strictEqual(updated.status, 302);
   const after = await client.getHtml('/settings');
   assert.match(after.text, /Renamed via Settings/);
+});
+
+test('a stale form goes back to its page with an explanation instead of a dead end', async () => {
+  const { client } = await signedInClient('html-stale-form');
+  const res = await fetch(`${base}/users`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', referer: `${base}/users/new`, cookie: client.cookie() },
+    body: new URLSearchParams({ username: 'x', email: 'x@example.test', password: 'password123', _csrf: 'stale' }).toString(),
+  });
+  assert.strictEqual(res.status, 303);
+  assert.strictEqual(res.headers.get('location'), '/users/new');
+  await res.text(); // the session (with the message) is saved before the response ends
+  const page = await client.getHtml('/users/new');
+  assert.match(page.text, /opened before you last signed in or out/);
+});
+
+test('adding a user whose email belongs to another church says so', async () => {
+  const other = await signedInClient('html-email-other');
+  const otherEmail = (await db.user.findFirst({ where: { churchId: other.churchId } })).email;
+  const { client } = await signedInClient('html-email-taken');
+  const form = await client.getHtml('/users/new');
+  const res = await client.postForm('/users', { username: 'dup', email: otherEmail, password: 'password123', role: 'VIEWER', financeRole: 'NONE', _csrf: extractCsrf(form.text) });
+  assert.strictEqual(res.status, 302);
+  const page = await client.getHtml('/users/new');
+  assert.match(page.text, /already used by an account in another church/);
 });
