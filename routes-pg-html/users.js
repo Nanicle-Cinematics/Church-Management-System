@@ -22,7 +22,8 @@ const { logActivity } = require('../lib/tenant-activity');
 const { logSecurityEvent } = require('../lib/security-audit');
 const { revokeUserSessions } = require('../lib/auth');
 const { db: rawDb } = require('../lib/tenant');
-const { normalizePhone, loginLabel } = require('../lib/phone');
+const { loginLabel } = require('../lib/phone');
+const { parseLogins, loginTakenMessage, releasedOnDelete, freeUsernameFromRemovedUsers } = require('../lib/user-logins');
 const { canAddUser, upgradeMessage } = require('../lib/plan');
 
 const ROLES = ['ADMIN', 'EDITOR', 'VIEWER'];
@@ -50,6 +51,7 @@ function register(app) {
          <select name="financeRole">${Object.entries(FINANCE_ROLE_LABELS).map(([v, l]) => `<option value="${v}" ${(u.financeRole || 'NONE') === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
          <button type="submit">Save</button>
        </form>
+       <a class="btn ghost" href="/users/${u.id}/edit">Edit sign-in</a>
        <form method="post" action="/users/${u.id}/reset" class="inline">
          <input type="password" name="password" placeholder="new password" minlength="8" required>
          <button type="submit">Reset</button>
@@ -98,26 +100,15 @@ function register(app) {
     const b = req.body || {};
     if (!b.username || !String(b.username).trim()) { flash(req, 'Username is required.'); return res.redirect('/users/new'); }
     // Sign-in is by email, by phone number, or either: at least one is needed.
-    const email = typeof b.email === 'string' ? b.email.toLowerCase().trim() : '';
-    const phoneInput = typeof b.phone === 'string' ? b.phone.trim() : '';
-    const phone = phoneInput ? normalizePhone(phoneInput) : null;
-    if (!email && !phoneInput) { flash(req, 'Give an email or a phone number for this user to sign in with.'); return res.redirect('/users/new'); }
-    if (email && !/^\S+@\S+\.\S+$/.test(email)) { flash(req, 'That email does not look right.'); return res.redirect('/users/new'); }
-    if (phoneInput && !phone) { flash(req, 'That phone number does not look right. Use a number like 024 412 7781 or +233 24 412 7781.'); return res.redirect('/users/new'); }
+    const logins = parseLogins(b);
+    if (logins.error) { flash(req, logins.error); return res.redirect('/users/new'); }
+    const { email, phone } = logins;
     if (!b.password || String(b.password).length < 8) { flash(req, 'Password must be at least 8 characters.'); return res.redirect('/users/new'); }
     const role = ROLES.includes(b.role) ? b.role : 'VIEWER';
     const financeRole = FINANCE_ROLES.includes(b.financeRole) ? b.financeRole : 'NONE';
 
-    // Emails and phone numbers are unique across every church, so say which case it is.
-    for (const [field, value, noun] of [['email', email, 'email'], ['phone', phone, 'phone number']]) {
-      if (!value) continue;
-      const existing = await rawDb.user.findUnique({ where: { [field]: value } });
-      if (!existing) continue;
-      flash(req, existing.churchId === res.locals.churchId
-        ? (existing.deletedAt ? `That ${noun} belonged to a user who was removed; use another ${noun}.` : `That ${noun} is already a user in your church. Find them in Users & Roles.`)
-        : `That ${noun} is already used by an account in another church. Each ${noun} can only have one account. Use a different ${noun}, or ask the platform operator to free it.`);
-      return res.redirect('/users/new');
-    }
+    const taken = await loginTakenMessage(rawDb, { email, phone }, res.locals.churchId);
+    if (taken) { flash(req, taken); return res.redirect('/users/new'); }
 
     // Seat limit. Checked against active accounts only, so a soft-deleted user
     // frees its seat, and enforced here rather than by disabling anyone: a
@@ -129,9 +120,11 @@ function register(app) {
     }
 
     const passwordHash = await bcrypt.hash(String(b.password), 10);
+    // A removed user may still hold this username; it is free to reuse.
+    await freeUsernameFromRemovedUsers(db, String(b.username).trim());
     try {
       const user = await db.user.create({
-        data: { username: String(b.username).trim(), email: email || null, phone, passwordHash, displayName: b.displayName || null, role, financeRole },
+        data: { username: String(b.username).trim(), email, phone, passwordHash, displayName: b.displayName || null, role, financeRole },
       });
       await logActivity(db, 'user_created', `User created: ${user.username} (${role})`, '/users', res.locals.user.id);
       await logSecurityEvent(db, req, { event: 'user.created', subject: `${loginLabel(user)} (${role}/${financeRole})`, actorId: res.locals.user.id });
@@ -173,6 +166,48 @@ function register(app) {
       if (e.code !== 'P2025') throw e;
       return res.status(404).send('Not found');
     }
+    res.redirect('/users');
+  }));
+
+  // Edit how a user signs in (email and/or phone) and their display name.
+  app.get('/users/:id/edit', requireOwner, asyncHandler(async (req, res) => {
+    const u = await res.locals.db.user.findFirst({ where: { id: Number(req.params.id), deletedAt: null } });
+    if (!u) return res.status(404).send('Not found');
+    const body = `
+      ${pageHero(`Edit sign-in · ${u.displayName || u.username}`, 'Change how this person signs in. Their password, role and history stay as they are.')}
+      <form class="form" method="post" action="/users/${u.id}/edit">
+        <label>Username<input value="${esc(u.username)}" disabled></label>
+        <label>Display name<input name="displayName" value="${esc(u.displayName || '')}"></label>
+        <label>Email<input type="email" name="email" value="${esc(u.email || '')}" autocomplete="off"></label>
+        <label>Phone number<input type="tel" name="phone" inputmode="tel" value="${esc(u.phone || '')}" placeholder="e.g. 024 412 7781" autocomplete="off"></label>
+        <p class="hint" style="grid-column:1/-1;margin:-4px 0 0">Keep at least one. They sign in with either. Without an email they cannot reset a forgotten password themselves; you reset it for them in Users &amp; Roles.</p>
+        <div class="actions"><a class="btn ghost" href="/users">Cancel</a><button type="submit">Save sign-in</button></div>
+      </form>`;
+    res.page({ title: 'Edit sign-in', active: '/users', noHeader: true, body });
+  }));
+
+  app.post('/users/:id/edit', requireOwner, asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const db = res.locals.db;
+    const current = await db.user.findFirst({ where: { id, deletedAt: null } });
+    if (!current) return res.status(404).send('Not found');
+    const logins = parseLogins(req.body || {});
+    if (logins.error) { flash(req, logins.error); return res.redirect(`/users/${id}/edit`); }
+    const taken = await loginTakenMessage(rawDb, logins, res.locals.churchId, id);
+    if (taken) { flash(req, taken); return res.redirect(`/users/${id}/edit`); }
+    const displayName = String((req.body && req.body.displayName) || '').trim() || null;
+    // An email set by an admin counts as checked, as a phone number does, so a
+    // changed address does not lock the person out pending verification.
+    const emailChanged = logins.email !== current.email;
+    await db.user.update({ where: { id }, data: {
+      email: logins.email, phone: logins.phone, displayName,
+      ...(emailChanged && logins.email ? { emailVerifiedAt: new Date() } : {}),
+    } });
+    const before = [current.email, current.phone].filter(Boolean).join(' / ') || '—';
+    const after = [logins.email, logins.phone].filter(Boolean).join(' / ');
+    await logActivity(db, 'user_login_changed', `Sign-in details changed for ${current.username}`, '/users', res.locals.user.id);
+    await logSecurityEvent(db, req, { event: 'user.login_changed', subject: `${current.username}: ${before} -> ${after}`, actorId: res.locals.user.id });
+    flash(req, `Sign-in details saved for ${current.displayName || current.username}.`, 'success');
     res.redirect('/users');
   }));
 
@@ -225,13 +260,12 @@ function register(app) {
       // be re-invited; the original stays embedded for the audit trail.
       const current = await res.locals.db.user.findUnique({ where: { id } });
       if (!current) return res.status(404).send('Not found');
-      const target = current.deletedAt
-        ? current
-        : await res.locals.db.user.update({ where: { id }, data: { deletedAt: new Date(), email: current.email ? `deleted+${id}+${current.email}` : null, phone: current.phone ? `deleted+${id}+${current.phone}` : null } });
-      await logActivity(res.locals.db, 'user_deleted', `User account deleted: ${target.username}`, '/users', res.locals.user.id);
+      // Username, email and phone are all freed for reuse (originals kept inside).
+      if (!current.deletedAt) await res.locals.db.user.update({ where: { id }, data: { deletedAt: new Date(), ...releasedOnDelete(current) } });
+      await logActivity(res.locals.db, 'user_deleted', `User account deleted: ${current.username}`, '/users', res.locals.user.id);
       await logSecurityEvent(res.locals.db, req, {
         event: 'user.deleted',
-        subject: loginLabel(target),
+        subject: loginLabel(current),
         actorId: res.locals.user.id,
       });
     } catch (e) {

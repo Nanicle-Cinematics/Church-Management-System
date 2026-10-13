@@ -33,7 +33,7 @@ function client() {
     let parsed; try { parsed = text ? JSON.parse(text) : null; } catch { parsed = text; }
     return { status: res.status, body: parsed };
   };
-  return { get: (p) => send('GET', p), post: (p, b) => send('POST', p, b), del: (p) => send('DELETE', p) };
+  return { get: (p) => send('GET', p), post: (p, b) => send('POST', p, b), put: (p, b) => send('PUT', p, b), del: (p) => send('DELETE', p) };
 }
 
 async function adminOf(tag) {
@@ -123,4 +123,41 @@ test('removing a user, or deleting their church, frees the number', async () => 
   const { taken } = await reclaimChurchEmails(db, A.churchId);
   assert.deepStrictEqual(taken, []);
   assert.strictEqual(await db.user.count({ where: { phone: stored(local), churchId: A.churchId } }), 1, 'restoring takes it back');
+});
+
+test('a removed user\'s username can be given to someone new, including users removed before this fix', async () => {
+  const name = `reuse${Date.now()}`;
+  const first = await A.client.post('/api/users', { username: name, email: unique('reuse1'), password: 'password123' });
+  assert.strictEqual(first.status, 201);
+  assert.strictEqual((await A.client.del(`/api/users/${first.body.id}`)).status, 204);
+  assert.strictEqual((await A.client.post('/api/users', { username: name, email: unique('reuse2'), password: 'password123' })).status, 201);
+
+  // An older removal kept the username as it was.
+  const legacyName = `legacy${Date.now()}`;
+  const legacy = await A.client.post('/api/users', { username: legacyName, email: unique('legacy'), password: 'password123' });
+  await db.user.update({ where: { id: legacy.body.id }, data: { deletedAt: new Date(), email: null } });
+  assert.strictEqual((await A.client.post('/api/users', { username: legacyName, phone: freshLocal(), password: 'password123' })).status, 201);
+  assert.strictEqual((await db.user.findUnique({ where: { id: legacy.body.id } })).username, `deleted+${legacy.body.id}+${legacyName}`);
+});
+
+test('an admin edits how a user signs in: add a phone, change the email, keep at least one', async () => {
+  const email = unique('edit');
+  const created = await A.client.post('/api/users', { username: `edit${Date.now()}`, email, password: 'password123' });
+  const id = created.body.id;
+  const local = freshLocal();
+
+  const added = await A.client.put(`/api/users/${id}/login`, { email, phone: local });
+  assert.strictEqual(added.status, 200);
+  assert.strictEqual(added.body.phone, stored(local));
+  assert.strictEqual((await client().post('/login', { email: local, password: 'password123' })).status, 200, 'now signs in with the phone');
+
+  const phoneOnly = await A.client.put(`/api/users/${id}/login`, { phone: local });
+  assert.strictEqual(phoneOnly.body.email, null);
+  assert.strictEqual((await client().post('/login', { email, password: 'password123' })).status, 401, 'the old email no longer signs in');
+
+  assert.strictEqual((await A.client.put(`/api/users/${id}/login`, {})).status, 400, 'at least one is required');
+  const otherChurchEmail = (await db.user.findFirst({ where: { churchId: B.churchId } })).email;
+  const clash = await A.client.put(`/api/users/${id}/login`, { email: otherChurchEmail, phone: local });
+  assert.strictEqual(clash.status, 409);
+  assert.strictEqual((await B.client.put(`/api/users/${id}/login`, { phone: local })).status, 404, 'another church cannot edit them');
 });
