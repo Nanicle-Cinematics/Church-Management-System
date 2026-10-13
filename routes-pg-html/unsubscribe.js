@@ -27,6 +27,9 @@ async function resolve(token) {
   return member;
 }
 
+// The unsubscribe page belongs to the member's church: show its name.
+const churchPage = (member, title, body) => authPage(title, body, undefined, { churchName: member.church.name });
+
 const notFound = (res) => res.status(404).send(authPage('Link not recognized', '<p>This unsubscribe link is not valid.</p>'));
 
 function register(app) {
@@ -34,7 +37,7 @@ function register(app) {
     const member = await resolve(req.params.token);
     if (!member) return notFound(res);
     // The page deliberately shows no personal details about the member.
-    res.send(authPage('Unsubscribe', `
+    res.send(churchPage(member, 'Unsubscribe', `
       <p>Stop receiving SMS and email messages from <strong>${esc(member.church.name)}</strong>?</p>
       <form class="form auth-form" method="post" action="/u/${esc(req.params.token)}">
         <div class="actions"><button type="submit">Yes, unsubscribe me</button></div>
@@ -47,7 +50,7 @@ function register(app) {
     const db = tenantDb(member.churchId);
     await db.member.update({ where: { id: member.id }, data: { preferredChannel: 'NONE' } });
     await logActivity(db, 'member_unsubscribed', `${member.firstName} ${member.lastName} unsubscribed from messages`, `/members/${member.id}`, null);
-    res.send(authPage('Unsubscribed', `<p class="success">You have been unsubscribed. You will no longer receive messages from ${esc(member.church.name)}.</p>
+    res.send(churchPage(member, 'Unsubscribed', `<p class="success">You have been unsubscribed. You will no longer receive messages from ${esc(member.church.name)}.</p>
       <p class="muted-text">If this was a mistake, ask the church office to update your preferences.</p>`));
   }));
 }

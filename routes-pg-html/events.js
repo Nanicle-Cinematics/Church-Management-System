@@ -21,6 +21,9 @@ const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const { authPage } = require('../lib/tenant-shell');
 const { resolveChurchByCheckinToken } = require('../lib/tenant');
+
+// Public check-in and RSVP pages belong to one church: show its name.
+const churchPage = (resolved, title, body) => authPage(title, body, undefined, { churchName: resolved.event.church.name });
 const { icon } = require('../lib/icons');
 const { getSessionSecret } = require('../lib/session-secret');
 const { createRateLimiter } = require('../lib/rate-limit');
@@ -490,7 +493,7 @@ function register(app) {
     }
     const { event: ev } = resolved;
     const when = new Date(ev.startsAt).toLocaleString('en-GB', { weekday: 'long', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-    res.send(authPage(`Check in · ${ev.title}`, `
+    res.send(churchPage(resolved, `Check in · ${ev.title}`, `
       <p class="muted-text">${esc(when)}${ev.location ? ' · ' + esc(ev.location) : ''}</p>
       <form method="post" action="/checkin/${esc(req.params.token)}" class="form auth-form">
         <label class="wide">Your name or Member ID
@@ -510,7 +513,7 @@ function register(app) {
     const confirmedCheckin = async (m) => {
       await db.attendance.upsert({ where: { eventId_memberId: { eventId: ev.id, memberId: m.id } }, update: {}, create: { eventId: ev.id, memberId: m.id } });
       await logActivity(db, 'attendance_recorded', `${m.firstName} ${m.lastName} self-checked in to ${ev.title}`, `/events/${ev.id}`, null);
-      return res.send(authPage(`✓ Checked in, ${m.firstName}`, `
+      return res.send(churchPage(resolved, `✓ Checked in, ${m.firstName}`, `
         <p style="font-size:1.1rem">Welcome, <strong>${esc(m.firstName)} ${esc(m.lastName)}</strong>.</p>
         <p>You're checked in to <strong>${esc(ev.title)}</strong>. Have a blessed time. 🙏</p>
         <p style="margin-top:1.25rem"><a href="/checkin/${esc(req.params.token)}">Check in another person</a></p>`));
@@ -536,7 +539,7 @@ function register(app) {
     });
 
     if (matches.length === 0) {
-      return res.send(authPage('No match found', `
+      return res.send(churchPage(resolved, 'No match found', `
         <p>No member found for <strong>"${esc(q)}"</strong>. Please ask an usher for help, or try a different spelling / your Member ID (e.g. MBR-007).</p>
         <p><a href="/checkin/${esc(req.params.token)}">← Try again</a></p>`));
     }
@@ -558,7 +561,7 @@ function register(app) {
         </button>
       </form>`).join('');
 
-    res.send(authPage(matches.length === 1 ? 'Already checked in' : 'Pick your name', `
+    res.send(churchPage(resolved, matches.length === 1 ? 'Already checked in' : 'Pick your name', `
       <p class="muted-text">${matches.length} match${matches.length === 1 ? '' : 'es'} for "${esc(q)}":</p>
       ${list}
       <p style="margin-top:1rem"><a href="/checkin/${esc(req.params.token)}">← Search again</a></p>`));
@@ -573,7 +576,7 @@ function register(app) {
     }
     const { event: ev } = resolved;
     const done = req.query.ok === '1';
-    res.send(authPage(`RSVP · ${ev.title}`, `
+    res.send(churchPage(resolved, `RSVP · ${ev.title}`, `
       <p class="muted">${esc(ev.eventType)} · ${esc(fmtDt(ev.startsAt))}${ev.location ? ` · ${esc(ev.location)}` : ''}</p>
       ${done ? '<div class="flash flash-success">Thank you — your response has been recorded.</div>' : ''}
       <form class="form auth-form" method="post" action="/rsvp/${esc(req.params.token)}">
@@ -617,7 +620,7 @@ function register(app) {
       orderBy: { lastName: 'asc' }, take: 12, select: { id: true, firstName: true, lastName: true, externalId: true },
     });
     if (matches.length === 0) {
-      return res.send(authPage('No match found', `
+      return res.send(churchPage(resolved, 'No match found', `
         <p>No member found for <strong>"${esc(q)}"</strong>. Try a different spelling or your Member ID.</p>
         <p><a href="/rsvp/${esc(req.params.token)}">← Try again</a></p>`));
     }
@@ -629,7 +632,7 @@ function register(app) {
         <button type="submit"><div class="who"><div class="name">${esc(m.firstName)} ${esc(m.lastName)}</div>
           <div class="meta">${esc(m.externalId) || ''}</div></div><span class="pick-tag">Tap to send RSVP</span></button>
       </form>`).join('');
-    res.send(authPage('Pick your name', `
+    res.send(churchPage(resolved, 'Pick your name', `
       <p class="muted-text">${matches.length} match${matches.length === 1 ? '' : 'es'} for "${esc(q)}":</p>
       ${list}
       <p style="margin-top:1rem"><a href="/rsvp/${esc(req.params.token)}">← Search again</a></p>`));
