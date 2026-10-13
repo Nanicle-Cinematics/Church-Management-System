@@ -47,6 +47,11 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Phones:
+  - Typing in the search dialog showed a tinted box between the search icon and Esc (the app's field border and focus ring); the field is now plain text.
+  - Tapping a member sometimes opened the summary card over the whole screen. Its height was set in `vh`, which in iPhone Safari can be taller than the visible area while the toolbars show. The card now stops 64px below the top of the screen; the More sheet and the Members filter sheet use the visible height (`dvh`) too.
+  - The collapsible "Record …" forms (Finance, Inventory, Preaching, Bible Classes and others) were a pill with a small grey button inside; they are now cards with a full-width header and a chevron.
+- The search dialog is frosted glass, and the More and New sheets are much clearer glass.
 - iPhone (iOS 26 Safari):
   - Safari's toolbars turned dark grey on light pages. A hidden full-screen backdrop (opacity 0) and the closed Members filter sheet were still on the page, and Safari tints its toolbars from those. Both are now fully hidden while closed.
   - Ghost copies and streaks still appeared under the top area while scrolling. The round top buttons no longer use a live blur (a frosted fill instead); Safari repaints the page wrongly under a blur inside the pinned top area.
