@@ -646,12 +646,12 @@ function register(app) {
       const tone = pct === 0 ? 'flat' : (invert ? pct < 0 : pct > 0) ? 'up' : 'down';
       return `<span class="pd-delta ${tone}">${pct > 0 ? '↑' : pct < 0 ? '↓' : ''} ${Math.abs(pct).toFixed(1)}%</span> `;
     };
-    const kpi = (href, label, value, foot) => `<a class="pd-kpi" href="${href}"><div class="pd-kpi-l">${esc(label)}</div><div class="pd-kpi-v">${value}</div><div class="pd-kpi-f">${foot}</div></a>`;
+    const kpi = (href, label, value, foot, ic) => `<a class="pd-kpi" href="${href}"><span class="pd-kpi-ic" aria-hidden="true">${icon(ic)}</span><div class="pd-kpi-l">${esc(label)}</div><div class="pd-kpi-v">${value}</div><div class="pd-kpi-f">${foot}</div></a>`;
     const kpis = `<section class="pd-kpis" aria-label="This month">
-      ${kpi('/finance/income', `Income, ${now.toLocaleDateString('en-GB', { month: 'long' })}`, esc(whole(monthIncome)), `${delta(monthIncome, lastIncome)}vs last month so far`)}
-      ${kpi('/finance/expenses', 'Expenses, this month', esc(whole(monthExpenses)), budgetUsage === null ? `${delta(monthExpenses, lastExpenses, true)}vs last month so far` : `<span class="pd-delta ${budgetUsage > 100 ? 'down' : budgetUsage >= 85 ? 'flat' : 'up'}">${budgetUsage}%</span> of the approved budget`)}
-      ${kpi('/finance/reports/income-expense', 'Net this month', `<span${monthNet < 0 ? ' class="pf-neg"' : ''}>${esc(whole(monthNet))}</span>`, lastNet ? `${whole(lastNet)} at this point last month` : 'Income less expenses')}
-      ${kpi('/finance/funds', 'Fund balances', esc(whole(cashPosition)), `Across ${funds.length} active fund${funds.length === 1 ? '' : 's'}`)}
+      ${kpi('/finance/income', `Income, ${now.toLocaleDateString('en-GB', { month: 'long' })}`, esc(whole(monthIncome)), `${delta(monthIncome, lastIncome)}vs last month so far`, 'trend')}
+      ${kpi('/finance/expenses', 'Expenses, this month', esc(whole(monthExpenses)), budgetUsage === null ? `${delta(monthExpenses, lastExpenses, true)}vs last month so far` : `<span class="pd-delta ${budgetUsage > 100 ? 'down' : budgetUsage >= 85 ? 'flat' : 'up'}">${budgetUsage}%</span> of the approved budget`, 'receipt')}
+      ${kpi('/finance/reports/income-expense', 'Net this month', `<span${monthNet < 0 ? ' class="pf-neg"' : ''}>${esc(whole(monthNet))}</span>`, lastNet ? `${whole(lastNet)} at this point last month` : 'Income less expenses', 'ledger')}
+      ${kpi('/finance/funds', 'Fund balances', esc(whole(cashPosition)), `Across ${funds.length} active fund${funds.length === 1 ? '' : 's'}`, 'wallet')}
     </section>`;
 
     // ---- Sunday collections ----

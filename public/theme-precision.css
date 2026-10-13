@@ -868,7 +868,13 @@ body.pc .pd .pd-head .pd-actions a.btn:not(.ghost):not(.danger):not(.disabled):n
 
 /* key figures: a coloured strip on each */
 .pd-kpi, .finance-kpi { position: relative; }
-.pd-kpi::before { content: ""; position: absolute; left: 18px; right: 18px; top: 0; height: 3px; border-radius: 0 0 3px 3px; background: var(--k, var(--pc-accent)); }
+/* key figures: a tinted icon chip in each figure's colour (no top bar) */
+.pd-kpi-ic { position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; background: color-mix(in srgb, var(--k, var(--pc-accent)) 14%, var(--pc-panel)); color: var(--k, var(--pc-accent)); }
+.pd-kpi-ic svg { width: 16px; height: 16px; }
+.pd-kpi:has(.pd-kpi-ic) .pd-kpi-l { padding-right: 40px; }
+.pd-kpi .pd-spark { top: auto; bottom: 14px; }
+.pd-kpi:has(.pd-spark) .pd-kpi-f { padding-right: 92px; }
+@media (max-width: 560px) { .pd-kpi-ic { top: 12px; right: 12px; width: 28px; height: 28px; border-radius: 8px; } .pd-kpi-ic svg { width: 15px; height: 15px; } .pd-kpi:has(.pd-kpi-ic) .pd-kpi-l { padding-right: 34px; } .pd-kpi:has(.pd-spark) .pd-kpi-f { padding-right: 0; } }
 .pd-kpi:nth-child(4n+1) { --k: var(--pc-accent); }
 .pd-kpi:nth-child(4n+2) { --k: var(--pc-teal); }
 .pd-kpi:nth-child(4n+3) { --k: var(--pc-gold); }
@@ -877,7 +883,7 @@ body.pc .pd .pd-head .pd-actions a.btn:not(.ghost):not(.danger):not(.disabled):n
 .pd-kpi:nth-child(4n+3) .pd-spark .sl { stroke: var(--pc-gold); } .pd-kpi:nth-child(4n+3) .pd-spark .sa { fill: var(--pc-gold); }
 .pd-kpi:nth-child(4n+4) .pd-spark .sl { stroke: var(--pc-rose); } .pd-kpi:nth-child(4n+4) .pd-spark .sa { fill: var(--pc-rose); }
 .hero-stat { position: relative; overflow: hidden; }
-.hero-stat::after { content: "" !important; display: block !important; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--k, var(--pc-accent)); }
+/* stat tiles already carry a coloured icon chip, so no top bar either */
 .hero-stat:nth-child(5n+2) { --k: var(--pc-ok); } .hero-stat:nth-child(5n+3) { --k: var(--pc-warn); } .hero-stat:nth-child(5n+4) { --k: var(--pc-info); } .hero-stat:nth-child(5n+5) { --k: var(--pc-bad); }
 
 /* card titles: a small coloured mark */
@@ -902,7 +908,8 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
 .pm-tabs a[aria-current]::after { background: linear-gradient(90deg, #5b4cff, #ff6ba8); height: 3px; }
 
 /* finance: fund cards and the overview banner-style header get a touch of colour */
-.pf a.pf-fund { border-top: 3px solid var(--k, var(--pc-accent)); }
+/* fund cards: the icon chip carries the fund's colour (no top bar) */
+.pf a.pf-fund .pd-ti { background: color-mix(in srgb, var(--k, var(--pc-accent)) 14%, var(--pc-panel)) !important; color: var(--k, var(--pc-accent)) !important; }
 .pf a.pf-fund:nth-child(6n+2) { --k: var(--pc-teal); } .pf a.pf-fund:nth-child(6n+3) { --k: var(--pc-gold); } .pf a.pf-fund:nth-child(6n+4) { --k: var(--pc-sky); } .pf a.pf-fund:nth-child(6n+5) { --k: var(--pc-rose); } .pf a.pf-fund:nth-child(6n+6) { --k: var(--pc-ok); }
 .pd-delta.up { background: var(--pc-ok-soft); }
 
