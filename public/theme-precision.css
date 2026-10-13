@@ -1219,3 +1219,35 @@ details.form-toggle > .form, details.form-toggle > form { border: 0 !important; 
   :root[data-theme="dark"] .pc-tabbar a, :root[data-theme="dark"] body.pc .pc-tabbar button, :root[data-theme="dark"] body.pc button.pc-fab { text-shadow: 0 0 5px rgba(0, 0, 0, .8); }
   :root[data-theme="dark"] .pc-tabbar svg, :root[data-theme="dark"] .pc-fab svg { filter: drop-shadow(0 0 2px rgba(0, 0, 0, .75)); }
 }
+
+/* Show/Hide inside password fields: the button rule above strips transforms,
+   which dropped the toggle below its field. Centred inside the field again,
+   styled like the sign-in pages. */
+body.pc .password-field { position: relative; display: block; width: 100%; }
+body.pc .password-field input { padding-right: 4.2rem !important; }
+body.pc .password-field .password-toggle { position: absolute; top: 50%; right: 6px; transform: translateY(-50%) !important; min-width: 0; height: auto; min-height: 0; width: auto; padding: 6px 8px; border: 0 !important; border-radius: 6px !important; background: none !important; box-shadow: none !important; color: var(--pc-accent-ink) !important; font: 600 12.5px/1 var(--pc-font); cursor: pointer; }
+body.pc .password-field .password-toggle:hover { background: var(--pc-hover) !important; }
+
+/* Fieldsets default to min-width: min-content, so a wide one (the 7-day
+   day-born breakdown on Finance › Services) forced its grid column wide and
+   pushed the next field off the page. Let them shrink, and give a fieldset in
+   a two-column form the whole row. */
+fieldset { min-width: 0; }
+.form > fieldset { grid-column: 1 / -1; }
+
+/* Finance reports: the filter row asked for five 130px columns plus the
+   button and only wrapped below 1000px, so with the sidebar open the button
+   ran off the page. It now fits as many columns as there is room for. */
+.finance-report-filters { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; }
+.finance-report-filters > button, .finance-report-filters > .btn { justify-self: start; }
+/* Report tabs: the link colour rule turned the selected pill's text purple on
+   purple. */
+.finance-report-tabs a { color: var(--pc-text-2) !important; background: var(--pc-panel); border-color: var(--pc-line); text-decoration: none !important; }
+.finance-report-tabs a:hover { color: var(--pc-text) !important; background: var(--pc-hover); border-color: var(--pc-line); }
+.finance-report-tabs a.active { color: var(--pc-on-accent) !important; background: var(--pc-accent); border-color: var(--pc-accent); }
+
+/* An old global 'form label' rule (uppercase, bold, letter-spaced, 12px)
+   still reached labels in forms that are not '.form' blocks (the broadcast
+   audience picker, report filters, …). Precision labels everywhere. */
+body.pc form label { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; color: var(--pc-text-2); }
+body.pc form label .hint { display: block; margin-top: 4px; text-transform: none; letter-spacing: 0; font: 400 12.5px/1.4 var(--pc-font); color: var(--pc-text-3); }

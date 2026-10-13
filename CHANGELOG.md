@@ -47,6 +47,11 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Desktop:
+  - The Show/Hide button in password fields (New user, profile) sat below the field; it is inside the field again.
+  - Finance › Services: the 7-day day-born breakdown forced the form wide and pushed Service type off the page.
+  - Finance reports: the filter row ran off the page on smaller laptops (1024px), and the selected report tab was purple text on purple.
+  - Labels in forms that are not standard form blocks (the broadcast audience picker, report filters) were still in the old all-caps style.
 - Signed-out pages (sign in, sign up, password reset, two-factor, the outage page) showed one church's name, from the `CHURCH_NAME` setting, to everyone. They now show the product name, Church Manager. QR check-in, RSVP and unsubscribe pages, which belong to one church, show that church's own name.
 - Security (tenant isolation): a church admin could record an event check-in or RSVP for another church's member by sending that member's id, and the event page then showed the other church's member's name. The event forms now check that the event and member are their own church's. More broadly, every write through the church-scoped database client now checks each id it links to (scalar ids, nested `connect` and nested `create`, inside transactions too) and refuses a link to another church's row as "Not found". `scripts/check-cross-church-links.js` reports any existing cross-church links (read-only; every count should be 0).
 - Phones:
