@@ -143,8 +143,10 @@ body.pc button.pc-new:hover { background: var(--pc-accent-h); color: var(--pc-on
 .pc-main > .page { width: 100%; max-width: 1320px; margin: 0 auto; padding: 28px 28px 48px; animation: none !important; flex: 1; }
 .pc-main > .footer { background: none !important; border: 0 !important; box-shadow: none !important; color: var(--pc-text-3) !important; font-size: 12px; padding: 0 28px 24px; max-width: 1320px; width: 100%; margin: 0 auto; }
 
-.pc-scrim { position: fixed; inset: 0; z-index: 50; background: rgba(12, 12, 24, .34); opacity: 0; pointer-events: none; transition: opacity .2s; }
-body.pc-nav-open .pc-scrim { opacity: 1; pointer-events: auto; }
+/* display:none when closed, not opacity:0: iOS 26 Safari tints its toolbars
+   from full-screen fixed layers even when they are invisible. */
+.pc-scrim { position: fixed; inset: 0; z-index: 50; display: none; background: rgba(12, 12, 24, .34); }
+body.pc-nav-open .pc-scrim { display: block; }
 .pc-pal-wrap { position: fixed; inset: 0; z-index: 80; display: flex; justify-content: center; align-items: flex-start; padding: 12vh 12px 0; background: rgba(12, 12, 24, .38); }
 .pc-pal-wrap[hidden] { display: none; }
 .pc-pal { width: min(620px, 100%); border-radius: 14px; background: var(--pc-panel); box-shadow: var(--pc-sh-pop); overflow: hidden; animation: pc-pop .16s ease-out; }
@@ -734,7 +736,10 @@ body.pp-open { overflow: hidden; }
   .pm-layout { grid-template-columns: minmax(0, 1fr); }
   .card.pm-facets { position: fixed; left: 0; right: 0; bottom: 0; top: auto; max-height: 82vh; z-index: 58; border-radius: 16px 16px 0 0 !important; box-shadow: var(--pc-sh-pop) !important; transform: translateY(105%) !important; transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
   body.pm-sheet-open .card.pm-facets { transform: none !important; }
-  body.pm-sheet-open .pc-scrim { opacity: 1; pointer-events: auto; }
+  body.pm-sheet-open .pc-scrim { display: block; }
+  /* closed: hidden too, so Safari doesn't tint its toolbar from it */
+  .card.pm-facets { visibility: hidden; transition: transform .28s cubic-bezier(.2, .8, .2, 1), visibility 0s .28s; }
+  body.pm-sheet-open .card.pm-facets { visibility: visible; transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
   .btn.pm-fbtn { display: inline-flex !important; }
   .pm-toolbar .search-field { flex: 1 1 auto; }
 }
@@ -1113,4 +1118,12 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
   .pc-top .pc-ib::before { content: ""; position: absolute; inset: 0; z-index: -1; box-sizing: border-box; border-radius: 50%; pointer-events: none; }
   .pc-top .pc-ib svg { width: 20px; height: 20px; }
   .pc-op .pc-top { justify-content: flex-start; gap: 8px; }
+}
+
+/* iOS Safari repaints the page wrongly (ghost copies, streaks) under any
+   backdrop-filter inside the sticky top area while scrolling, so the round
+   top buttons are frosted with a fill instead of a live blur. */
+@media (max-width: 900px) {
+  .pc-top .pc-ib::before { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background: linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(248, 248, 250, .86)); }
+  :root[data-theme="dark"] .pc-top .pc-ib::before { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background: linear-gradient(180deg, rgba(52, 52, 56, .92), rgba(36, 36, 40, .9)); }
 }

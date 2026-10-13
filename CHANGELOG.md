@@ -46,6 +46,8 @@ All notable changes to this project are documented here.
 ### Fixed
 
 - iPhone (iOS 26 Safari):
+  - Safari's toolbars turned dark grey on light pages. A hidden full-screen backdrop (opacity 0) and the closed Members filter sheet were still on the page, and Safari tints its toolbars from those. Both are now fully hidden while closed.
+  - Ghost copies and streaks still appeared under the top area while scrolling. The round top buttons no longer use a live blur (a frosted fill instead); Safari repaints the page wrongly under a blur inside the pinned top area.
   - The phone tab bar was hidden behind Safari's own bottom toolbar. Pages no longer extend under Safari's toolbars (`viewport-fit=cover` removed), so the bar sits above them.
   - The glass bars smeared ghost copies of the page while scrolling. The glass is now drawn on a layer inside each bar instead of on the bar itself, without the masked rim or brightness/contrast filters that Safari draws badly. This also stops Safari tinting its toolbar from the bar.
   - Tapping a text field made Safari zoom in, and the zoom carried over to the next page, cutting the layout off on the right. Fields are 16px on phones and touch screens, which Safari does not zoom, and the app clips anything wider than the screen instead of widening the page.
