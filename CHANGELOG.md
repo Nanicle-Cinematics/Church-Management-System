@@ -47,6 +47,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Security (tenant isolation): a church admin could record an event check-in or RSVP for another church's member by sending that member's id, and the event page then showed the other church's member's name. The event forms now check that the event and member are their own church's. More broadly, every write through the church-scoped database client now checks each id it links to (scalar ids, nested `connect` and nested `create`, inside transactions too) and refuses a link to another church's row as "Not found". `scripts/check-cross-church-links.js` reports any existing cross-church links (read-only; every count should be 0).
 - Phones:
   - Typing in the search dialog showed a tinted box between the search icon and Esc (the app's field border and focus ring); the field is now plain text.
   - Tapping a member sometimes opened the summary card over the whole screen. Its height was set in `vh`, which in iPhone Safari can be taller than the visible area while the toolbars show. The card now stops 64px below the top of the screen; the More sheet and the Members filter sheet use the visible height (`dvh`) too.

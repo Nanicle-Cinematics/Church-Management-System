@@ -83,6 +83,17 @@ function fmtDt(d) { return iso(d).replace('T', ' '); }
 // Attendance/RSVP routes only carry ids, but an audit line naming "member #47"
 // is close to useless — resolve through the tenant-scoped client (so a foreign
 // id can never be named) and fall back to the id if it does not resolve.
+// Both ids come from the form: confirm they are this church's before linking
+// them (the scoped db limits what is read, not what a new row points at).
+async function eventAndMemberInChurch(db, eventId, memberId) {
+  if (!Number.isInteger(eventId) || !Number.isInteger(memberId)) return false;
+  const [event, member] = await Promise.all([
+    db.event.findUnique({ where: { id: eventId }, select: { id: true } }),
+    db.member.findUnique({ where: { id: memberId }, select: { id: true } }),
+  ]);
+  return Boolean(event && member);
+}
+
 async function memberLabel(db, memberId) {
   const m = await db.member.findUnique({ where: { id: memberId } });
   return m ? `${m.firstName} ${m.lastName}` : `member #${memberId}`;
@@ -382,6 +393,7 @@ function register(app) {
     const memberId = Number(req.body.memberId);
     const response = RSVP_RESPONSES.includes(req.body.response) ? req.body.response : 'GOING';
     if (memberId) {
+      if (!(await eventAndMemberInChurch(res.locals.db, eventId, memberId))) { flash(req, 'Member not found.'); return res.redirect(`/events/${eventId}`); }
       await res.locals.db.eventRsvp.upsert({
         where: { eventId_memberId: { eventId, memberId } },
         update: { response, respondedAt: new Date() },
@@ -410,6 +422,7 @@ function register(app) {
     const eventId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     if (memberId) {
+      if (!(await eventAndMemberInChurch(res.locals.db, eventId, memberId))) { flash(req, 'Member not found.'); return res.redirect(`/events/${eventId}`); }
       await res.locals.db.attendance.upsert({ where: { eventId_memberId: { eventId, memberId } }, update: {}, create: { eventId, memberId } });
       await logActivity(res.locals.db, 'attendance_recorded',
         `${await memberLabel(res.locals.db, memberId)} checked in`, `/events/${eventId}`, res.locals.user.id);
