@@ -42,11 +42,11 @@ function register(app) {
     const rows = users.map((u) => [
       esc(u.username), esc(u.displayName) || '—',
       [u.email, u.phone].filter(Boolean).map(esc).join('<br>') || '—',
-      `<span class="role-badge role-${esc(u.role.toLowerCase())}">${esc(u.role)}</span>`,
+      `<span class="role-badge role-${esc(u.role.toLowerCase())}">${esc({ ADMIN: 'Admin', EDITOR: 'Editor', VIEWER: 'Viewer' }[u.role] || u.role)}</span>`,
       esc(FINANCE_ROLE_LABELS[u.financeRole || 'NONE'] || u.financeRole),
       u.totpEnabled ? '<span class="pill pill-admin" title="2FA active">2FA ✓</span>' : '<span class="muted-text">—</span>',
       esc(u.createdAt.toISOString().slice(0, 10)),
-      `<form method="post" action="/users/${u.id}/role" class="inline">
+      `<div class="u-actions"><form method="post" action="/users/${u.id}/role" class="inline">
          <select name="role">${ROLES.map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r.toLowerCase()}</option>`).join('')}</select>
          <select name="financeRole">${Object.entries(FINANCE_ROLE_LABELS).map(([v, l]) => `<option value="${v}" ${(u.financeRole || 'NONE') === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
          <button type="submit">Save</button>
@@ -57,7 +57,7 @@ function register(app) {
          <button type="submit">Reset</button>
        </form>
        ${u.totpEnabled ? `<form method="post" action="/users/${u.id}/disable-2fa" class="inline" onsubmit="return confirm('Disable 2FA for ${esc(u.username)}?')"><button type="submit">Disable 2FA</button></form>` : ''}
-       ${u.id !== res.locals.user.id ? `<form method="post" action="/users/${u.id}/delete" class="inline" onsubmit="return confirm('Delete ${esc(u.username)}?')"><button class="danger" type="submit">Delete</button></form>` : ''}`,
+       ${u.id !== res.locals.user.id ? `<form method="post" action="/users/${u.id}/delete" class="inline" onsubmit="return confirm('Delete ${esc(u.username)}?')"><button class="danger" type="submit">Delete</button></form>` : ''}</div>`,
     ]);
     const body = `
       ${pageHero('Users & Roles', 'Admin-only access control for staff and ministry administrators.')}
