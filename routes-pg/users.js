@@ -57,7 +57,7 @@ function register(app) {
     // church-scoped one, to catch a collision with a DIFFERENT church's user.
     const { db: rawDb } = require('../lib/tenant');
     const existing = await rawDb.user.findUnique({ where: { email: b.email.toLowerCase().trim() } });
-    if (existing) return res.status(409).json({ error: 'An account with that email already exists' });
+    if (existing) return res.status(409).json({ error: existing.churchId === res.locals.churchId ? 'That email is already a user in your church' : 'That email is already used by an account in another church' });
 
     // Same seat limit as the HTML form. Enforcing on only one of the two
     // surfaces would leave the API as a way around the plan.

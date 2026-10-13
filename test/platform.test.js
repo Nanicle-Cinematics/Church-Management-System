@@ -283,3 +283,31 @@ test('the HTML console: list, church page, and a plan change by form', async () 
   assert.strictEqual(res.status, 302);
   assert.strictEqual((await db.church.findUnique({ where: { id: target.churchId } })).plan, 'pro');
 });
+
+test('deleting a church frees its login emails; restoring takes them back unless another account took one', async () => {
+  const ownerEmail = unique('freed-owner');
+  const target = await newChurch('platform-free-emails', ownerEmail);
+  const url = `/api/platform/churches/${target.churchId}/access`;
+  const { slug } = await db.church.findUnique({ where: { id: target.churchId } });
+
+  const deleted = await op.client.post(url, { action: 'delete', reason: 'Signed up by mistake', confirmSlug: slug });
+  assert.strictEqual(deleted.status, 200);
+  assert.strictEqual(deleted.body.releasedEmails, 1);
+  assert.strictEqual(await db.user.count({ where: { email: ownerEmail } }), 0, 'the email is free');
+
+  // the freed email can be used again, e.g. to sign up a new church
+  const again = await newChurch('platform-free-emails-again', ownerEmail);
+  assert.ok(again.churchId);
+
+  const restored = await op.client.post(url, { action: 'restore' });
+  assert.strictEqual(restored.status, 200);
+  assert.deepStrictEqual(restored.body.emailsTakenMeanwhile, [ownerEmail], 'the clash is reported, not overwritten');
+
+  // once the other account lets go, a later restore puts it back
+  const { slug: slug2 } = await db.church.findUnique({ where: { id: again.churchId } });
+  await op.client.post(`/api/platform/churches/${again.churchId}/access`, { action: 'delete', reason: 'Duplicate', confirmSlug: slug2 });
+  await op.client.post(url, { action: 'delete', reason: 'Again', confirmSlug: slug });
+  const second = await op.client.post(url, { action: 'restore' });
+  assert.strictEqual(second.body.restoredEmails, 1);
+  assert.strictEqual((await db.user.findFirst({ where: { churchId: target.churchId } })).email, ownerEmail);
+});

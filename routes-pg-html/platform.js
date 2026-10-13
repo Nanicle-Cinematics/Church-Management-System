@@ -12,6 +12,7 @@ const { requestIp, requestUserAgent } = require('../lib/security-audit');
 const { icon } = require('../lib/icons');
 const { operatorLayout } = require('../lib/operator-shell');
 const { requireOperator, logPlatformEvent } = require('../lib/platform-operators');
+const { releaseChurchEmails, reclaimChurchEmails } = require('../lib/church-emails');
 
 // Operators only (lib/platform-operators.js): church users never get here.
 function page(res, opts) {
@@ -142,7 +143,7 @@ function quickControls(church, compact = false) {
       <button type="submit" class="danger">Suspend</button>
     </form>
     <form method="post" action="/platform/churches/${church.id}/access" class="inline platform-inline-form"
-      onsubmit="return confirm('Delete this church? Access will be blocked immediately, but the platform owner can restore it.')">
+      onsubmit="return confirm('Delete this church? Access is blocked immediately and its login emails are freed for reuse. It can be restored for 30 days.')">
       <input type="hidden" name="action" value="delete">
       <input name="confirmSlug" required placeholder="Type ${esc(church.slug)}">
       <input name="reason" required maxlength="500" placeholder="Deletion reason">
@@ -437,6 +438,9 @@ function register(app) {
             }
             : { deletedAt: null, deletionReason: null, deletionPurgeAfter: null };
       const church = await rawDb.church.update({ where: { id: req.params.id }, data });
+      // Deleting frees the church's login emails for reuse; restoring takes them back.
+      const released = action === 'delete' ? await releaseChurchEmails(rawDb, church.id) : 0;
+      const reclaimed = action === 'restore' ? await reclaimChurchEmails(rawDb, church.id) : null;
       const events = {
         suspend: 'platform.church_suspended', reactivate: 'platform.church_reactivated',
         delete: 'platform.church_deleted', restore: 'platform.church_restored',
@@ -449,9 +453,12 @@ function register(app) {
       await logPlatformEvent(req, { operator: res.locals.operator, event: events[action], subject: `${church.name} (${church.slug}): ${subject}`, churchId: church.id });
       const messages = {
         suspend: 'Church access suspended.', reactivate: 'Church access reactivated.',
-        delete: 'Church deleted. Its data remains recoverable.', restore: 'Church restored.',
+        delete: `Church deleted. Its data remains recoverable for 30 days, and its ${released} login email${released === 1 ? ' is' : 's are'} free to use again.`,
+        restore: reclaimed && reclaimed.taken.length
+          ? `Church restored. These login emails are now used by other accounts, so those users need a new email before they can sign in: ${reclaimed.taken.join(', ')}.`
+          : 'Church restored, with its login emails.',
       };
-      flash(req, messages[action], 'success');
+      flash(req, messages[action], reclaimed && reclaimed.taken.length ? 'error' : 'success');
     } catch (e) {
       if (e.code !== 'P2025') throw e;
       flash(req, 'Church not found.');
