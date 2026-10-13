@@ -1,5 +1,6 @@
 'use strict';
-const { normalizePhone, loginLabel } = require('../lib/phone');
+const { loginLabel } = require('../lib/phone');
+const { parseLogins, loginTakenMessage, releasedOnDelete, freeUsernameFromRemovedUsers } = require('../lib/user-logins');
 // Phase 6, module 1: Postgres/Prisma port of the /users section of
 // server.js. Same coexistence approach as every prior phase.
 //
@@ -48,12 +49,9 @@ function register(app) {
     const db = res.locals.db;
     const b = req.body || {};
     if (!b.username || !String(b.username).trim()) return res.status(400).json({ error: 'username is required' });
-    const email = typeof b.email === 'string' ? b.email.toLowerCase().trim() : '';
-    const phoneInput = typeof b.phone === 'string' ? b.phone.trim() : '';
-    const phone = phoneInput ? normalizePhone(phoneInput) : null;
-    if (!email && !phoneInput) return res.status(400).json({ error: 'an email or a phone number is required' });
-    if (email && !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'a valid email is required' });
-    if (phoneInput && !phone) return res.status(400).json({ error: 'a valid phone number is required' });
+    const logins = parseLogins(b);
+    if (logins.error) return res.status(400).json({ error: logins.error });
+    const { email, phone } = logins;
     if (!b.password || String(b.password).length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
     const role = ROLES.includes(b.role) ? b.role : 'VIEWER';
     const financeRole = FINANCE_ROLES.includes(b.financeRole) ? b.financeRole : 'NONE';
@@ -62,11 +60,8 @@ function register(app) {
     // see lib/provision.js), so this check must use the RAW client, not the
     // church-scoped one, to catch a collision with a DIFFERENT church's user.
     const { db: rawDb } = require('../lib/tenant');
-    for (const [field, value, noun] of [['email', email, 'email'], ['phone', phone, 'phone number']]) {
-      if (!value) continue;
-      const existing = await rawDb.user.findUnique({ where: { [field]: value } });
-      if (existing) return res.status(409).json({ error: existing.churchId === res.locals.churchId ? `That ${noun} is already a user in your church` : `That ${noun} is already used by an account in another church` });
-    }
+    const taken = await loginTakenMessage(rawDb, { email, phone }, res.locals.churchId);
+    if (taken) return res.status(409).json({ error: taken });
 
     // Same seat limit as the HTML form. Enforcing on only one of the two
     // surfaces would leave the API as a way around the plan.
@@ -76,9 +71,10 @@ function register(app) {
     }
 
     const passwordHash = await bcrypt.hash(String(b.password), 10);
+    await freeUsernameFromRemovedUsers(db, String(b.username).trim());
     try {
       const user = await db.user.create({
-        data: { username: String(b.username).trim(), email: email || null, phone, passwordHash, displayName: b.displayName || null, role, financeRole },
+        data: { username: String(b.username).trim(), email, phone, passwordHash, displayName: b.displayName || null, role, financeRole },
       });
       await logSecurityEvent(db, req, { event: 'user.created', subject: `${loginLabel(user)} (${role}/${financeRole})`, actorId: res.locals.user.id });
       res.status(201).json(shapeUser(user));
@@ -142,6 +138,25 @@ function register(app) {
     }
   }));
 
+  // Change how a user signs in: { email, phone, displayName }. Keeps at least one.
+  app.put('/api/users/:id/login', requireOwner, asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const db = res.locals.db;
+    const current = await db.user.findFirst({ where: { id, deletedAt: null } });
+    if (!current) return res.status(404).json({ error: 'Not found' });
+    const logins = parseLogins(req.body || {});
+    if (logins.error) return res.status(400).json({ error: logins.error });
+    const { db: rawDb } = require('../lib/tenant');
+    const taken = await loginTakenMessage(rawDb, logins, res.locals.churchId, id);
+    if (taken) return res.status(409).json({ error: taken });
+    const data = { email: logins.email, phone: logins.phone };
+    if (req.body && 'displayName' in req.body) data.displayName = String(req.body.displayName || '').trim() || null;
+    if (logins.email && logins.email !== current.email) data.emailVerifiedAt = new Date();
+    const updated = await db.user.update({ where: { id }, data });
+    await logSecurityEvent(db, req, { event: 'user.login_changed', subject: `${current.username}: ${[current.email, current.phone].filter(Boolean).join(' / ') || '—'} -> ${[updated.email, updated.phone].filter(Boolean).join(' / ')}`, actorId: res.locals.user.id });
+    res.json(shapeUser(updated));
+  }));
+
   app.delete('/api/users/:id', requireOwner, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     if (id === res.locals.user.id) return res.status(400).json({ error: "You can't delete your own account" });
@@ -150,7 +165,7 @@ function register(app) {
     // Soft delete frees the login email (it is globally unique) so the person
     // can be re-invited; the original stays embedded for the audit trail.
     if (!target.deletedAt) {
-      await res.locals.db.user.update({ where: { id }, data: { deletedAt: new Date(), email: target.email ? `deleted+${id}+${target.email}` : null, phone: target.phone ? `deleted+${id}+${target.phone}` : null } });
+      await res.locals.db.user.update({ where: { id }, data: { deletedAt: new Date(), ...releasedOnDelete(target) } });
       await logSecurityEvent(res.locals.db, req, { event: 'user.deleted', subject: loginLabel(target), actorId: res.locals.user.id });
     }
     res.status(204).end();

@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- Users & Roles: **Edit sign-in** on each user changes how they sign in: add or change their email, add or change their phone number, or remove one, as long as one is left. Their password, role and history stay as they are. An email set by an admin counts as verified. API: `PUT /api/users/:id/login`.
 - Staff can sign in with a phone number. On Users & Roles › New user an admin gives an email, a phone number, or both; the sign-in box takes either ("Email or phone"). Numbers are stored as +233… (local numbers like 024 412 7781 work, as do spaces and +233/00233), and each number can belong to one account across all churches. Phone-only users reset a forgotten password through an admin (the Users list's Reset); no text messages are sent. Removing a user or deleting a church frees their number as well as their email. The Users list and the platform console show how each person signs in. Church sign-up still uses an email. Database: new `users.phone` column (`scripts/add-user-phone.sql`, run before deploying). `DEFAULT_PHONE_COUNTRY_CODE` (default 233) sets the country for local numbers.
 - The Editor role can now add and edit: members (and their photos), attendance, events (including check-ins, RSVPs, counts and the QR code), Bible classes, organizations and their members, inventory, the preaching plan and announcements. Deleting or archiving, exporting member data, sending broadcasts and preacher reminders, email settings, users and church settings stay with admins. Editors' "New" menu offers New member and Schedule event. The New user page and Users & Roles describe the roles accordingly. Previously Editor was the same as Viewer.
 - Platform operators are now separate accounts, not church accounts:
@@ -49,6 +50,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Creating a user with the username of someone removed earlier said "username already taken". Removing a user now frees their username as well as their email and phone, and a username still held by a user removed before this fix is freed when it is reused.
 - Deleting a church from the platform console now frees its users' login emails straight away (emails are unique across all churches, so a deleted church used to keep them taken for 30 days). Restoring the church gives them back, except any another account has claimed meanwhile, which the console lists.
 - Clearer messages:
   - A form opened before you last signed in or out (for example in another tab) used to end on a bare "Security check failed" page. It now returns you to the form and explains why nothing was saved.
