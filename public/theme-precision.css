@@ -197,15 +197,13 @@ body.pc-nav-open .pc-scrim { display: block; }
   border: 1px solid var(--pc-line) !important; border-radius: var(--pc-r) !important; box-shadow: var(--pc-sh-2) !important; transform: none !important; animation: none !important; opacity: 1 !important; text-align: left !important;
 }
 .hero-stat::before, .hero-stat::after, .stat::before, .stat::after { display: none !important; content: none !important; }
-.hero-stat > div:last-child { flex: 1; min-width: 0; display: flex; flex-direction: column-reverse; gap: 4px; }
-.hero-stat .hs-value, .stat .value { font: 650 24px/1.15 var(--pc-font) !important; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--pc-text) !important; overflow-wrap: anywhere; }
+.hero-stat > div:last-child { flex: 1; min-width: 0; display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 6px; align-self: stretch; }
+.hero-stat .hs-value, .stat .value { font: 650 26px/1.15 var(--pc-font) !important; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--pc-text) !important; overflow-wrap: anywhere; }
 .hero-stat .hs-label, .stat .label { font: 500 13px/1.3 var(--pc-font) !important; color: var(--pc-text-2) !important; text-transform: none; letter-spacing: 0; word-break: normal !important; overflow-wrap: normal !important; opacity: 1; }
-.hs-ico { display: grid !important; place-items: center; order: 2; flex: none; width: 36px; height: 36px; border-radius: 10px !important; border: 0 !important; box-shadow: none !important; background: var(--pc-accent-soft) !important; color: var(--pc-accent) !important; }
-.hs-ico svg { width: 18px; height: 18px; }
-.hero-stat:nth-child(5n+2) .hs-ico { background: var(--pc-ok-soft) !important; color: var(--pc-ok) !important; }
-.hero-stat:nth-child(5n+3) .hs-ico { background: var(--pc-warn-soft) !important; color: var(--pc-warn) !important; }
-.hero-stat:nth-child(5n+4) .hs-ico { background: var(--pc-info-soft) !important; color: var(--pc-info) !important; }
-.hero-stat:nth-child(5n+5) .hs-ico { background: var(--pc-bad-soft) !important; color: var(--pc-bad) !important; }
+/* the icon matches the key figures' chip: top right, tinted in the tile's colour */
+.hs-ico { display: grid !important; place-items: center; position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; border-radius: 9px !important; border: 0 !important; box-shadow: none !important; background: color-mix(in srgb, var(--k, var(--pc-accent)) 14%, var(--pc-panel)) !important; color: var(--k, var(--pc-accent)) !important; }
+.hs-ico svg { width: 16px; height: 16px; }
+.hero-stat:has(.hs-ico) .hs-label { padding-right: 40px; }
 .hero-actions, .welcome-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
 /* buttons: a plain .btn and submits are the filled primary, as in the rest of the app */
@@ -795,7 +793,6 @@ body.pp-open { overflow: hidden; }
   .filter-bar .search-field { flex: 0 0 auto; }
   .filter-bar select, .filter-bar button { width: 100%; }
   .hero-stat-group { grid-template-columns: 1fr 1fr; }
-  .hs-ico { display: none !important; }
 }
 @media (max-width: 560px) {
   .pd-kpi { padding: 14px; }
@@ -884,7 +881,8 @@ body.pc .pd .pd-head .pd-actions a.btn:not(.ghost):not(.danger):not(.disabled):n
 .pd-kpi:nth-child(4n+4) .pd-spark .sl { stroke: var(--pc-rose); } .pd-kpi:nth-child(4n+4) .pd-spark .sa { fill: var(--pc-rose); }
 .hero-stat { position: relative; overflow: hidden; }
 /* stat tiles already carry a coloured icon chip, so no top bar either */
-.hero-stat:nth-child(5n+2) { --k: var(--pc-ok); } .hero-stat:nth-child(5n+3) { --k: var(--pc-warn); } .hero-stat:nth-child(5n+4) { --k: var(--pc-info); } .hero-stat:nth-child(5n+5) { --k: var(--pc-bad); }
+/* the same colour order as the key figures: violet, teal, gold, rose, sky */
+.hero-stat:nth-child(5n+1) { --k: var(--pc-accent); } .hero-stat:nth-child(5n+2) { --k: var(--pc-teal); } .hero-stat:nth-child(5n+3) { --k: var(--pc-gold); } .hero-stat:nth-child(5n+4) { --k: var(--pc-rose); } .hero-stat:nth-child(5n+5) { --k: var(--pc-sky); }
 
 /* card titles: a small coloured mark */
 .pd-ch h2::before, .card-head h2::before, .pm-fh b::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 3px; background: var(--mk, var(--pc-accent)); vertical-align: 1px; }
@@ -1133,4 +1131,21 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
 @media (max-width: 900px) {
   .pc-top .pc-ib::before { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background: linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(248, 248, 250, .86)); }
   :root[data-theme="dark"] .pc-top .pc-ib::before { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background: linear-gradient(180deg, rgba(52, 52, 56, .92), rgba(36, 36, 40, .9)); }
+}
+
+/* The original stylesheet restyles '.hero-stat-group .hero-stat' (a gradient
+   body, a left colour bar) below 820px, at a higher specificity than the rules
+   above; restate the Precision tile at that specificity. */
+.hero-stat-group .hero-stat { border: 1px solid var(--pc-line) !important; background: var(--pc-panel) !important; box-shadow: var(--pc-sh-2) !important; }
+.hero-stat-group .hero-stat::before { display: none !important; content: none !important; }
+.hero-stat-group .hero-stat .hs-label { color: var(--pc-text-2) !important; }
+.hero-stat-group .hero-stat .hs-ico { width: 32px !important; height: 32px !important; font-size: inherit; }
+
+/* phones: the stat tiles' chip shrinks like the key figures' */
+@media (max-width: 560px) {
+  .hero-stat-group .hero-stat .hs-ico { top: 12px; right: 12px; width: 28px !important; height: 28px !important; border-radius: 8px !important; }
+  .hero-stat-group .hero-stat .hs-ico svg { width: 15px; height: 15px; }
+  .hero-stat-group .hero-stat:has(.hs-ico) .hs-label { padding-right: 34px; }
+  .hero-stat-group .hero-stat .hs-value { font-size: 21px !important; }
+  .hero-stat-group .hero-stat { padding: 14px !important; }
 }
