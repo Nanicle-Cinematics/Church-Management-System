@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Added
+
+- Finance › Allowances: monthly allowances for church workers. Fund managers keep a list of workers (linked to a member or just a name), each with a monthly amount, fund and expense category, and can pause or resume anyone. On the due day set on that page (or the last day of a shorter month), the app drafts one expense per active worker, "Allowance – October 2026", submitted for approval; they then go through the normal approval and payment-voucher flow. Each month is drafted once, even with several app machines or a restart, and a day missed while the app was down is caught up within three days. A fund manager can also draft the current month by hand.
+- Allowance alerts: when a month is drafted, Treasurers, Finance admins and Admins get an email, a text message (to the phone they sign in with, plus any extra numbers set on the Allowances page), and a notification on each phone or computer where they turned notifications on. If any allowance is still unpaid five days later they are reminded once. The dashboard's "Needs attention" shows allowances waiting for approval. "Send me a test alert" checks every channel.
+- Device notifications (Web Push): "Turn on notifications" on the Allowances page. Notifications appear through the phone's or computer's own notification system, even with the app closed, and tapping one opens the page. On iPhone and iPad the app must first be added to the Home Screen (iOS 16.4 or later); the app now has a manifest and home-screen icon for that. Needs `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`; without them the button is hidden and nothing else changes.
+- Database: new tables `allowances`, `allowance_runs`, `push_subscriptions`, and new columns on `expenses` and `finance_settings` (`scripts/add-allowances.sql`, run before deploying).
+
 ### Changed
 
 - Editors and Viewers with no finance role (Finance role: None) now see only Members, Attendance, Bible Classes and Organizations (as their role allows), plus Events, the Preaching Plan and Inventory read-only. Editors among them can still check people in and record RSVPs at events, but cannot create or edit events, enter headcounts, or change the preaching plan or inventory. Finance, Communications and Reports are hidden from their menu and refused (403) by page and API. Their dashboard shows no money, as before, and their New menu offers only New member. Admins, and anyone with a finance role, are unchanged. To give someone the wider access, set a finance role on Users & Roles.

@@ -49,6 +49,12 @@ not affected.
 | Change expense approval limits | **Admin only** | No | No | No | No | No |
 | Reopen a locked period | **Admin only** | No | No | No | No | No |
 
+Allowances (Finance › Allowances): anyone who can view finance pages sees the
+worker list and each month's run; Admins, Finance Admins and Treasurers add,
+edit and pause workers, set the due day and alert numbers, draft a month by
+hand and send a test alert. The drafted expenses follow the approval tiers
+below; they are recorded by the system, so any fund manager may approve them.
+
 Approval tiers use the limits in Finance settings (default 500 / 5000): up to the
 small limit any fund manager, up to the medium limit a Finance Admin or Admin,
 above that an Admin.

@@ -1263,6 +1263,10 @@ body.pc form label .hint { display: block; margin-top: 4px; text-transform: none
    password box (they were squeezed to a letter or two). */
 .u-actions { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; min-width: 360px; }
 .u-actions form.inline { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+/* Finance > Allowances row buttons (routes-pg-html/allowances.js) */
+.al-actions { display: flex; gap: 6px; align-items: center; justify-content: flex-end; white-space: nowrap; }
+.al-actions form { margin: 0; }
+.al-actions .btn { height: 32px; padding: 0 12px; }
 .u-actions select { min-width: 112px; height: 34px; }
 .u-actions select[name="financeRole"] { min-width: 150px; }
 .u-actions input[type="password"], .u-actions .password-field { width: 150px !important; }
