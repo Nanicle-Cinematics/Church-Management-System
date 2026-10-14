@@ -78,7 +78,7 @@ function register(app) {
   // crossorigin="use-credentials" so the browser sends the session.
   app.get('/manifest.webmanifest', (req, res) => {
     res.set({ 'Cache-Control': 'private, no-cache', Vary: 'Cookie' });
-    res.type('application/manifest+json').send(JSON.stringify(manifestFor(res.locals.church)));
+    res.type('application/manifest+json').send(JSON.stringify(manifestFor(res.locals.churchId, res.locals.church && res.locals.church.name)));
   });
   app.get('/branding/app-icon/:churchId/:version/:sig/:variant.png', asyncHandler(serveAppIcon));
 
