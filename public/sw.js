@@ -1,7 +1,40 @@
 /* Service worker: shows device notifications sent by the app (lib/push.js)
-   and opens the right page when one is tapped. Served at /sw.js. */
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+   and opens the right page when one is tapped, and shows an offline page when
+   a page cannot load. Registered on every page by public/pwa.js. Served at
+   /sw.js.
+
+   Church pages are never cached: they hold members' and finance records, and
+   an installed app is often on a shared phone or office computer. Only the
+   offline page and its icon are kept. */
+const OFFLINE_CACHE = 'church-manager-offline-v1';
+const OFFLINE_URL = '/static/offline.html';
+const OFFLINE_ICON = '/static/icon-192.png';
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(caches.open(OFFLINE_CACHE)
+    .then((cache) => cache.addAll([OFFLINE_URL, OFFLINE_ICON]))
+    .then(() => self.skipWaiting()));
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(caches.keys()
+    .then((keys) => Promise.all(keys
+      .filter((k) => k.startsWith('church-manager-offline-') && k !== OFFLINE_CACHE)
+      .map((k) => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+
+// Page loads (and the offline page's icon) only; everything else goes to the
+// network untouched.
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  if (req.mode === 'navigate') {
+    event.respondWith(fetch(req).catch(() => caches.match(OFFLINE_URL)));
+  } else if (new URL(req.url).pathname === OFFLINE_ICON) {
+    event.respondWith(fetch(req).catch(() => caches.match(OFFLINE_ICON)));
+  }
+});
 
 self.addEventListener('push', (event) => {
   let data = {};

@@ -182,7 +182,12 @@ svg { flex: none; }
 .pa-notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; max-width: 26rem; }
 .pa-notes li { display: flex; align-items: center; gap: 10px; font-size: 14px; color: rgba(255, 255, 255, .88); }
 .pa-notes li svg { width: 16px; height: 16px; padding: 3px; border-radius: 50%; background: rgba(255, 255, 255, .18); }
-.pa-main { display: flex; align-items: center; justify-content: center; padding: clamp(28px, 5vw, 64px); background: var(--pu-bg); }
+.pa-main { display: flex; flex-direction: column; gap: 18px; align-items: center; justify-content: center; padding: clamp(28px, 5vw, 64px); background: var(--pu-bg); }
+/* "Install the app" under the sign-in card (public/pwa.js shows it only where installing is possible). */
+.pa-install { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 0; border-radius: 10px; background: none; color: var(--pu-text-2); font: inherit; font-size: .9rem; font-weight: 600; cursor: pointer; }
+.pa-install:hover { color: var(--pu-text); text-decoration: underline; }
+.pa-install svg { width: 18px; height: 18px; }
+.pa-install[hidden] { display: none; }
 .pa-card { width: 100%; max-width: 25rem; }
 .pa-card h1 { margin: 0 0 22px; font-size: clamp(1.6rem, 2.6vw, 1.9rem); line-height: 1.2; font-weight: 700; letter-spacing: -.025em; }
 .pa-card p { margin: 0 0 1rem; }
