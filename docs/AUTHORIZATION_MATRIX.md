@@ -13,7 +13,7 @@ Two independent settings decide access: the user **role** and the **finance role
 | --- | --- | --- | --- |
 | Dashboard, members, attendance, events, Bible classes, organizations, inventory, preaching, announcements: add and edit | Yes | Yes | Read only |
 | The same areas: delete or archive (editors may still remove a member photo) | Yes | No | No |
-| Member data export (CSV), bulk SMS/email from Members | Yes | No | No |
+| Member data export (CSV), member import (CSV/Excel), bulk SMS/email from Members | Yes | No | No |
 | Communications: send broadcasts, email settings | Read/write | Blocked | Blocked |
 | Communications: view history | Read | Read | Read |
 | Users and roles, church settings, data export | Read/write | Blocked | Blocked |

@@ -27,7 +27,8 @@
     "otpauth": "^9.5.1",
     "pg": "^8.22.0",
     "qrcode": "^1.5.4",
-    "web-push": "3.6.7"
+    "web-push": "3.6.7",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "prisma": "^6.19.3"
