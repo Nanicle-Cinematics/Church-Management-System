@@ -15,6 +15,7 @@
 // is now wired in via lib/delivery.js.
 
 const asyncHandler = require('../lib/async-handler');
+const { requireEditorWithFullAccess } = require('../lib/access');
 const { sendSmsBatch, sendEmailEach, normalizePhoneGH } = require('../lib/delivery');
 const { fmtPreachDate } = require('../lib/format');
 const { logActivity } = require('../lib/tenant-activity');
@@ -31,13 +32,8 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).json({ error: 'forbidden' });
 }
-// Editors can add and edit; deleting, archiving and anything that sends
-// messages stays with admins.
-function requireEditor(req, res, next) {
-  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
-  return res.status(403).json({ error: 'forbidden' });
-}
-
+// Admins and Editors with finance access add and edit (requireEditorWithFullAccess,
+// lib/access.js); deleting and anything that sends messages stays with admins.
 function requireAuth(req, res, next) {
   if (!res.locals.user) return res.status(401).json({ error: 'not logged in' });
   next();
@@ -152,7 +148,7 @@ function register(app) {
     res.json(plan);
   }));
 
-  app.post('/api/preaching', requireEditor, asyncHandler(async (req, res) => {
+  app.post('/api/preaching', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const v = parsePlanBody(req.body || {});
     if (!v.preachDate || Number.isNaN(v.preachDate.getTime())) {
@@ -164,7 +160,7 @@ function register(app) {
     res.status(201).json(plan);
   }));
 
-  app.put('/api/preaching/:id', requireEditor, asyncHandler(async (req, res) => {
+  app.put('/api/preaching/:id', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const v = parsePlanBody(req.body || {});
     if (!v.preachDate || Number.isNaN(v.preachDate.getTime())) {

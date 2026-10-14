@@ -12,6 +12,7 @@
 // lib/delivery.js (see routes-pg/preaching.js's sendPreachingReminder).
 
 const asyncHandler = require('../lib/async-handler');
+const { isLimited, requireEditorWithFullAccess } = require('../lib/access');
 const { esc, fmtDate, fmtPreachDate } = require('../lib/format');
 const { pageHero, statsRow } = require('../lib/views');
 const { logActivity } = require('../lib/tenant-activity');
@@ -22,13 +23,8 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).send('Forbidden');
 }
-// Editors can add and edit; deleting, archiving and anything that sends
-// messages stays with admins.
-function requireEditor(req, res, next) {
-  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
-  return res.status(403).send('Forbidden');
-}
-
+// Admins and Editors with finance access add and edit (requireEditorWithFullAccess,
+// lib/access.js); deleting and anything that sends messages stays with admins.
 // Prisma DateTime fields come back as JS Date objects, not the ISO text
 // strings SQLite stored — lib/format.js's fmtDate/fmtPreachDate expect a
 // string (or falsy). Normalize at this boundary rather than touching the
@@ -112,7 +108,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
-    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
+    const canEdit = (isAdmin || res.locals.user.role === 'EDITOR') && !isLimited(res.locals.user);
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const [upcoming, past] = await Promise.all([
       db.preachingPlan.findMany({
@@ -229,7 +225,7 @@ function register(app) {
     return res.redirect('/preaching?reminder=' + (delivered ? 'ok' : 'fail'));
   }));
 
-  app.post('/preaching', requireEditor, asyncHandler(async (req, res) => {
+  app.post('/preaching', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const v = parsePlanBody(req.body || {});
     if (!v.preachDate || Number.isNaN(v.preachDate.getTime())) return res.redirect('/preaching');
     const memberCheck = await checkMemberId(res.locals.db, v.memberId);
@@ -240,7 +236,7 @@ function register(app) {
     res.redirect('/preaching');
   }));
 
-  app.get('/preaching/:id/edit', requireEditor, asyncHandler(async (req, res) => {
+  app.get('/preaching/:id/edit', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const plan = await res.locals.db.preachingPlan.findFirst({
       where: { id: Number(req.params.id), deletedAt: null },
     });
@@ -251,7 +247,7 @@ function register(app) {
     });
   }));
 
-  app.post('/preaching/:id', requireEditor, asyncHandler(async (req, res) => {
+  app.post('/preaching/:id', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const v = parsePlanBody(req.body || {});
     if (!v.preachDate || Number.isNaN(v.preachDate.getTime())) return res.redirect(`/preaching/${id}/edit`);

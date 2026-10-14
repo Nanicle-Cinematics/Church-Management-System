@@ -1,6 +1,7 @@
 'use strict';
 // The Editor role: adds and edits everyday records, but cannot delete or
 // archive, export member data, or send messages. Viewers stay read-only.
+// (An Editor without a finance role is narrower still: test/no-finance-access.test.js.)
 const test = require('node:test');
 const assert = require('node:assert');
 const { Pool } = require('pg');
@@ -31,9 +32,9 @@ function client() {
   return { get: (p) => send('GET', p), post: (p, b) => send('POST', p, b), put: (p, b) => send('PUT', p, b), del: (p) => send('DELETE', p) };
 }
 
-async function signedIn(role) {
+async function signedIn(role, financeRole = 'NONE') {
   const email = unique(role.toLowerCase());
-  await db.user.create({ data: { churchId, username: `${role}-${Date.now()}`, email, passwordHash: await bcrypt.hash('password123', 4), role } });
+  await db.user.create({ data: { churchId, username: `${role}-${Date.now()}`, email, passwordHash: await bcrypt.hash('password123', 4), role, financeRole } });
   const c = client();
   assert.strictEqual((await c.post('/login', { email, password: 'password123' })).status, 200);
   return c;
@@ -45,7 +46,7 @@ test.before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   const { church } = await signupChurch({ churchName: 'Editor Role Church', name: 'Owner', email: unique('owner'), password: 'password123' });
   churchId = church.id;
-  editor = await signedIn('EDITOR');
+  editor = await signedIn('EDITOR', 'CASHIER');
   viewer = await signedIn('VIEWER');
 });
 
