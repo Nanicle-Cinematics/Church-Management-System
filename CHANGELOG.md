@@ -50,6 +50,8 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Users & Roles: role labels were pale gold on pale gold; they are now Admin (violet), Editor (teal) and Viewer (grey) pills. The actions column gives the role and finance pickers and the password box room (they were squeezed to a letter or two).
+- Platform console: long church names ran into the Plan column; they wrap now.
 - Creating a user with the username of someone removed earlier said "username already taken". Removing a user now frees their username as well as their email and phone, and a username still held by a user removed before this fix is freed when it is reused.
 - Deleting a church from the platform console now frees its users' login emails straight away (emails are unique across all churches, so a deleted church used to keep them taken for 30 days). Restoring the church gives them back, except any another account has claimed meanwhile, which the console lists.
 - Clearer messages:

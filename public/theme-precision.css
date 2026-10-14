@@ -1251,3 +1251,25 @@ fieldset { min-width: 0; }
    audience picker, report filters, …). Precision labels everywhere. */
 body.pc form label { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; color: var(--pc-text-2); }
 body.pc form label .hint { display: block; margin-top: 4px; text-transform: none; letter-spacing: 0; font: 400 12.5px/1.4 var(--pc-font); color: var(--pc-text-3); }
+
+/* Role labels on Users & Roles: the old gold-on-gold was barely readable. */
+.role-badge { display: inline-flex !important; align-items: center; gap: 6px; height: 22px; padding: 0 8px !important; border: 0 !important; border-radius: 6px !important; font: 600 12px/1 var(--pc-font) !important; letter-spacing: 0 !important; text-transform: capitalize; white-space: nowrap; }
+.role-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.role-badge.role-admin { background: var(--pc-accent-soft) !important; color: var(--pc-accent-ink) !important; }
+.role-badge.role-editor { background: var(--pc-teal-soft) !important; color: var(--pc-teal) !important; }
+.role-badge.role-viewer { background: var(--pc-hover) !important; color: var(--pc-text-2) !important; }
+
+/* Users & Roles actions: room for the role and finance pickers and the
+   password box (they were squeezed to a letter or two). */
+.u-actions { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; min-width: 360px; }
+.u-actions form.inline { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+.u-actions select { min-width: 112px; height: 34px; }
+.u-actions select[name="financeRole"] { min-width: 150px; }
+.u-actions input[type="password"], .u-actions .password-field { width: 150px !important; }
+.u-actions .btn, .u-actions button { height: 34px; }
+
+/* Platform console: long church names wrap instead of running into the
+   Plan column. */
+.platform-church-link { min-width: 0; max-width: 260px; }
+.platform-church-link strong, .platform-church-link small { white-space: normal; overflow-wrap: anywhere; }
+td:has(> .platform-church-link) { white-space: normal !important; min-width: 180px; }
