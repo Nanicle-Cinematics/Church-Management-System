@@ -5,6 +5,7 @@
 // Role model: admin-only writes, matching routes-pg/inventory.js.
 
 const asyncHandler = require('../lib/async-handler');
+const { isLimited, requireEditorWithFullAccess } = require('../lib/access');
 const { esc } = require('../lib/format');
 const { pageHero, statsRow, filterCard } = require('../lib/views');
 const { logActivity } = require('../lib/tenant-activity');
@@ -21,13 +22,8 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).send('Forbidden');
 }
-// Editors can add and edit; deleting, archiving and anything that sends
-// messages stays with admins.
-function requireEditor(req, res, next) {
-  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
-  return res.status(403).send('Forbidden');
-}
-
+// Admins and Editors with finance access add and edit (requireEditorWithFullAccess,
+// lib/access.js); deleting and anything that sends messages stays with admins.
 // Prisma DateTime -> the plain YYYY-MM-DD string lib/format.js/<input type=date> expect.
 function iso(d) {
   if (!d) return '';
@@ -44,7 +40,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
-    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
+    const canEdit = (isAdmin || res.locals.user.role === 'EDITOR') && !isLimited(res.locals.user);
     const q = (req.query.q || '').trim();
 
     const [categories, items] = await Promise.all([
@@ -149,7 +145,7 @@ function register(app) {
     });
   }));
 
-  app.post('/inventory/categories', requireEditor, asyncHandler(async (req, res) => {
+  app.post('/inventory/categories', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const name = (req.body.name || '').trim();
     if (!name) return res.redirect('/inventory');
     await res.locals.db.inventoryCategory.upsert({
@@ -161,7 +157,7 @@ function register(app) {
     res.redirect('/inventory');
   }));
 
-  app.post('/inventory', requireEditor, asyncHandler(async (req, res) => {
+  app.post('/inventory', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const b = req.body || {};
     const name = (b.name || '').trim();
     if (!name) return res.redirect('/inventory');
@@ -178,7 +174,7 @@ function register(app) {
     res.redirect('/inventory');
   }));
 
-  app.get('/inventory/:id/edit', requireEditor, asyncHandler(async (req, res) => {
+  app.get('/inventory/:id/edit', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const [categories, it] = await Promise.all([
       mergedCategories(db),
@@ -207,7 +203,7 @@ function register(app) {
     });
   }));
 
-  app.post('/inventory/:id', requireEditor, asyncHandler(async (req, res) => {
+  app.post('/inventory/:id', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const b = req.body || {};
     const name = (b.name || '').trim();

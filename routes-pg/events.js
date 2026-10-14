@@ -15,6 +15,7 @@
 
 const crypto = require('crypto');
 const asyncHandler = require('../lib/async-handler');
+const { requireEditorWithFullAccess } = require('../lib/access');
 
 const EVENT_TYPES = ['SERVICE', 'PRAYER', 'BIBLE_STUDY', 'OUTREACH', 'YOUTH', 'WEDDING', 'FUNERAL', 'BAPTISM', 'CONFIRMATION', 'OTHER'];
 const RSVP_RESPONSES = ['GOING', 'MAYBE', 'NO'];
@@ -72,7 +73,7 @@ function register(app) {
     res.json(rows.map((e) => ({ ...e, _count: undefined, attendees: e._count.attendance })));
   }));
 
-  app.post('/api/events', requireEditor, asyncHandler(async (req, res) => {
+  app.post('/api/events', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const v = parseEventBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
       return res.status(400).json({ error: 'title and startsAt are required' });
@@ -111,7 +112,7 @@ function register(app) {
     });
   }));
 
-  app.put('/api/events/:id', requireEditor, asyncHandler(async (req, res) => {
+  app.put('/api/events/:id', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const v = parseEventBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
       return res.status(400).json({ error: 'title and startsAt are required' });
@@ -126,7 +127,7 @@ function register(app) {
     }
   }));
 
-  app.put('/api/events/:id/counts', requireEditor, asyncHandler(async (req, res) => {
+  app.put('/api/events/:id/counts', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const db = res.locals.db;
     if (req.body && req.body.clear === true) {

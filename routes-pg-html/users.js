@@ -62,7 +62,7 @@ function register(app) {
     const body = `
       ${pageHero('Users & Roles', 'Admin-only access control for staff and ministry administrators.')}
       <p class="muted-text">Any administrator can set a user's access level: <strong>Admin</strong> = everything, including users, settings, deleting and sending messages; <strong>Editor</strong> = add and edit members, attendance, events, classes, organizations, inventory, the preaching plan and announcements; <strong>Viewer</strong> = read-only.</p>
-      <p class="muted-text">Finance roles are separate: <strong>Cashiers</strong> record income/expenses, <strong>Treasurers</strong> record and review accounting, <strong>Auditors</strong> review accounting only, and <strong>Finance admins</strong> can do both.</p>
+      <p class="muted-text">Finance roles are separate: <strong>Cashiers</strong> record income/expenses, <strong>Treasurers</strong> record and review accounting, <strong>Auditors</strong> review accounting only, and <strong>Finance admins</strong> can do both. An Editor or Viewer with no finance role sees only Members, Attendance, Bible Classes and Organizations, plus Events, the Preaching Plan and Inventory read-only (Editors can still check people in at events); Finance, Communications and Reports are hidden.</p>
       <div class="page-actions"><a class="btn primary" href="/users/new">＋ New user</a></div>
       ${table(['Username', 'Display name', 'Signs in with', 'Role', 'Finance role', '2FA', 'Created', 'Actions'], rows)}`;
     res.page({ title: 'Users', active: '/users', noHeader: true, body });
@@ -86,7 +86,7 @@ function register(app) {
         <label>Finance role<select name="financeRole">
           ${Object.entries(FINANCE_ROLE_LABELS).map(([v, l]) => `<option value="${v}"${v === 'NONE' ? ' selected' : ''}>${esc(l)}</option>`).join('')}
         </select>
-        <span class="hint">Finance roles control recording and accounting access inside the Finance module.</span></label>
+        <span class="hint">Finance roles control access to the Finance module. With None, an Editor or Viewer cannot open Finance, Communications or Reports, and Events, the Preaching Plan and Inventory are read-only.</span></label>
         <div class="actions form-actions">
           <a class="btn ghost" href="/users">Cancel</a>
           <button type="submit">Create user</button>

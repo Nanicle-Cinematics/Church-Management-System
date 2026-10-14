@@ -18,6 +18,7 @@ const asyncHandler = require('../lib/async-handler');
 const { esc } = require('../lib/format');
 const { pageHero, statsRow, filterCard, listCard, ICON_EYE, ICON_PENCIL } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
+const { isLimited, requireEditorWithFullAccess } = require('../lib/access');
 const { logActivity } = require('../lib/tenant-activity');
 const { authPage } = require('../lib/tenant-shell');
 const { resolveChurchByCheckinToken } = require('../lib/tenant');
@@ -148,7 +149,9 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
-    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
+    // Editors without finance access read events but may still check people in.
+    const canCheckIn = isAdmin || res.locals.user.role === 'EDITOR';
+    const canEdit = canCheckIn && !isLimited(res.locals.user);
     const q = (req.query.q || '').trim();
 
     const [rows, totalEvents, upcoming, checkins] = await Promise.all([
@@ -204,11 +207,11 @@ function register(app) {
     res.page({ title: 'Events', active: '/events', noHeader: true, body: `${hero}${stats}${filters}${list}` });
   }));
 
-  app.get('/events/new', requireEditor, (req, res) => {
+  app.get('/events/new', requireEditorWithFullAccess, (req, res) => {
     res.page({ title: 'New event', active: '/events', noHeader: true, body: `${pageHero('New event', '')}${eventForm(null, '/events')}` });
   });
 
-  app.get('/events/:id/edit', requireEditor, asyncHandler(async (req, res) => {
+  app.get('/events/:id/edit', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const ev = await res.locals.db.event.findUnique({ where: { id } });
     if (!ev) return res.status(404).send('Not found');
@@ -218,7 +221,7 @@ function register(app) {
     });
   }));
 
-  app.post('/events/:id/edit', requireEditor, asyncHandler(async (req, res) => {
+  app.post('/events/:id/edit', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const v = parseEventBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
@@ -240,7 +243,7 @@ function register(app) {
     res.redirect(`/events/${id}`);
   }));
 
-  app.post('/events', requireEditor, asyncHandler(async (req, res) => {
+  app.post('/events', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const v = parseEventBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
       flash(req, 'Title and start time are required.');
@@ -259,7 +262,9 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
-    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
+    // Editors without finance access read events but may still check people in.
+    const canCheckIn = isAdmin || res.locals.user.role === 'EDITOR';
+    const canEdit = canCheckIn && !isLimited(res.locals.user);
     const id = Number(req.params.id);
     const ev = await db.event.findUnique({ where: { id } });
     if (!ev) return res.status(404).send('Not found');
@@ -279,7 +284,7 @@ function register(app) {
       }),
     ]);
 
-    const removeForm = (mid) => canEdit
+    const removeForm = (mid) => canCheckIn
       ? `<form method="post" action="/events/${id}/uncheck">
            <input type="hidden" name="memberId" value="${mid}">
            <button class="link" type="submit">remove</button>
@@ -289,7 +294,7 @@ function register(app) {
       : '<p>No one checked in yet.</p>';
 
     const otherOpts = others.map((o) => `<option value="${o.id}">${esc(o.firstName + ' ' + o.lastName)}</option>`).join('');
-    const checkInPanel = canEdit
+    const checkInPanel = canCheckIn
       ? `<h2>Check in</h2>
          <form method="post" action="/events/${id}/check">
            <select name="memberId" required><option value="">— pick a member —</option>${otherOpts}</select>
@@ -298,7 +303,7 @@ function register(app) {
          <p><a class="btn" href="/events/${id}/qr">📱 QR check-in page</a>
             <a class="btn ghost" href="/checkin/${esc(ev.checkinToken || '')}" target="_blank" rel="noopener">Preview self-check-in</a></p>` : '';
 
-    const rsvpLink = canEdit
+    const rsvpLink = canCheckIn
       ? `<p class="muted-text" style="margin-top:0.4rem">Public RSVP link:
          <a href="/rsvp/${esc(ev.checkinToken || '')}" target="_blank" rel="noopener">/rsvp/${esc(ev.checkinToken || '')}</a></p>`
       : '';
@@ -309,12 +314,12 @@ function register(app) {
       ? `<ul class="check-list">${rsvps.map((r) => `<li>
           <a href="/members/${r.member.id}">${esc(r.member.firstName + ' ' + r.member.lastName)}</a>
           <span class="pill ${RSVP_PILL_CLASS[r.response]}">${RSVP_LABELS[r.response]}</span>
-          ${canEdit ? `<form method="post" action="/events/${id}/rsvp/remove">
+          ${canCheckIn ? `<form method="post" action="/events/${id}/rsvp/remove">
             <input type="hidden" name="memberId" value="${r.member.id}">
             <button class="link" type="submit">remove</button></form>` : ''}
         </li>`).join('')}</ul>`
       : '<p class="muted-text">No responses yet.</p>';
-    const rsvpAdmin = canEdit
+    const rsvpAdmin = canCheckIn
       ? `<form method="post" action="/events/${id}/rsvp" class="filter-bar" style="margin-top:0.6rem">
            <select name="memberId" required style="flex:1;min-width:180px"><option value="">— pick a member —</option>${otherOpts}</select>
            <select name="response">${RSVP_RESPONSES.map((v) => `<option value="${v}">${RSVP_LABELS[v]}</option>`).join('')}</select>
@@ -379,7 +384,7 @@ function register(app) {
     res.page({ title: ev.title, active: '/events', noHeader: true, body: `${pageHero(ev.title, '')}${body}` });
   }));
 
-  app.post('/events/:id/counts', requireEditor, asyncHandler(async (req, res) => {
+  app.post('/events/:id/counts', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const ev = await res.locals.db.event.findUnique({ where: { id } });
     if (!ev) return res.status(404).send('Not found');

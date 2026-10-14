@@ -24,6 +24,20 @@ No church account, whatever its role, can open the platform console. See
 
 Editors add and edit everyday records (members and their photos, attendance, events with check-ins and RSVPs, Bible classes, organizations and their members, inventory, the preaching plan, announcements). Deleting or archiving, exporting member data, sending broadcasts or preacher reminders, email settings, users and church settings stay with admins. Money is governed by the finance role, not by this one.
 
+### Editors and Viewers without a finance role
+
+An Editor or Viewer whose finance role is **None** gets a narrower app
+(`lib/access.js`). Admins, and Editors or Viewers with any finance role, are
+not affected.
+
+| Area | Editor, no finance role | Viewer, no finance role |
+| --- | --- | --- |
+| Dashboard | Yes, without money | Yes, without money |
+| Members, attendance, Bible classes, organizations | Add and edit (as above) | Read only |
+| Events | Read; check people in and record RSVPs. No create, edit or headcounts | Read only |
+| Preaching plan, inventory | Read only | Read only |
+| Finance, Communications, Reports (pages and API) | Blocked (403), hidden from the menu | Blocked (403), hidden from the menu |
+
 ## Finance role (`financeRole`)
 
 | Capability | Admin | Finance Admin | Treasurer | Cashier | Auditor | None |
