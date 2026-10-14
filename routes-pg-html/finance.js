@@ -512,6 +512,8 @@ const FINANCE_ACTIVITY_KINDS = [
   'project_created', 'project_edited',
   'budget_created', 'budget_line_added', 'budget_line_edited', 'budget_line_removed', 'budget_status_changed',
   'period_locked', 'period_reopened',
+  // Written by routes-pg-html/allowances.js and lib/allowances.js.
+  'allowance_added', 'allowance_edited', 'allowance_settings_updated', 'allowance_run',
 ];
 
 const FINANCE_REPORTS = [
@@ -745,7 +747,7 @@ function register(app) {
         ['/finance/services', icon('church'), 'Services'], ['/finance/harvests', icon('harvest'), 'Harvests'], ['/finance/pledges', icon('diamond'), 'Pledges'],
       ]],
       ['Money out & controls', [
-        ['/finance/expenses', icon('trendDown'), 'Expenses'], ['/finance/vouchers', icon('receipt'), 'Payment vouchers'],
+        ['/finance/expenses', icon('trendDown'), 'Expenses'], ['/finance/allowances', icon('users'), 'Allowances'], ['/finance/vouchers', icon('receipt'), 'Payment vouchers'],
         ['/finance/funds', icon('wallet'), 'Funds'], ['/finance/projects', icon('folder'), 'Projects'], ['/finance/budgets', icon('ledger'), 'Budgets'],
         ['/finance/periods', icon('clock'), 'Financial periods'],
       ]],

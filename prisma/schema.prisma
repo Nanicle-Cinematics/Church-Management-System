@@ -312,47 +312,47 @@ enum RecipientStatus {
 /// The tenant. Every other model (except TrialSignup, which happens before a
 /// Church exists) carries a churchId and is scoped by lib/tenant.js.
 model Church {
-  id        String    @id @default(cuid())
-  name      String
-  slug      String    @unique
-  plan      String    @default("free") // "free" | "pro" — mirrors poultry-manager's Farm.plan
-  proSince  DateTime? @map("pro_since")
-  proUntil  DateTime? @map("pro_until") // null = no expiry once set; manual activation for now
-  suspendedAt     DateTime? @map("suspended_at")
-  suspensionReason String?  @map("suspension_reason")
-  deletedAt       DateTime? @map("deleted_at")
-  deletionReason  String?   @map("deletion_reason")
+  id                 String    @id @default(cuid())
+  name               String
+  slug               String    @unique
+  plan               String    @default("free") // "free" | "pro" — mirrors poultry-manager's Farm.plan
+  proSince           DateTime? @map("pro_since")
+  proUntil           DateTime? @map("pro_until") // null = no expiry once set; manual activation for now
+  suspendedAt        DateTime? @map("suspended_at")
+  suspensionReason   String?   @map("suspension_reason")
+  deletedAt          DateTime? @map("deleted_at")
+  deletionReason     String?   @map("deletion_reason")
   deletionPurgeAfter DateTime? @map("deletion_purge_after")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  members             Member[]
-  ministries          Ministry[]
-  organizations       Organization[]
-  orgMemberships      OrganizationMembership[]
-  ministryMemberships MinistryMembership[]
-  events              Event[]
-  attendance          Attendance[]
-  eventRsvps          EventRsvp[]
-  contributions       Contribution[]
-  sacraments          Sacrament[]
-  pastoralNotes       PastoralNote[]
-  welfareCases        WelfareCase[]
-  announcements       Announcement[]
-  activityLogs        ActivityLog[]
-  securityAuditLogs   SecurityAuditLog[]
-  emailSettings       EmailSetting?
-  emailLogs           EmailLog[]
-  users               User[]
-  passwordResetTokens PasswordResetToken[]
+  members                 Member[]
+  ministries              Ministry[]
+  organizations           Organization[]
+  orgMemberships          OrganizationMembership[]
+  ministryMemberships     MinistryMembership[]
+  events                  Event[]
+  attendance              Attendance[]
+  eventRsvps              EventRsvp[]
+  contributions           Contribution[]
+  sacraments              Sacrament[]
+  pastoralNotes           PastoralNote[]
+  welfareCases            WelfareCase[]
+  announcements           Announcement[]
+  activityLogs            ActivityLog[]
+  securityAuditLogs       SecurityAuditLog[]
+  emailSettings           EmailSetting?
+  emailLogs               EmailLog[]
+  users                   User[]
+  passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
-  preachingPlans      PreachingPlan[]
-  inventoryItems      InventoryItem[]
-  inventoryCategories InventoryCategory[]
-  broadcasts          Broadcast[]
-  broadcastRecipients BroadcastRecipient[]
-  errorLogs           ErrorLog[]
-  appState            AppState[]
+  preachingPlans          PreachingPlan[]
+  inventoryItems          InventoryItem[]
+  inventoryCategories     InventoryCategory[]
+  broadcasts              Broadcast[]
+  broadcastRecipients     BroadcastRecipient[]
+  errorLogs               ErrorLog[]
+  appState                AppState[]
 
   funds              Fund[]
   accounts           Account[]
@@ -381,6 +381,10 @@ model Church {
   cashCountSheets    CashCountSheet[]
   cashCountLines     CashCountLine[]
   bankDeposits       BankDeposit[]
+
+  allowances        Allowance[]
+  allowanceRuns     AllowanceRun[]
+  pushSubscriptions PushSubscription[]
 
   @@map("churches")
 }
@@ -458,6 +462,7 @@ model Member {
   pledges             Pledge[]
   preachingPlans      PreachingPlan[]
   broadcastRecipients BroadcastRecipient[]
+  allowances          Allowance[]
 
   @@unique([churchId, externalId])
   @@index([churchId])
@@ -866,8 +871,9 @@ model User {
   createdAt         DateTime    @default(now()) @map("created_at")
   deletedAt         DateTime?   @map("deleted_at")
 
-  passwordResetTokens PasswordResetToken[]
+  passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
+  pushSubscriptions       PushSubscription[]
 
   @@unique([churchId, username])
   @@index([churchId])
@@ -996,6 +1002,7 @@ model Fund {
   dayBornCollections DayBornCollection[]
   financeProjects    FinanceProject[]
   financeBudgetLines FinanceBudgetLine[]
+  allowances         Allowance[]
 
   @@unique([churchId, code])
   @@unique([churchId, name])
@@ -1130,6 +1137,11 @@ model Expense {
   notes           String?
   createdAt       DateTime         @default(now()) @map("created_at")
 
+  // Set on expenses drafted by the monthly allowance run (lib/allowances.js).
+  allowanceId    Int?            @map("allowance_id")
+  allowance      Allowance?      @relation(fields: [allowanceId], references: [id])
+  allowanceRunId Int?            @map("allowance_run_id")
+  allowanceRun   AllowanceRun?   @relation(fields: [allowanceRunId], references: [id])
   paymentVoucher PaymentVoucher?
 
   @@index([churchId])
@@ -1225,13 +1237,17 @@ model PaymentVoucher {
 
 /// Was a global singleton (`setting_id CHECK = 1`); now one row per church.
 model FinanceSetting {
-  churchId         String   @unique @map("church_id")
-  church           Church   @relation(fields: [churchId], references: [id])
-  receiptPrefix    String   @default("RCT") @map("receipt_prefix")
-  voucherPrefix    String   @default("PV") @map("voucher_prefix")
-  smallExpenseMax  Float    @default(500) @map("small_expense_max")
-  mediumExpenseMax Float    @default(5000) @map("medium_expense_max")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  churchId             String   @unique @map("church_id")
+  church               Church   @relation(fields: [churchId], references: [id])
+  receiptPrefix        String   @default("RCT") @map("receipt_prefix")
+  voucherPrefix        String   @default("PV") @map("voucher_prefix")
+  smallExpenseMax      Float    @default(500) @map("small_expense_max")
+  mediumExpenseMax     Float    @default(5000) @map("medium_expense_max")
+  // Monthly allowances: the day of the month they fall due (null = off) and
+  // extra numbers to text when they do (comma-separated).
+  allowanceDueDay      Int?     @map("allowance_due_day")
+  allowanceAlertPhones String?  @map("allowance_alert_phones")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   @@map("finance_settings")
 }
@@ -1528,7 +1544,8 @@ model ExpenseCategory {
   description  String?
   isActive     Boolean @default(true) @map("is_active")
 
-  expenses Expense[]
+  expenses   Expense[]
+  allowances Allowance[]
 
   @@unique([churchId, categoryName])
   @@index([churchId])
@@ -1663,4 +1680,67 @@ model PlatformAuditLog {
   @@index([occurredAt(sort: Desc)])
   @@index([churchId])
   @@map("platform_audit_log")
+}
+
+// A worker paid a fixed allowance every month (Finance > Allowances).
+model Allowance {
+  id              Int              @id @default(autoincrement()) @map("allowance_id")
+  churchId        String           @map("church_id")
+  church          Church           @relation(fields: [churchId], references: [id])
+  memberId        Int?             @map("member_id")
+  member          Member?          @relation(fields: [memberId], references: [id])
+  payeeName       String           @map("payee_name")
+  role            String?
+  amount          Decimal          @db.Decimal(12, 2)
+  fundId          Int?             @map("fund_id")
+  fund            Fund?            @relation(fields: [fundId], references: [id])
+  expenseCatId    Int?             @map("expense_cat_id")
+  expenseCategory ExpenseCategory? @relation(fields: [expenseCatId], references: [id])
+  active          Boolean          @default(true)
+  notes           String?
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  expenses Expense[]
+
+  @@index([churchId])
+  @@map("allowances")
+}
+
+// One per church per month: the expenses drafted when allowances fell due.
+// The unique key stops two app machines (or a restart) drafting a month twice.
+model AllowanceRun {
+  id          Int       @id @default(autoincrement()) @map("allowance_run_id")
+  churchId    String    @map("church_id")
+  church      Church    @relation(fields: [churchId], references: [id])
+  period      String // YYYY-MM
+  workerCount Int       @map("worker_count")
+  total       Decimal   @db.Decimal(12, 2)
+  createdBy   Int?      @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  remindedAt  DateTime? @map("reminded_at")
+
+  expenses Expense[]
+
+  @@unique([churchId, period])
+  @@map("allowance_runs")
+}
+
+// A browser or phone that asked for notifications (Web Push). Removed when
+// the push service says it has expired.
+model PushSubscription {
+  id        Int      @id @default(autoincrement()) @map("push_subscription_id")
+  churchId  String   @map("church_id")
+  church    Church   @relation(fields: [churchId], references: [id])
+  userId    Int      @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([churchId])
+  @@index([userId])
+  @@map("push_subscriptions")
 }
