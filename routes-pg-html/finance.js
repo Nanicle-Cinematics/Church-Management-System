@@ -777,6 +777,7 @@ function register(app) {
         <a href="/finance/funds">Funds<span>${funds.length}</span></a>
         <a href="/finance/expenses">Approvals${nWaiting ? `<span>${nWaiting}</span>` : ''}</a>
         <a href="/finance/reports">Reports</a>
+        <a href="/finance/allowances">Allowances</a>
       </nav>`;
     const head = `<header class="pm-head">
         <div><h1>Finance</h1><p class="subtitle">${esc(monthName)} · ${periodLocked ? 'period locked' : 'period open'}${budget ? ' · budget approved' : ''}</p></div>

@@ -131,7 +131,7 @@ test('a fund manager keeps the worker list and the due day; others with finance 
   assert.match(page.text, /Ama Organist/);
   assert.match(page.text, /GH₵ 750\.50/, 'monthly total');
   assert.match(page.text, /Send me a test alert/);
-  assert.match((await owner.get('/finance')).text, /href="\/finance\/allowances"/, 'linked from the Finance hub');
+  assert.match((await owner.get('/finance')).text, /<a href="\/finance\/reports">Reports<\/a>\s*<a href="\/finance\/allowances">Allowances<\/a>/, 'a Finance tab next to Reports');
 
   const cashier = await staff(churchId, 'EDITOR', 'CASHIER');
   assert.strictEqual((await cashier.client.get('/finance/allowances')).status, 200);
