@@ -9,6 +9,10 @@ const { Pool } = require('pg');
 const { createTenantApp } = require('../lib/tenant-http');
 const { db } = require('../lib/tenant');
 const { signupChurch } = require('../lib/provision');
+const fs = require('fs');
+const path = require('path');
+const sharp = require('sharp');
+const { LOGO_DIR, deleteTenantLogo } = require('../lib/church-logo');
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -28,6 +32,7 @@ test.before(async () => {
 
 test.after(async () => {
   server.close();
+  deleteTenantLogo(churchId);
   const where = { churchId };
   await db.account.deleteMany({ where });
   await db.user.deleteMany({ where });
@@ -41,11 +46,12 @@ test.after(async () => {
 
 const get = (p, headers = {}) => fetch(base + p, { headers, redirect: 'manual' });
 
-test('the manifest makes the app installable everywhere', async () => {
+test('signed out, the manifest is the product\'s and makes the app installable everywhere', async () => {
   const res = await get('/manifest.webmanifest');
   assert.strictEqual(res.status, 200);
   assert.match(res.headers.get('content-type'), /application\/manifest\+json/);
   const m = await res.json();
+  assert.strictEqual(m.name, 'Church Manager');
   assert.strictEqual(m.id, '/');
   assert.strictEqual(m.start_url, '/');
   assert.strictEqual(m.display, 'standalone');
@@ -86,7 +92,7 @@ test('install tags and the install script are on the signed-out, landing and sig
     const res = await get(p, headers);
     assert.strictEqual(res.status, 200, `${p} ${headers.cookie ? 'signed in' : 'signed out'}`);
     const html = await res.text();
-    assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest">/, p);
+    assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest" crossorigin="use-credentials">/, p);
     assert.match(html, /<link rel="apple-touch-icon"/, p);
     assert.match(html, /<meta name="theme-color"/, p);
     assert.match(html, /<script src="\/static\/pwa\.js\?v=[0-9a-f]+" defer><\/script>/, p);
@@ -100,4 +106,65 @@ test('"Install app" starts hidden and is offered in the sidebar, the phone menu 
   assert.match(app, /cmd === 'install' && window\.PwaInstall/);
   const login = await (await get('/login')).text();
   assert.match(login, /<button class="pa-install" type="button" data-install-app hidden>/);
+});
+
+test('signed in, the installed app carries the church\'s name, then its logo once uploaded', async () => {
+  const manifest = async (headers = { cookie }) => (await get('/manifest.webmanifest', headers)).json();
+  const head = async () => (await (await get('/', { cookie })).text()).split('</head>')[0];
+
+  // No logo yet: the church's name with the product icons.
+  let m = await manifest();
+  assert.strictEqual(m.name, 'Pwa Test Church');
+  assert.strictEqual(m.short_name, 'Pwa Test Church');
+  assert.ok(m.icons.every((i) => i.src.startsWith('/static/')));
+  let tags = await head();
+  assert.match(tags, /<meta name="apple-mobile-web-app-title" content="Pwa Test Church">/);
+  assert.match(tags, /<link rel="apple-touch-icon" href="\/static\/apple-touch-icon\.png">/);
+  const res = await get('/manifest.webmanifest', { cookie });
+  assert.match(res.headers.get('cache-control'), /private/);
+
+  // A wide logo becomes square icons, with or without a session.
+  await sharp({ create: { width: 600, height: 200, channels: 4, background: '#c81e1e' } }).png().toFile(path.join(LOGO_DIR, `${churchId}.png`));
+  m = await manifest();
+  for (const size of [192, 512]) {
+    for (const purpose of ['any', 'maskable']) {
+      const icon = m.icons.find((i) => i.sizes === `${size}x${size}` && i.purpose === purpose);
+      assert.ok(icon && icon.src.startsWith(`/branding/app-icon/${churchId}/`), `${size} ${purpose}`);
+      const img = await get(icon.src);
+      assert.strictEqual(img.status, 200);
+      assert.strictEqual(img.headers.get('content-type'), 'image/png');
+      const meta = await sharp(Buffer.from(await img.arrayBuffer())).metadata();
+      assert.deepStrictEqual([meta.width, meta.height], [size, size]);
+    }
+  }
+  assert.ok(m.shortcuts.every((s) => s.icons[0].src === m.icons[0].src));
+  tags = await head();
+  const apple = tags.match(/<link rel="apple-touch-icon" href="([^"]+)">/)[1];
+  assert.match(apple, new RegExp(`^/branding/app-icon/${churchId}/[^/]+/[^/]+/180\\.png$`));
+  assert.strictEqual((await get(apple)).status, 200);
+
+  // A link cannot be forged to reach another church's logo.
+  const parts = m.icons[0].src.split('/');
+  parts[5] = 'A'.repeat(parts[5].length);
+  assert.strictEqual((await get(parts.join('/'))).status, 404);
+  assert.strictEqual((await get(m.icons[0].src.replace('/192.png', '/999.png'))).status, 404);
+
+  // Signed out still gets the product's manifest.
+  assert.strictEqual((await manifest({})).name, 'Church Manager');
+
+  // Removing the logo: old links show the product icon again.
+  const old = m.icons[1].src;
+  deleteTenantLogo(churchId);
+  const after = await get(old);
+  assert.strictEqual(after.status, 200);
+  const product = fs.readFileSync(path.join(__dirname, '..', 'public', 'icon-192.png'));
+  assert.ok(Buffer.from(await after.arrayBuffer()).equals(product));
+});
+
+test('long church names are shortened for the home screen', () => {
+  const { shortName } = require('../lib/app-icon');
+  assert.strictEqual(shortName('Grace Chapel'), 'Grace Chapel');
+  assert.strictEqual(shortName('Dunwell Methodist Society, Koforidua'), 'Dunwell');
+  assert.strictEqual(shortName('Presbyterian Church of Ghana Emmanuel Congregation'), 'Presbyterian');
+  assert.strictEqual(shortName('Supercalifragilisticexpialidocious'), 'Supercalifragil');
 });

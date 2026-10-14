@@ -27,13 +27,12 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const { icon } = require('../lib/icons');
+const { LOGO_DIR, tenantLogoPath, deleteTenantLogo } = require('../lib/church-logo');
+const { manifestFor, serveAppIcon } = require('../lib/app-icon');
 
-const LOGO_DIR = process.env.LOGO_DIR || path.join(process.env.PHOTO_DIR || path.join(__dirname, '..', 'photos'), 'church-logos');
 // 128px copy of the default logo: the original is ~840 KB and was sent on every page.
 const DEFAULT_LOGO = path.join(__dirname, '..', 'public', 'logo-128.png');
-const LOGO_EXTENSIONS = ['png', 'jpg', 'webp', 'gif'];
 const LOGO_EXT_FROM_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
-try { fs.mkdirSync(LOGO_DIR, { recursive: true }); } catch (_) { /* created by the mounted volume at runtime */ }
 const logoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 4 * 1024 * 1024 },
@@ -42,18 +41,6 @@ const logoUpload = multer({
     cb(ok ? null : new Error('Only JPG, PNG, WebP or GIF images are allowed.'), ok);
   },
 });
-function tenantLogoPath(churchId) {
-  for (const ext of LOGO_EXTENSIONS) {
-    const candidate = path.join(LOGO_DIR, `${churchId}.${ext}`);
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-function deleteTenantLogo(churchId) {
-  for (const ext of LOGO_EXTENSIONS) {
-    try { fs.unlinkSync(path.join(LOGO_DIR, `${churchId}.${ext}`)); } catch (_) { /* no file with this extension */ }
-  }
-}
 
 function requireOwner(req, res, next) {
   if (!res.locals.user) return res.redirect('/login');
@@ -85,6 +72,15 @@ function register(app) {
     res.set('Cache-Control', custom ? 'private, no-store' : 'public, max-age=86400');
     res.sendFile(custom || DEFAULT_LOGO);
   });
+
+  // The installed app (lib/app-icon.js): signed in, the church's own name and
+  // logo; signed out, the product's. Pages link it with
+  // crossorigin="use-credentials" so the browser sends the session.
+  app.get('/manifest.webmanifest', (req, res) => {
+    res.set({ 'Cache-Control': 'private, no-cache', Vary: 'Cookie' });
+    res.type('application/manifest+json').send(JSON.stringify(manifestFor(res.locals.church)));
+  });
+  app.get('/branding/app-icon/:churchId/:version/:sig/:variant.png', asyncHandler(serveAppIcon));
 
   app.get('/profile', requireAuth, (req, res) => {
     const user = res.locals.user;
@@ -135,7 +131,7 @@ function register(app) {
         <div class="church-logo-settings">
           <img src="/branding/logo?v=${church.updatedAt ? church.updatedAt.getTime() : Date.now()}" alt="${esc(church.name)} logo">
           <div>
-            <p>Upload your church’s logo. It will replace the default logo throughout your workspace.</p>
+            <p>Upload your church’s logo. It will replace the default logo throughout your workspace, and becomes the app’s icon when someone installs Church Manager on their phone or computer.</p>
             <form method="post" action="/settings/logo" enctype="multipart/form-data" class="church-logo-form">
               <input type="file" name="logo" accept="image/jpeg,image/png,image/webp,image/gif" required>
               <button type="submit">${tenantLogoPath(church.id) ? 'Replace logo' : 'Upload logo'}</button>
