@@ -376,6 +376,7 @@ function register(app) {
         <div class="pm-main">
           <div class="pm-toolbar">
             <div class="search-field"><span aria-hidden="true">${icon('search')}</span><input type="search" name="q" value="${esc(q)}" placeholder="Search name, ID, phone or email…" aria-label="Search members"></div>
+            ${isAdmin ? `<a class="btn ghost pm-import" href="/members/import" title="Add members from a CSV or Excel file">${icon('plus')} Import</a>` : ''}
             ${isAdmin ? `<span id="pmExport" data-live-sync><a class="btn ghost pm-export" href="/members/export.csv${exportQs}" title="Download everyone matching these filters as CSV">${icon('download')} Export</a></span>` : ''}
             <button class="btn ghost pm-fbtn" type="button" aria-controls="pmFacets" aria-expanded="false">${icon('menu')} Filters<span id="pmBadge" data-live-sync>${nFilters ? ` <span class="pm-badge">${nFilters}</span>` : ''}</span></button>
           </div>

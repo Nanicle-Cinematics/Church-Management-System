@@ -385,6 +385,7 @@ model Church {
   allowances        Allowance[]
   allowanceRuns     AllowanceRun[]
   pushSubscriptions PushSubscription[]
+  memberImports     MemberImport[]
 
   @@map("churches")
 }
@@ -1743,4 +1744,20 @@ model PushSubscription {
   @@index([churchId])
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+// A member file uploaded on Members > Import, held while the admin checks
+// the column matching and preview. Deleted once imported, or after a day.
+model MemberImport {
+  id        Int      @id @default(autoincrement()) @map("member_import_id")
+  churchId  String   @map("church_id")
+  church    Church   @relation(fields: [churchId], references: [id])
+  userId    Int      @map("user_id")
+  fileName  String   @map("file_name")
+  headers   Json
+  rows      Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([churchId])
+  @@map("member_imports")
 }

@@ -1267,6 +1267,13 @@ body.pc form label .hint { display: block; margin-top: 4px; text-transform: none
 .al-actions { display: flex; gap: 6px; align-items: center; justify-content: flex-end; white-space: nowrap; }
 .al-actions form { margin: 0; }
 .al-actions .btn { height: 32px; padding: 0 12px; }
+/* Members > Import (routes-pg-html/member-import.js) */
+.mi-scroll { overflow-x: auto; }
+.mi-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.mi-tips { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+.mi-go .actions { margin-top: 12px; }
+.form label.mi-check { flex-direction: row; display: flex; align-items: center; gap: 10px; font-weight: 500; }
+.form label.mi-check input[type="checkbox"] { width: 18px; height: 18px; flex: none; margin: 0; }
 .u-actions select { min-width: 112px; height: 34px; }
 .u-actions select[name="financeRole"] { min-width: 150px; }
 .u-actions input[type="password"], .u-actions .password-field { width: 150px !important; }
