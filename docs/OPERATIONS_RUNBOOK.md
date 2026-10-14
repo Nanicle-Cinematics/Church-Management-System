@@ -97,5 +97,6 @@ Other commands:
 - `reset-2fa <email>`: lost phone and no recovery codes left; they set up
   two-factor again at the next sign-in. Signs them out everywhere.
 - `disable <email>` / `enable <email>`: block or restore an operator.
+- `rename <email> --name "New Name"`: change the name shown in the console.
 
 Each command is recorded in `platform_audit_log`.

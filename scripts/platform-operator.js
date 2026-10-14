@@ -10,6 +10,7 @@
 //   node scripts/platform-operator.js reset-2fa you@example.com
 //   node scripts/platform-operator.js disable you@example.com
 //   node scripts/platform-operator.js enable you@example.com
+//   node scripts/platform-operator.js rename you@example.com --name "New Name"
 //
 // Passwords are typed at a hidden prompt. Without a terminal (piped or
 // scripted), a strong random password is generated and printed once instead.
@@ -27,6 +28,18 @@ const {
   hashOperatorPassword, revokeOperatorSessions, normEmail, MIN_PASSWORD_LENGTH,
 } = require('../lib/platform-operators');
 
+// The name as typed, without quote marks left at either end. A command
+// copied from a document can carry curly quotes the shell does not remove.
+function cleanName(raw) {
+  const name = String(raw || '').trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim();
+  return name || null;
+}
+
+function nameArg(rest) {
+  const at = rest.indexOf('--name');
+  return at >= 0 ? cleanName(rest.slice(at + 1).join(' ')) : null;
+}
+
 function usage(code = 1) {
   console.log(`Usage:
   node scripts/platform-operator.js create <email> [--name "Display Name"]
@@ -34,7 +47,8 @@ function usage(code = 1) {
   node scripts/platform-operator.js reset-password <email>
   node scripts/platform-operator.js reset-2fa <email>
   node scripts/platform-operator.js disable <email>
-  node scripts/platform-operator.js enable <email>`);
+  node scripts/platform-operator.js enable <email>
+  node scripts/platform-operator.js rename <email> --name "New Name"`);
   process.exit(code);
 }
 
@@ -91,8 +105,7 @@ async function main() {
   }
 
   if (command === 'create') {
-    const nameAt = rest.indexOf('--name');
-    const displayName = nameAt >= 0 ? String(rest[nameAt + 1] || '').trim() || null : null;
+    const displayName = nameArg(rest);
     if (await db.platformOperator.findUnique({ where: { email } })) {
       console.error(`An operator with email ${email} already exists.`);
       process.exit(1);
@@ -121,6 +134,12 @@ async function main() {
     await revokeOperatorSessions(operator.id);
     await audit(operator, 'operator.disabled');
     console.log(`${email} is disabled and signed out everywhere.`);
+  } else if (command === 'rename') {
+    const displayName = nameArg(rest);
+    if (!displayName) { console.error('Give the new name: rename <email> --name "New Name"'); process.exit(1); }
+    await db.platformOperator.update({ where: { id: operator.id }, data: { displayName } });
+    await audit(operator, 'operator.renamed');
+    console.log(`${email} is now shown as "${displayName}".`);
   } else if (command === 'enable') {
     await db.platformOperator.update({ where: { id: operator.id }, data: { disabledAt: null, failedAttempts: 0, lockedUntil: null } });
     await audit(operator, 'operator.enabled');
