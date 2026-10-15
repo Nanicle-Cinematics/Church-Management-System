@@ -324,6 +324,12 @@ model Church {
   deletedAt          DateTime? @map("deleted_at")
   deletionReason     String?   @map("deletion_reason")
   deletionPurgeAfter DateTime? @map("deletion_purge_after")
+  /// SMS sender name (lib/delivery.js): up to 11 letters/digits, used on the
+  /// church's texts once the platform operator marks it APPROVED (after
+  /// registering it with the SMS provider). PENDING | APPROVED | REJECTED.
+  smsSenderId        String?   @map("sms_sender_id")
+  smsSenderStatus    String?   @map("sms_sender_status")
+  smsSenderNote      String?   @map("sms_sender_note")
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
