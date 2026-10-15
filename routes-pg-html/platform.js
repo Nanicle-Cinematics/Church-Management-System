@@ -17,6 +17,7 @@ const { renewalsOverview, extendedUntil } = require('../lib/pro-renewals');
 const { balanceState, balanceThreshold } = require('../lib/sms-balance');
 const { healthReport } = require('../lib/church-health');
 const { growthByMonth } = require('../lib/platform-growth');
+const { accessOpen } = require('../lib/support-view');
 
 // Operators only (lib/platform-operators.js): church users never get here.
 function page(res, opts) {
@@ -459,6 +460,13 @@ async function renderChurchDetail(req, res) {
       inner: `${payments.length ? table(['Paid on', 'Amount', 'Method', 'Reference', 'Covers'], payments.map((p) => [esc(isoDate(p.paidOn)), `<strong>GH₵ ${esc(Number(p.amount).toLocaleString('en-GH', { minimumFractionDigits: 2 }))}</strong>`, esc(p.method), esc(p.reference || '—'), esc(p.months ? `${p.months} mo` : '—')]), { keyCols: 2 }) : '<p class="muted-text">No payments recorded.</p>'}
         <p><a class="btn ghost" href="/platform/payments?church=${encodeURIComponent(id)}#record">Record a payment</a></p>`,
     })}
+    <section class="card" id="support-view">
+      <div class="card-head"><h2>View as church</h2><span class="meta">${accessOpen(church) ? `<span class="pill pill-sent">allowed until ${esc(dateTime(church.supportAccessUntil))}</span>` : '<span class="pill">not allowed</span>'}</span></div>
+      ${accessOpen(church)
+        ? `<p>See this church's app as one of its admins would, read-only, to look into a problem. Nothing can be changed or exported, and the church's security log records the visit.</p>
+           <form method="post" action="/platform/churches/${esc(id)}/view" class="inline platform-inline-form"><button type="submit">View as church (read-only)</button></form>`
+        : '<p class="muted-text">The church must allow it first: one of its admins turns on <strong>Settings › Support access</strong>, for 1 hour, 24 hours or 3 days.</p>'}
+    </section>
     <div id="users"></div>
     ${listCard({
       title: 'Users and roles', count: users.length, countLabel: 'users',

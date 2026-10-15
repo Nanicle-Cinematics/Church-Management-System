@@ -20,6 +20,7 @@ const { sendEmailEach, sendSmsBatch, normalizePhoneGH } = require('../lib/delive
 const { emailLinkBase } = require('../lib/public-url');
 const { parseLogins, loginTakenMessage } = require('../lib/user-logins');
 const { loginLabel } = require('../lib/phone');
+const { startSupportView } = require('../lib/support-view');
 
 const back = (churchId) => `/platform/churches/${encodeURIComponent(churchId)}#users`;
 
@@ -38,6 +39,14 @@ async function record(req, res, user, event, subject) {
 }
 
 function register(app) {
+  // "View as church": only while the church has turned on support access.
+  app.post('/platform/churches/:id/view', requireOperator, asyncHandler(async (req, res) => {
+    const r = await startSupportView(req, res.locals.operator, req.params.id);
+    if (r.error) { flash(req, r.error); return res.redirect(back(req.params.id)); }
+    await logPlatformEvent(req, { operator: res.locals.operator, event: 'support.view_started', subject: `Viewing ${r.church.name}, read-only`, churchId: r.church.id });
+    res.redirect('/');
+  }));
+
   const route = (action, handler) => app.post(`/platform/churches/:id/users/:userId/${action}`, requireOperator, asyncHandler(async (req, res) => {
     const user = await loadUser(req);
     if (!user) { flash(req, 'That user is not in this church.'); return res.redirect(back(req.params.id)); }

@@ -1038,6 +1038,8 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
 .pc-notice { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 12px 10px 14px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--pc-info) 35%, var(--pc-line)); background: color-mix(in srgb, var(--pc-info) 10%, var(--pc-panel)); color: var(--pc-text); font-size: 14px; }
 .pc-notice[hidden] { display: none; }
 .pc-notice span { flex: 1; }
+.pc-notice-support { position: sticky; top: 8px; z-index: 30; border-color: var(--pc-accent); background: color-mix(in srgb, var(--pc-accent) 14%, var(--pc-panel)); }
+.pc-notice-support form { margin: 0; }
 .pc-notice-warning { border-color: color-mix(in srgb, var(--pc-warn) 45%, var(--pc-line)); background: color-mix(in srgb, var(--pc-warn) 12%, var(--pc-panel)); }
 .op-secret code { display: inline-block; padding: 10px 14px; border-radius: 8px; background: var(--pc-hover); font: 600 18px var(--pc-mono); letter-spacing: .02em; user-select: all; }
 .op-error { margin-bottom: 12px; }

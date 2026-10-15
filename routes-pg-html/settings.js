@@ -29,6 +29,7 @@ const path = require('path');
 const { icon } = require('../lib/icons');
 const { LOGO_DIR, tenantLogoPath, deleteTenantLogo } = require('../lib/church-logo');
 const { manifestFor, serveAppIcon } = require('../lib/app-icon');
+const { accessOpen, DURATIONS } = require('../lib/support-view');
 
 // 128px copy of the default logo: the original is ~840 KB and was sent on every page.
 const DEFAULT_LOGO = path.join(__dirname, '..', 'public', 'logo-128.png');
@@ -64,6 +65,29 @@ function mfaControls(user) {
     <form method="post" action="/settings/mfa/start">
       <button type="submit">Set up two-factor authentication</button>
     </form>`;
+}
+
+// Settings › Support access: let Church Manager support see the app,
+// read-only, for a while (lib/support-view.js), and see when they did.
+async function supportAccessCard(church) {
+  const open = accessOpen(church);
+  const visits = await rawDb.securityAuditLog.findMany({
+    where: { churchId: church.id, event: { in: ['support.view_started', 'support.access_granted', 'support.access_revoked'] } },
+    orderBy: { occurredAt: 'desc' }, take: 5,
+  });
+  const until = open ? new Date(church.supportAccessUntil).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC' : '';
+  return `
+      <section class="card" style="margin-top:1rem" id="support-access">
+        <div class="card-head"><h2>Support access</h2><span class="meta">${open ? `<span class="pill pill-sent">on until ${esc(until)}</span>` : 'Off'}</span></div>
+        <p>When you report a problem, you can let Church Manager support see your church's app, read-only, so they can look into it. They cannot change, send or export anything, and every visit is listed below and in your security log.</p>
+        ${open
+          ? '<form method="post" action="/settings/support-access"><input type="hidden" name="hours" value="off"><button type="submit" class="danger">Turn off now</button></form>'
+          : `<form method="post" action="/settings/support-access" class="filter-bar">
+              <label>Allow for <select name="hours">${Object.entries(DURATIONS).map(([h, l]) => `<option value="${h}"${h === '24' ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+              <button type="submit">Allow support access</button>
+            </form>`}
+        ${visits.length ? `<ul class="muted-text">${visits.map((v) => `<li>${esc(v.occurredAt.toISOString().slice(0, 16).replace('T', ' '))} UTC · ${esc(v.subject || v.event)}</li>`).join('')}</ul>` : ''}
+      </section>`;
 }
 
 function register(app) {
@@ -160,7 +184,8 @@ function register(app) {
         <div class="card-head"><h2>Data portability</h2><span class="meta">Owner only</span></div>
         <p>Download a complete tenant-scoped JSON export. Password hashes, MFA secrets, recovery codes, and reset tokens are excluded.</p>
         <p><a class="btn ghost" href="/settings/export.json">Download church data</a></p>
-      </section>`;
+      </section>
+      ${await supportAccessCard(church)}`;
     res.page({ title: 'Settings', active: '/settings', noHeader: true, body });
   }));
 
@@ -185,6 +210,25 @@ function register(app) {
     await logActivity(res.locals.db, 'settings_logo_updated', 'Church logo updated', '/settings', res.locals.user.id);
     flash(req, 'Church logo updated.', 'success');
     res.redirect('/settings');
+  }));
+
+  app.post('/settings/support-access', requireOwner, asyncHandler(async (req, res) => {
+    const hours = String((req.body && req.body.hours) || '');
+    const user = res.locals.user;
+    const who = user.displayName || user.username;
+    if (hours === 'off') {
+      await res.locals.db.church.update({ where: { id: res.locals.churchId }, data: { supportAccessUntil: null, supportAccessGrantedBy: null } });
+      await rawDb.securityAuditLog.create({ data: { churchId: res.locals.churchId, actorId: user.id, event: 'support.access_revoked', subject: `${who} turned support access off` } });
+      flash(req, 'Support access is off. Any support view ends at once.', 'success');
+    } else if (Object.hasOwn(DURATIONS, hours)) {
+      const until = new Date(Date.now() + Number(hours) * 3600 * 1000);
+      await res.locals.db.church.update({ where: { id: res.locals.churchId }, data: { supportAccessUntil: until, supportAccessGrantedBy: user.id } });
+      await rawDb.securityAuditLog.create({ data: { churchId: res.locals.churchId, actorId: user.id, event: 'support.access_granted', subject: `${who} allowed support access for ${DURATIONS[hours]}` } });
+      flash(req, `Support can view your church, read-only, for ${DURATIONS[hours]}.`, 'success');
+    } else {
+      flash(req, 'Choose how long to allow it.');
+    }
+    res.redirect('/settings#support-access');
   }));
 
   app.post('/settings/logo/delete', requireOwner, asyncHandler(async (req, res) => {

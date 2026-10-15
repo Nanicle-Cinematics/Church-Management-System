@@ -6,6 +6,11 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **View as church** (support). A church admin can allow Church Manager support to see their church's app, read-only, for 1 hour, 24 hours or 3 days, under Settings › **Support access**, and can turn it off at any time. While access is on, the church's console page offers **View as church (read-only)**. The operator then sees the app as one of the church's admins does, under a banner that says so, with **End**.
+  - **Nothing can be changed:** every save is refused, and a read-only database connection refuses any write at the source.
+  - **Nothing can be exported:** exports and downloads are refused.
+  - **It ends by itself** when access runs out or is turned off, or the operator's console session ends.
+  - **It is recorded:** allowing, turning off, starting and ending are in the church's own security log, and the latest are listed on its Settings page.
 - Platform › **Errors**: the last 90 days of server errors, grouped, so the same fault on different pages or records shows once. Errors are grouped by method, by path with ids replaced, and by message with numbers, ids and quoted values replaced. Each group shows its count, first and last seen, how many churches it hit, and the latest occurrence with its stack. **Mark fixed** takes a group off the Open list. If the fault happens again it reappears, marked **came back**. The Overview's error count now counts open errors only, and links here.
 - Platform › **Operators**: manage the console's own accounts without the server script, which still works. The tab lists each operator's two-factor, lock and disabled state and last sign-in. Operators can:
   - **add** an operator, whose random password is shown once on the page and who sets up two-factor at first sign-in;
