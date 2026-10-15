@@ -1,15 +1,19 @@
 'use strict';
 // Platform › SMS: the SMS account's balance, checked hourly with an alert to
-// the operators when it falls below the level set here (lib/sms-balance.js).
+// the operators when it falls below the level set here (lib/sms-balance.js),
+// and each church's texts per month against its allowance (lib/sms-usage.js).
 
 const asyncHandler = require('../lib/async-handler');
 const { esc } = require('../lib/format');
-const { pageHero } = require('../lib/views');
+const { pageHero, listCard, table } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { operatorLayout } = require('../lib/operator-shell');
 const { requireOperator, logPlatformEvent } = require('../lib/platform-operators');
 const { smsDeliveryInfo } = require('../lib/delivery');
 const { checkSmsBalance, balanceState, balanceThreshold, setSetting, THRESHOLD_KEY } = require('../lib/sms-balance');
+const { usageReport, monthOf } = require('../lib/sms-usage');
+const { db: rawDb } = require('../lib/tenant');
+const { PLAN_LIMITS } = require('../lib/plan');
 
 function page(res, opts) {
   return res.send(operatorLayout({ ...opts, operator: res.locals.operator, flash: res.locals.flash, flashType: res.locals.flashType }));
@@ -43,11 +47,43 @@ async function balanceCard() {
     </section>`;
 }
 
+async function usageCard(month) {
+  const rows = await usageReport(month);
+  const used = rows.filter((r) => r.messages);
+  const totals = used.reduce((t, r) => ({ messages: t.messages + r.messages, segments: t.segments + r.segments }), { messages: 0, segments: 0 });
+  const months = [];
+  for (let i = 0; i < 12; i++) { const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - i); months.push(monthOf(d)); }
+  const label = (m) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const tableRows = rows.map((r) => {
+    const pct = r.allowance ? Math.min(100, Math.round((r.messages / r.allowance) * 100)) : (r.messages ? 100 : 0);
+    return [
+      `<a class="platform-church-link" href="/platform/churches/${esc(r.id)}"><strong>${esc(r.name)}</strong><small>${esc(r.slug)}</small></a>`,
+      `<strong>${r.messages.toLocaleString('en-GB')}</strong><small>${r.segments.toLocaleString('en-GB')} pages</small>`,
+      `<span class="op-meter${pct >= 100 ? ' full' : pct >= 90 ? ' near' : ''}" title="${pct}%"><span style="width:${pct}%"></span></span><small>${pct}% of ${r.allowance.toLocaleString('en-GB')}</small>`,
+      `<form method="post" action="/platform/churches/${esc(r.id)}/sms-allowance" class="inline platform-inline-form">
+        <input type="number" name="allowance" min="0" step="1" value="${r.custom ? r.allowance : ''}" placeholder="${(r.plan === 'pro' ? PLAN_LIMITS.pro : PLAN_LIMITS.free).smsPerMonth} (plan)" aria-label="Monthly allowance for ${esc(r.name)}" style="width:110px">
+        <button type="submit" class="ghost">Set</button>
+      </form>`,
+    ];
+  });
+  return `
+    <form method="get" action="/platform/sms" class="filter-bar" id="usage">
+      <label>Month <select name="month" onchange="this.form.submit()">${months.map((m) => `<option value="${m}"${m === month ? ' selected' : ''}>${esc(label(m))}</option>`).join('')}</select></label>
+      <noscript><button type="submit">Show</button></noscript>
+    </form>
+    ${listCard({
+      title: `Texts in ${label(month)}`, count: totals.messages, countLabel: 'texts',
+      note: `${totals.segments.toLocaleString('en-GB')} pages from ${used.length} church${used.length === 1 ? '' : 'es'}. Allowances: Free ${PLAN_LIMITS.free.smsPerMonth}, Pro ${PLAN_LIMITS.pro.smsPerMonth} a month; set a church's own, or clear it for its plan's.`,
+      inner: table(['Church', 'Sent', 'Of allowance', 'Monthly allowance'], tableRows, { keyCols: 2 }),
+    })}`;
+}
+
 function register(app) {
   app.get('/platform/sms', requireOperator, asyncHandler(async (req, res) => {
     const body = `
-      ${pageHero('SMS', 'Your SMS account: balance and alerts.')}
-      ${await balanceCard()}`;
+      ${pageHero('SMS', 'Your SMS account, and what each church sends.')}
+      ${await balanceCard()}
+      ${await usageCard(/^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : monthOf())}`;
     page(res, { title: 'SMS', active: '/platform/sms', body });
   }));
 
@@ -58,6 +94,20 @@ function register(app) {
     else if (r.ok) flash(req, `Balance: ${r.balance.toLocaleString('en-GB')}.${r.alerted ? ' It is below the alert level, so the alert was sent.' : ''}`, 'success');
     else flash(req, `The balance could not be read: ${r.error}`);
     res.redirect('/platform/sms#balance');
+  }));
+
+  // A church's own monthly allowance; empty goes back to its plan's.
+  app.post('/platform/churches/:id/sms-allowance', requireOperator, asyncHandler(async (req, res) => {
+    const raw = String((req.body && req.body.allowance) || '').trim();
+    const n = raw === '' ? null : Number(raw);
+    if (n !== null && (!Number.isInteger(n) || n < 0 || n > 10_000_000)) { flash(req, 'Enter a whole number, 0 or more, or leave it empty for the plan\'s.'); return res.redirect('/platform/sms#usage'); }
+    const church = await rawDb.church.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, slug: true } });
+    if (!church) { flash(req, 'Church not found.'); return res.redirect('/platform/sms#usage'); }
+    await rawDb.church.update({ where: { id: church.id }, data: { smsMonthlyAllowance: n } });
+    const subject = `${church.name} (${church.slug}): SMS allowance ${n === null ? 'back to the plan\'s' : `${n} a month`}`;
+    await logPlatformEvent(req, { operator: res.locals.operator, event: 'platform.sms_allowance', subject, churchId: church.id });
+    flash(req, n === null ? `${church.name} is back on its plan's allowance.` : `${church.name} may now send ${n.toLocaleString('en-GB')} texts a month.`, 'success');
+    res.redirect('/platform/sms#usage');
   }));
 
   app.post('/platform/sms/threshold', requireOperator, asyncHandler(async (req, res) => {
