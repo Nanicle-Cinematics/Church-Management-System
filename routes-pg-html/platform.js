@@ -316,7 +316,7 @@ async function renderChurchDetail(req, res) {
   });
   if (!church) return res.status(404).send('Church not found');
 
-  const [users, recentAudit, recentActivity, recentBroadcasts, recentErrors, lastEmail] = await Promise.all([
+  const [users, recentAudit, recentActivity, recentBroadcasts, recentErrors, lastEmail, payments] = await Promise.all([
     rawDb.user.findMany({
       where: { churchId: id, deletedAt: null },
       orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
@@ -328,6 +328,7 @@ async function renderChurchDetail(req, res) {
     rawDb.broadcast.findMany({ where: { churchId: id }, orderBy: { sentAt: 'desc' }, take: 8 }),
     rawDb.errorLog.findMany({ where: { churchId: id }, orderBy: { occurredAt: 'desc' }, take: 8 }).catch(() => []),
     rawDb.emailLog.findFirst({ where: { churchId: id }, orderBy: { occurredAt: 'desc' } }).catch(() => null),
+    rawDb.platformPayment.findMany({ where: { payerChurchId: id }, orderBy: { paidOn: 'desc' }, take: 20 }),
   ]);
 
   const userRows = users.map((u) => [
@@ -396,6 +397,12 @@ async function renderChurchDetail(req, res) {
       <div><strong>${church._count.securityAuditLogs.toLocaleString()}</strong><span>Audit events</span></div>
       <div><strong>${church._count.errorLogs.toLocaleString()}</strong><span>Error logs</span></div>
     </div>
+    ${listCard({
+      title: 'Payments', count: payments.length, countLabel: payments.length === 1 ? 'payment' : 'payments',
+      note: payments.length ? `GH₵ ${payments.reduce((n, p) => n + Number(p.amount), 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })} in total` : '',
+      inner: `${payments.length ? table(['Paid on', 'Amount', 'Method', 'Reference', 'Covers'], payments.map((p) => [esc(isoDate(p.paidOn)), `<strong>GH₵ ${esc(Number(p.amount).toLocaleString('en-GH', { minimumFractionDigits: 2 }))}</strong>`, esc(p.method), esc(p.reference || '—'), esc(p.months ? `${p.months} mo` : '—')]), { keyCols: 2 }) : '<p class="muted-text">No payments recorded.</p>'}
+        <p><a class="btn ghost" href="/platform/payments?church=${encodeURIComponent(id)}#record">Record a payment</a></p>`,
+    })}
     ${listCard({
       title: 'Users and roles', count: users.length, countLabel: 'users',
       inner: userRows.length ? table(['Name', 'Signs in with', 'Role', 'Finance', 'Security', 'Created'], userRows, { keyCols: 2 }) : '<p class="muted-text">No active users.</p>',
