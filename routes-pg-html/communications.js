@@ -421,8 +421,8 @@ function register(app) {
         </dl>
         <p class="muted-text">${senderState ? senderState[2] : `Texts are sent as <b>${esc(sms.defaultSender)}</b>. Ask for your church’s own name, and members will see it instead.`}</p>
         <form class="form" method="post" action="/communications/sms-sender">
-          <label>SMS sender name<input name="senderId" required pattern="[A-Za-z0-9]{3,11}" maxlength="11" value="${esc(church.smsSenderStatus === 'REJECTED' ? '' : church.smsSenderId || '')}" placeholder="e.g. DUNWELL">
-            <span class="hint">3 to 11 letters or numbers, no spaces. Each name must be approved by the mobile networks before it is used.</span></label>
+          <label>SMS sender name<input name="senderId" required pattern="[A-Za-z0-9]+( [A-Za-z0-9]+)*" minlength="3" maxlength="11" value="${esc(church.smsSenderStatus === 'REJECTED' ? '' : church.smsSenderId || '')}" placeholder="e.g. DUNWELL">
+            <span class="hint">3 to 11 characters: letters, numbers and spaces between words (spaces count). Each name must be approved by the mobile networks before it is used.</span></label>
           <div class="actions">
             <button type="submit">${church.smsSenderId ? 'Ask for this name' : 'Request sender name'}</button>
           </div>
@@ -475,9 +475,10 @@ function register(app) {
       flash(req, 'Sender name removed. Texts are sent with the default name.', 'success');
       return res.redirect('/communications/email-settings#sms');
     }
-    const senderId = String((req.body && req.body.senderId) || '').trim();
+    // Stray spaces are tidied (ends trimmed, runs collapsed) before the check.
+    const senderId = String((req.body && req.body.senderId) || '').trim().replace(/\s+/g, ' ');
     if (!SENDER_ID_RE.test(senderId)) {
-      flash(req, 'A sender name is 3 to 11 letters or numbers, with no spaces or symbols.');
+      flash(req, 'A sender name is 3 to 11 characters: letters, numbers and spaces between words, with no symbols.');
       return res.redirect('/communications/email-settings#sms');
     }
     const current = await db.church.findUnique({ where: { id: res.locals.churchId }, select: { smsSenderId: true, smsSenderStatus: true } });
