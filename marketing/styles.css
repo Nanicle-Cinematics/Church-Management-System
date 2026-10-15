@@ -475,3 +475,6 @@ h3 { font-size: 1.15rem; font-weight: 600; }
 @media (max-width: 720px) {
   .site-footer .container { grid-template-columns: 1fr 1fr; }
 }
+
+/* Spam trap on the demo form: people never see it, bots fill it in. */
+.hp-field { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
