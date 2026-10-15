@@ -6,6 +6,7 @@
 // reuses that module's cross-tenant-reference check on /add (see its comment).
 
 const asyncHandler = require('../lib/async-handler');
+const { meetingDaysFields, meetsOnFromForm } = require('../lib/meeting-days');
 const { esc, initials } = require('../lib/format');
 const { pageHero, statsRow, filterCard, listCard, ICON_EYE, ICON_TRASH, memberAvatar } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
@@ -131,7 +132,7 @@ function register(app) {
     const body = `
       <form class="form" method="post" action="/organizations">
         <label class="wide">Name<input name="name" required></label>
-        <label>Meets<input name="meetsOn" placeholder="e.g. Saturday 5pm"></label>
+        ${meetingDaysFields(null)}
         <label>Leader<select name="leaderId">${options}</select></label>
         <label class="wide">Description<input name="description"></label>
         <div class="actions form-actions">
@@ -198,6 +199,10 @@ function register(app) {
              <select name="leaderId" style="flex:1;min-width:200px">${await orgMemberOptions(db, o.leaderId)}</select>
              <button type="submit">Set leader</button>
            </form>
+           <form method="post" action="/organizations/${id}/meeting" class="filter-bar" style="margin-top:0.8rem">
+             ${meetingDaysFields(o.meetsOn, { inline: true })}
+             <button type="submit">Save meeting days</button>
+           </form>
          </div>`
       : '';
 
@@ -207,7 +212,7 @@ function register(app) {
       ${statsRow([
         { cls: 'gold', icon: icon('members'), value: memberships.length, label: 'Members' },
         { cls: 'green', icon: icon('star'), value: o.leader ? esc(`${o.leader.firstName} ${o.leader.lastName}`) : '—', label: 'Leader' },
-        { cls: 'blue', icon: icon('events'), value: o.meetsOn ? esc(o.meetsOn) : '—', label: 'Meets' },
+        { cls: 'blue', icon: icon('events'), value: o.meetsOn ? esc(o.meetsOn) : '—', label: 'Meeting days' },
       ])}
       ${listCard({ title: 'Roster', count: memberships.length, countLabel: 'members', inner: roster })}
       ${manage}`;
@@ -225,7 +230,7 @@ function register(app) {
     try {
       const created = await db.organization.create({
         data: {
-          name: b.name.trim(), description: b.description || null, meetsOn: b.meetsOn || null,
+          name: b.name.trim(), description: b.description || null, meetsOn: meetsOnFromForm(b),
           leaderId: leader ? leader.id : null,
         },
       });
@@ -299,6 +304,18 @@ function register(app) {
     } catch (e) {
       if (e.code !== 'P2025') throw e;
     }
+    res.redirect(`/organizations/${oid}`);
+  }));
+
+  app.post('/organizations/:id/meeting', requireEditor, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const oid = Number(req.params.id);
+    const org = await db.organization.findUnique({ where: { id: oid }, select: { name: true, meetsOn: true } });
+    if (!org) return res.status(404).send('Not found');
+    const meetsOn = meetsOnFromForm(req.body || {}, org.meetsOn);
+    await db.organization.update({ where: { id: oid }, data: { meetsOn } });
+    await logActivity(db, 'organization_updated', meetsOn ? `${org.name} meets ${meetsOn}` : `Meeting days cleared for ${org.name}`, `/organizations/${oid}`, res.locals.user.id);
+    flash(req, 'Meeting days saved.', 'success');
     res.redirect(`/organizations/${oid}`);
   }));
 

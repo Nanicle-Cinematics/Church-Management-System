@@ -8,7 +8,7 @@
 const crypto = require('crypto');
 const multer = require('multer');
 const asyncHandler = require('../lib/async-handler');
-const { esc } = require('../lib/format');
+const { esc, fmtBirthday } = require('../lib/format');
 const { pageHero, statsRow, table } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
@@ -19,7 +19,7 @@ const imp = require('../lib/member-import');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: imp.MAX_FILE_BYTES, files: 1 } });
 const PREVIEW_ROWS = 15;
 const LIST_LIMIT = 200;
-const STATUS_LABELS = { VISITOR: 'Visitor', REGULAR: 'Regular', MEMBER: 'Member', INACTIVE: 'Inactive', TRANSFERRED: 'Transferred', DECEASED: 'Deceased', OTHER: 'Other' };
+const STATUS_LABELS = { VISITOR: 'Visitor', REGULAR: 'Regular', MEMBER: 'Member', DISTANT: 'Distant', INACTIVE: 'Inactive', TRANSFERRED: 'Transferred', DECEASED: 'Deceased', OTHER: 'Other' };
 const CHANNEL_LABELS = { EITHER: 'SMS and email', SMS_ONLY: 'SMS only', EMAIL_ONLY: 'Email only', NONE: 'Do not contact' };
 
 function requireAdmin(req, res, next) {
@@ -153,7 +153,7 @@ function register(app) {
     const cols = [['gender', 'Gender'], ['dateOfBirth', 'Born'], ['mobilePhone', 'Mobile'], ['email', 'Email'], ['membershipStatus', 'Status']];
     const previewTable = ok.length ? `<div class="mi-scroll">${table(
       ['Row', 'Name', ...cols.map((c) => c[1]), 'Bible class', 'Organisations'],
-      ok.slice(0, PREVIEW_ROWS).map((r) => [r.line, `<b>${esc(r.data.firstName)} ${esc(r.data.lastName)}</b>`, ...cols.map(([k]) => esc(k === 'membershipStatus' ? STATUS_LABELS[r.data[k]] : (r.data[k] || '—'))), esc(r.names.bibleClass || '—'), esc(r.names.organizations.join(', ') || '—')]),
+      ok.slice(0, PREVIEW_ROWS).map((r) => [r.line, `<b>${esc(r.data.firstName)} ${esc(r.data.lastName)}</b>`, ...cols.map(([k]) => esc(k === 'membershipStatus' ? STATUS_LABELS[r.data[k]] : k === 'dateOfBirth' && r.data[k] ? fmtBirthday(r.data[k]) : (r.data[k] || '—'))), esc(r.names.bibleClass || '—'), esc(r.names.organizations.join(', ') || '—')]),
     )}</div>` : '<p class="muted-text">No rows can be imported with these settings.</p>';
 
     const qs = new URLSearchParams(Object.fromEntries([
