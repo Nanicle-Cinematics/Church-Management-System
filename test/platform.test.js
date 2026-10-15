@@ -277,8 +277,10 @@ test('signed in to a deleted church, Sign out works and the operator console is 
   const { slug } = await db.church.findUnique({ where: { id: target.churchId } });
   assert.strictEqual((await op.client.post(`/api/platform/churches/${target.churchId}/access`, { action: 'delete', reason: 'test', confirmSlug: slug })).status, 200);
 
+  // Still signed in to the deleted church: even /login shows its screen.
   const gate = await target.client.page('/login');
-  assert.strictEqual(gate.status, 302, 'still signed in, so /login sends them on');
+  assert.strictEqual(gate.status, 403);
+  assert.match(gate.text, /Access suspended/);
   const home = await target.client.page('/');
   assert.strictEqual(home.status, 403);
   assert.match(home.text, /This church has been deleted: test/);
