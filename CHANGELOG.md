@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Platform › **Announcements**: a notice, such as planned maintenance, shown at the top of every signed-in church page while it runs. It has a start and an end (or runs until ended) and is marked as Information or Important. Each person can dismiss it on their device. The operator can also email it once to every active church's admins. **End now** and **Delete** are on the list. Churches see changes within a minute. Creating, ending and deleting are logged.
 - Platform › church page › Users › **Help**: support tools for each user of a church.
   - **Password reset link:** email it, text it, or show it to the operator to pass on (e.g. by WhatsApp to someone who signs in with a phone). It works once, within an hour.
   - **Unlock** an account locked by wrong passwords.

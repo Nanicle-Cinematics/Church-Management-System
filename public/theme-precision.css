@@ -1034,6 +1034,11 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
 .op-help summary { cursor: pointer; font-weight: 600; white-space: nowrap; }
 .op-help-body { display: grid; gap: 6px; min-width: 260px; padding: 8px 0; }
 .op-help-body p { margin: 6px 0 0; }
+/* Platform notices at the top of church pages (lib/announcements.js). */
+.pc-notice { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 12px 10px 14px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--pc-info) 35%, var(--pc-line)); background: color-mix(in srgb, var(--pc-info) 10%, var(--pc-panel)); color: var(--pc-text); font-size: 14px; }
+.pc-notice[hidden] { display: none; }
+.pc-notice span { flex: 1; }
+.pc-notice-warning { border-color: color-mix(in srgb, var(--pc-warn) 45%, var(--pc-line)); background: color-mix(in srgb, var(--pc-warn) 12%, var(--pc-panel)); }
 .op-raw { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: var(--pc-hover); padding: 10px; border-radius: 8px; }
 .op-signout { margin: 0; }
 .pc-op .pc-main > .page { max-width: 1240px; }
