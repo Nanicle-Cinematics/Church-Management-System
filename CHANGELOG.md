@@ -6,6 +6,13 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Platform › **Operators**: manage the console's own accounts without the server script, which still works. The tab lists each operator's two-factor, lock and disabled state and last sign-in. Operators can:
+  - **add** an operator, whose random password is shown once on the page and who sets up two-factor at first sign-in;
+  - **reset** another operator's password (shown once; they are signed out everywhere) or two-factor;
+  - **rename**, **disable** or **enable** operators;
+  - **change their own password**, with their current one.
+  
+  Nobody can disable or reset themselves, and the last enabled operator cannot be disabled. Every change is in the platform audit log.
 - Platform › **Announcements**: a notice, such as planned maintenance, shown at the top of every signed-in church page while it runs. It has a start and an end (or runs until ended) and is marked as Information or Important. Each person can dismiss it on their device. The operator can also email it once to every active church's admins. **End now** and **Delete** are on the list. Churches see changes within a minute. Creating, ending and deleting are logged.
 - Platform › church page › Users › **Help**: support tools for each user of a church.
   - **Password reset link:** email it, text it, or show it to the operator to pass on (e.g. by WhatsApp to someone who signs in with a phone). It works once, within an hour.
