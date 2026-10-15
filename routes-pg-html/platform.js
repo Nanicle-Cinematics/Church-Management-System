@@ -14,6 +14,7 @@ const { operatorLayout } = require('../lib/operator-shell');
 const { requireOperator, logPlatformEvent } = require('../lib/platform-operators');
 const { releaseChurchEmails, reclaimChurchEmails } = require('../lib/church-emails');
 const { renewalsOverview, extendedUntil } = require('../lib/pro-renewals');
+const { balanceState, balanceThreshold } = require('../lib/sms-balance');
 
 // Operators only (lib/platform-operators.js): church users never get here.
 function page(res, opts) {
@@ -175,7 +176,7 @@ async function platformStats() {
   };
 }
 
-function ownerSummaryCards(stats) {
+function ownerSummaryCards(stats, sms = {}) {
   return `${statsRow([
     { cls: 'gold', icon: icon('platform'), value: stats.churchCount.toLocaleString(), label: 'Churches onboarded' },
     { cls: 'green', icon: icon('attendance'), value: stats.activeCount.toLocaleString(), label: 'Active churches' },
@@ -189,12 +190,13 @@ function ownerSummaryCards(stats) {
     <div><strong>${stats.deletedCount.toLocaleString()}</strong><span>Deleted churches</span></div>
     <div><strong>${stats.trialCount.toLocaleString()}</strong><span>Trial enquiries</span></div>
     <div><strong>${stats.openErrors.toLocaleString()}</strong><span>Errors in 30 days</span></div>
+    <div${sms.low ? ' class="op-mini-low"' : ''}><strong>${sms.balance === null || sms.balance === undefined ? '—' : Number(sms.balance).toLocaleString('en-GB')}</strong><span><a href="/platform/sms">SMS balance</a>${sms.low ? ' · low' : ''}</span></div>
   </div>`;
 }
 
 async function renderPlatformIndex(req, res) {
   const where = buildChurchWhere(req.query || {});
-  const [stats, churches, recentAudit, recentErrors, senderRequests, renewals] = await Promise.all([
+  const [stats, churches, recentAudit, recentErrors, senderRequests, renewals, smsState, smsThreshold] = await Promise.all([
     platformStats(),
     rawDb.church.findMany({
       where,
@@ -214,7 +216,11 @@ async function renderPlatformIndex(req, res) {
       select: { id: true, name: true, slug: true, smsSenderId: true },
     }),
     renewalsOverview(),
+    balanceState().catch(() => null),
+    balanceThreshold().catch(() => 200),
   ]);
+  const smsBalance = smsState ? smsState.balance : null;
+  const sms = { balance: smsBalance, low: smsBalance !== null && smsBalance !== undefined && Number(smsBalance) < smsThreshold };
 
   // Pro plans ending in the next 30 days or ended in the last 60, soonest
   // first. Extending adds to the current end date (lib/pro-renewals.js).
@@ -274,7 +280,7 @@ async function renderPlatformIndex(req, res) {
 
   const body = `
     ${pageHero('SaaS Owner Portal', 'Manage every church, plan, access state, user footprint and operational signal across the platform.')}
-    ${ownerSummaryCards(stats)}
+    ${ownerSummaryCards(stats, sms)}
     ${renewalRows.length ? listCard({
       title: 'Pro renewals', count: renewalRows.length, countLabel: renewalRows.length === 1 ? 'church' : 'churches',
       note: 'Ending in the next 30 days or ended in the last 60. Admins are reminded 14 and 3 days before, and when it ends.',
