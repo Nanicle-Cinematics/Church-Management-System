@@ -313,25 +313,35 @@ enum RecipientStatus {
 /// The tenant. Every other model (except TrialSignup, which happens before a
 /// Church exists) carries a churchId and is scoped by lib/tenant.js.
 model Church {
-  id                 String    @id @default(cuid())
-  name               String
-  slug               String    @unique
-  plan               String    @default("free") // "free" | "pro" — mirrors poultry-manager's Farm.plan
-  proSince           DateTime? @map("pro_since")
-  proUntil           DateTime? @map("pro_until") // null = no expiry once set; manual activation for now
-  suspendedAt        DateTime? @map("suspended_at")
-  suspensionReason   String?   @map("suspension_reason")
-  deletedAt          DateTime? @map("deleted_at")
-  deletionReason     String?   @map("deletion_reason")
-  deletionPurgeAfter DateTime? @map("deletion_purge_after")
+  id                     String    @id @default(cuid())
+  name                   String
+  slug                   String    @unique
+  plan                   String    @default("free") // "free" | "pro" — mirrors poultry-manager's Farm.plan
+  proSince               DateTime? @map("pro_since")
+  proUntil               DateTime? @map("pro_until") // null = no expiry once set; manual activation for now
+  suspendedAt            DateTime? @map("suspended_at")
+  suspensionReason       String?   @map("suspension_reason")
+  deletedAt              DateTime? @map("deleted_at")
+  deletionReason         String?   @map("deletion_reason")
+  deletionPurgeAfter     DateTime? @map("deletion_purge_after")
   /// SMS sender name (lib/delivery.js): up to 11 letters/digits, used on the
   /// church's texts once the platform operator marks it APPROVED (after
   /// registering it with the SMS provider). PENDING | APPROVED | REJECTED.
-  smsSenderId        String?   @map("sms_sender_id")
-  smsSenderStatus    String?   @map("sms_sender_status")
-  smsSenderNote      String?   @map("sms_sender_note")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
+  smsSenderId            String?   @map("sms_sender_id")
+  smsSenderStatus        String?   @map("sms_sender_status")
+  smsSenderNote          String?   @map("sms_sender_note")
+  /// Pro renewal reminders (lib/pro-renewals.js): the last reminder sent
+  /// ("14d", "3d" or "lapsed") and the proUntil it was about, so a plan
+  /// extended since starts afresh.
+  proReminderStage       String?   @map("pro_reminder_stage")
+  proReminderFor         DateTime? @map("pro_reminder_for")
+  /// Texts allowed per month, overriding the plan's (lib/plan.js); null = the plan's.
+  smsMonthlyAllowance    Int?      @map("sms_monthly_allowance")
+  /// "View as church": a church admin lets support look, read-only, until this time.
+  supportAccessUntil     DateTime? @map("support_access_until")
+  supportAccessGrantedBy Int?      @map("support_access_granted_by")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
   members                 Member[]
   ministries              Ministry[]
@@ -359,6 +369,8 @@ model Church {
   broadcasts              Broadcast[]
   broadcastRecipients     BroadcastRecipient[]
   errorLogs               ErrorLog[]
+  platformPayments        PlatformPayment[]
+  smsUsage                SmsUsage[]
   appState                AppState[]
 
   funds              Fund[]
@@ -415,6 +427,10 @@ model TrialSignup {
   activatedAt         DateTime? @map("activated_at")
   activatedUserId     Int?      @map("activated_user_id")
   createdAt           DateTime  @default(now()) @map("created_at")
+  // The operator's follow-up (Platform › Trial enquiries).
+  contactedAt         DateTime? @map("contacted_at")
+  convertedChurchId   String?   @map("converted_church_id")
+  operatorNote        String?   @map("operator_note")
 
   @@map("trial_signups")
 }
@@ -795,15 +811,18 @@ model SecurityAuditLog {
 
 /// Server-side error log for the admin error page.
 model ErrorLog {
-  id         Int      @id @default(autoincrement()) @map("error_id")
-  churchId   String?  @map("church_id")
-  church     Church?  @relation(fields: [churchId], references: [id], onDelete: Cascade)
-  occurredAt DateTime @default(now()) @map("occurred_at")
+  id         Int       @id @default(autoincrement()) @map("error_id")
+  churchId   String?   @map("church_id")
+  church     Church?   @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  occurredAt DateTime  @default(now()) @map("occurred_at")
   method     String?
   path       String?
   message    String?
   stack      String?
-  userId     Int?     @map("user_id")
+  userId     Int?      @map("user_id")
+  // Platform › Errors: marked fixed by an operator (their email).
+  resolvedAt DateTime? @map("resolved_at")
+  resolvedBy String?   @map("resolved_by")
 
   @@index([churchId])
   @@map("error_log")
@@ -869,6 +888,7 @@ model User {
   emailVerifiedAt   DateTime?   @map("email_verified_at")
   passwordHash      String      @map("password_hash")
   displayName       String?     @map("display_name")
+  lastLoginAt       DateTime?   @map("last_login_at")
   role              UserRole    @default(ADMIN)
   financeRole       FinanceRole @default(NONE) @map("finance_role")
   totpSecret        String?     @map("totp_secret")
@@ -1767,4 +1787,64 @@ model MemberImport {
 
   @@index([churchId])
   @@map("member_imports")
+}
+
+/// A payment for a church's plan, recorded by a platform operator (Platform
+/// › Payments). Not a church-owned row: it names the church as payerChurchId
+/// (not churchId) so purging a deleted church keeps the payment history, and
+/// keeps the church's name as it was.
+model PlatformPayment {
+  id            Int      @id @default(autoincrement()) @map("payment_id")
+  payerChurchId String?  @map("payer_church_id")
+  payerChurch   Church?  @relation(fields: [payerChurchId], references: [id], onDelete: SetNull)
+  churchName    String   @map("church_name")
+  amount        Decimal  @db.Decimal(12, 2)
+  method        String // MOMO | BANK | CASH | OTHER
+  reference     String?
+  months        Int?
+  paidOn        DateTime @map("paid_on") @db.Date
+  note          String?
+  recordedBy    String?  @map("recorded_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([payerChurchId])
+  @@index([paidOn])
+  @@map("platform_payments")
+}
+
+/// Texts a church sent each month (lib/sms-usage.js), for the operator's
+/// usage report and the monthly allowance.
+model SmsUsage {
+  churchId  String   @map("church_id")
+  church    Church   @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  month     String // YYYY-MM
+  messages  Int      @default(0)
+  segments  Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([churchId, month])
+  @@map("sms_usage")
+}
+
+/// Platform-wide settings and state, e.g. the SMS balance alert (key/value).
+model PlatformSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
+}
+
+/// A notice shown in every church's app while it runs (Platform › Announcements).
+model PlatformAnnouncement {
+  id        Int       @id @default(autoincrement()) @map("announcement_id")
+  message   String
+  level     String    @default("info") // info | warning
+  startsAt  DateTime  @default(now()) @map("starts_at")
+  endsAt    DateTime? @map("ends_at")
+  createdBy String?   @map("created_by")
+  emailedAt DateTime? @map("emailed_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@map("platform_announcements")
 }
