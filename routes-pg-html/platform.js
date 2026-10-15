@@ -169,7 +169,7 @@ async function platformStats() {
     rawDb.church.count({ where: { deletedAt: { not: null } } }),
     rawDb.church.count({ where: { createdAt: { gte: since30 } } }),
     rawDb.trialSignup.count().catch(() => 0),
-    rawDb.errorLog.count({ where: { occurredAt: { gte: since30 } } }).catch(() => 0),
+    rawDb.errorLog.count({ where: { occurredAt: { gte: since30 }, resolvedAt: null } }).catch(() => 0),
   ]);
   return {
     churchCount, userCount, memberCount, proCount, suspendedCount, deletedCount,
@@ -191,7 +191,7 @@ function ownerSummaryCards(stats, sms = {}, atRisk = 0) {
     <div><strong>${stats.suspendedCount.toLocaleString()}</strong><span>Suspended churches</span></div>
     <div><strong>${stats.deletedCount.toLocaleString()}</strong><span>Deleted churches</span></div>
     <div><strong>${stats.trialCount.toLocaleString()}</strong><span>Trial enquiries</span></div>
-    <div><strong>${stats.openErrors.toLocaleString()}</strong><span>Errors in 30 days</span></div>
+    <div><strong>${stats.openErrors.toLocaleString()}</strong><span><a href="/platform/errors">Open errors</a> in 30 days</span></div>
     <div${atRisk ? ' class="op-mini-low"' : ''}><strong>${atRisk.toLocaleString()}</strong><span><a href="/platform/health">Churches at risk</a></span></div>
     <div${sms.low ? ' class="op-mini-low"' : ''}><strong>${sms.balance === null || sms.balance === undefined ? '—' : Number(sms.balance).toLocaleString('en-GB')}</strong><span><a href="/platform/sms">SMS balance</a>${sms.low ? ' · low' : ''}</span></div>
   </div>`;
