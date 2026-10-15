@@ -272,6 +272,31 @@ test('delete needs the exact slug; restore brings the church back', async () => 
   assert.strictEqual((await target.client.get('/api/settings')).status, 200);
 });
 
+test('signed in to a deleted church, Sign out works and the operator console is still reachable', async () => {
+  const target = await newChurch('platform-stuck');
+  const { slug } = await db.church.findUnique({ where: { id: target.churchId } });
+  assert.strictEqual((await op.client.post(`/api/platform/churches/${target.churchId}/access`, { action: 'delete', reason: 'test', confirmSlug: slug })).status, 200);
+
+  // Still signed in to the deleted church: even /login shows its screen.
+  const gate = await target.client.page('/login');
+  assert.strictEqual(gate.status, 403);
+  assert.match(gate.text, /Access suspended/);
+  const home = await target.client.page('/');
+  assert.strictEqual(home.status, 403);
+  assert.match(home.text, /This church has been deleted: test/);
+  assert.match(home.text, /<form method="post" action="\/logout"><input type="hidden" name="_csrf"/, 'the Sign out form carries its token');
+
+  // The operator sign-in is not hidden behind the church's screen.
+  assert.strictEqual((await target.client.page('/platform')).location, '/platform/login');
+  assert.strictEqual((await target.client.page('/platform/login')).status, 200);
+
+  const out = await target.client.form('/logout', {}, '/');
+  assert.strictEqual(out.status, 302);
+  assert.strictEqual(out.location, '/login');
+  const login = await target.client.page('/login');
+  assert.strictEqual(login.status, 200, 'signed out: the sign-in page shows');
+});
+
 test('the HTML console: list, church page, and a plan change by form', async () => {
   const target = await newChurch('platform-html');
   const list = await op.client.page('/platform');
