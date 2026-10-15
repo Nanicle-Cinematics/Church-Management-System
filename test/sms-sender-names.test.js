@@ -184,3 +184,16 @@ test('the test SMS answers in words, and only admins can change the sender name'
   assert.strictEqual(refused.status, 403);
   assert.strictEqual((await db.church.findUnique({ where: { id: churchId } })).smsSenderId, null);
 });
+
+test('sender names may have spaces between words; stray spaces are tidied', async () => {
+  assert.strictEqual(await delivery.smsSenderFor({ id: 'x', smsSenderId: 'CHURCH MGMT', smsSenderStatus: 'APPROVED' }), 'CHURCH MGMT');
+  for (const bad of [' DUNWELL', 'DUN-WELL', 'CHURCH MGMTX']) {
+    assert.strictEqual(delivery.SENDER_ID_RE.test(bad), false, bad);
+  }
+  const { c, churchId } = await newChurch('sms-spaces');
+  await c.form('/communications/sms-sender', { senderId: '  DUNWELL   MC ' }, SETTINGS);
+  const church = await db.church.findUnique({ where: { id: churchId } });
+  assert.deepStrictEqual([church.smsSenderId, church.smsSenderStatus], ['DUNWELL MC', 'PENDING']);
+  await c.form('/communications/sms-sender', { senderId: 'DUNWELL MC 2026' }, SETTINGS); // 15 characters with the spaces
+  assert.strictEqual((await db.church.findUnique({ where: { id: churchId } })).smsSenderId, 'DUNWELL MC');
+});
