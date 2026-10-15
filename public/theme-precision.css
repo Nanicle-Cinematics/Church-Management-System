@@ -250,6 +250,10 @@ textarea { min-height: 88px; }
 input:hover, select:hover, textarea:hover { border-color: color-mix(in srgb, var(--pc-text-3) 45%, var(--pc-line)) !important; }
 input:focus, select:focus, textarea:focus, .form label input:focus, .form label select:focus, .form label textarea:focus { outline: none; border-color: var(--pc-accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--pc-accent) 18%, transparent) !important; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--pc-accent); min-height: 0; }
+/* Date of birth on the member form: day and month side by side, laid out like a field. */
+.form fieldset.dob-field { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 0; padding: 0; border: 0; min-width: 0; }
+.form fieldset.dob-field legend { width: 100%; padding: 0; margin-bottom: 0.3rem; color: var(--pc-text-2); font-weight: 500; font-size: 13px; }
+.form fieldset.dob-field select { flex: 1 1 90px; margin: 0; }
 .req-star { color: var(--pc-bad); }
 .search-field { display: flex; align-items: center; gap: 8px; background: var(--pc-panel) !important; border: 1px solid var(--pc-line) !important; border-radius: var(--pc-r-sm) !important; box-shadow: var(--pc-sh-1) !important; padding: 0 10px; color: var(--pc-text-3); }
 .search-field:focus-within { border-color: var(--pc-accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--pc-accent) 18%, transparent) !important; }
@@ -291,7 +295,7 @@ td::before, td[data-label]::before { color: var(--pc-text-3) !important; font: 5
 .pill-regular, .pill-in_progress, .pill-sending, .pill-open, .pill-deposited, .pill-counted { background: var(--pc-info-soft) !important; color: var(--pc-info) !important; }
 .pill-visitor { background: var(--pc-accent-soft) !important; color: var(--pc-accent-ink) !important; }
 .pill-pending, .pill-partial, .pill-dry_run, .pill-submitted { background: var(--pc-warn-soft) !important; color: var(--pc-warn) !important; }
-.pill-inactive, .pill-skipped, .pill-other, .pill-transferred, .pill-reversed, .pill-voided, .pill-admin, .pill-day { background: var(--pc-hover) !important; color: var(--pc-text-3) !important; }
+.pill-inactive, .pill-skipped, .pill-other, .pill-transferred, .pill-distant, .pill-reversed, .pill-voided, .pill-admin, .pill-day { background: var(--pc-hover) !important; color: var(--pc-text-3) !important; }
 .pill-failed, .pill-deceased, .pill-overdue, .pill-cancelled, .pill-rejected { background: var(--pc-bad-soft) !important; color: var(--pc-bad) !important; }
 
 .list li, .check-list li { border-color: var(--pc-line-2) !important; }

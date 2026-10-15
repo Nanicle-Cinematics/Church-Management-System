@@ -28,7 +28,7 @@ const path = require('path');
 const multer = require('multer');
 const asyncHandler = require('../lib/async-handler');
 const { pickEnum, cleanDate, memberFieldError, createMemberWithId, GENDERS, MARITAL_STATUSES: MARITAL_ENUM, PREFERRED_CHANNELS } = require('../lib/member-input');
-const { esc, initials, fmtDate, DAYS_OF_WEEK, looksLikeImage } = require('../lib/format');
+const { esc, initials, fmtDate, DAYS_OF_WEEK, MONTHS, looksLikeImage, dobMonth, dobDay, dobYear, dobHasYear, birthDate, fmtBirthday } = require('../lib/format');
 const { pageHero, pager, ICON_EYE, ICON_PENCIL, ICON_TRASH, memberAvatar } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
@@ -60,8 +60,12 @@ function requireEditor(req, res, next) {
   return res.status(403).send('Forbidden');
 }
 
-const MEMBERSHIP_STATUSES = ['VISITOR', 'REGULAR', 'MEMBER', 'INACTIVE', 'TRANSFERRED', 'DECEASED', 'OTHER'];
-const MEMBER_STATUS_LABELS = { VISITOR: 'Visitor', REGULAR: 'Regular', MEMBER: 'Member', INACTIVE: 'Inactive', TRANSFERRED: 'Transferred', DECEASED: 'Deceased', OTHER: 'Other' };
+const MEMBERSHIP_STATUSES = ['VISITOR', 'REGULAR', 'MEMBER', 'DISTANT', 'INACTIVE', 'TRANSFERRED', 'DECEASED', 'OTHER'];
+const MEMBER_STATUS_LABELS = { VISITOR: 'Visitor', REGULAR: 'Regular', MEMBER: 'Member', DISTANT: 'Distant', INACTIVE: 'Inactive', TRANSFERRED: 'Transferred', DECEASED: 'Deceased', OTHER: 'Other' };
+// What the member form offers. Regular, Inactive and Other are no longer
+// offered, but a member who already has one keeps it (it is shown as their
+// current choice) until someone picks another.
+const FORM_STATUSES = ['MEMBER', 'VISITOR', 'DISTANT', 'TRANSFERRED', 'DECEASED'];
 const PREF_LABELS = { EITHER: 'Both', SMS_ONLY: 'SMS only', EMAIL_ONLY: 'Email only', NONE: 'Do not contact' };
 const MARITAL_STATUSES = ['', 'SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED', 'SEPARATED', 'OTHER'];
 const AKAN_NAMES = { Sunday: 'Akosua / Kwasi', Monday: 'Adwoa / Kwadwo', Tuesday: 'Abena / Kwabena', Wednesday: 'Akua / Kwaku', Thursday: 'Yaa / Yaw', Friday: 'Afia / Kofi', Saturday: 'Ama / Kwame' };
@@ -74,6 +78,9 @@ function memberErrors(b) {
   if (!b.lastName || !String(b.lastName).trim()) return 'Last name is required.';
   if (b.email && !isEmailish(b.email)) return 'Enter a valid email address, or leave it blank.';
   if (b.mobilePhone && !isPhoneish(b.mobilePhone)) return 'Enter a valid mobile number (at least 7 digits).';
+  if ((b.dobDay || b.dobMonth) && !birthDate(b.dobMonth, b.dobDay)) {
+    return b.dobDay && b.dobMonth ? 'That date of birth does not exist. Check the day and month.' : 'Pick both the day and the month of birth, or neither.';
+  }
   return memberFieldError(b);
 }
 
@@ -91,7 +98,7 @@ function parseMemberBody(b) {
     lastName: (b.lastName || '').trim(),
     email: (b.email || '').trim() || null,
     mobilePhone: (b.mobilePhone || '').trim() || null,
-    dateOfBirth: cleanDate(b.dateOfBirth),
+    dateOfBirth: 'dobDay' in b || 'dobMonth' in b ? cleanDate(birthDate(b.dobMonth, b.dobDay, b.dobYear)) : cleanDate(b.dateOfBirth),
     dayBorn: DAYS_OF_WEEK.includes(b.dayBorn) ? b.dayBorn : null,
     gender: pickEnum(b.gender, GENDERS),
     maritalStatus: pickEnum(b.maritalStatus, MARITAL_ENUM),
@@ -143,7 +150,15 @@ async function memberForm(db, member = {}, memberOrgIds, action) {
   ]);
   const bibleClassOpts = '<option value="">— none —</option>' +
     bibleClasses.map((b) => `<option value="${b.id}" ${b.id === member.bibleClassId ? 'selected' : ''}>${esc(b.name)}</option>`).join('');
-  const statusOpts = MEMBERSHIP_STATUSES.map((s) => `<option value="${s}" ${s === (member.membershipStatus || 'VISITOR') ? 'selected' : ''}>${MEMBER_STATUS_LABELS[s]}</option>`).join('');
+  const currentStatus = member.membershipStatus || 'VISITOR';
+  const statusOpts = [...FORM_STATUSES, ...(FORM_STATUSES.includes(currentStatus) ? [] : [currentStatus])]
+    .map((s) => `<option value="${s}" ${s === currentStatus ? 'selected' : ''}>${MEMBER_STATUS_LABELS[s]}</option>`).join('');
+  // Birthday: day and month only. A year already on file (from an import or
+  // the API) is kept as long as the date is still valid.
+  const dobM = dobMonth(member.dateOfBirth), dobD = dobDay(member.dateOfBirth);
+  const dayOpts = '<option value="">Day</option>' + Array.from({ length: 31 }, (_, i) => i + 1).map((d) => `<option value="${d}" ${d === dobD ? 'selected' : ''}>${d}</option>`).join('');
+  const monthOpts = '<option value="">Month</option>' + MONTHS.map((name, i) => `<option value="${i + 1}" ${i + 1 === dobM ? 'selected' : ''}>${name}</option>`).join('');
+  const keptYear = member.dateOfBirth && dobHasYear(member.dateOfBirth) ? `<input type="hidden" name="dobYear" value="${dobYear(member.dateOfBirth)}">` : '';
   const maritalOpts = MARITAL_STATUSES.map((s) => `<option value="${s}" ${s === (member.maritalStatus || '') ? 'selected' : ''}>${s || '—'}</option>`).join('');
   const genderLabels = { '': '—', M: 'M', F: 'F', O: 'Other' };
   const genderOpts = ['', 'M', 'F', 'O'].map((s) => `<option value="${s}" ${s === (member.gender || '') ? 'selected' : ''}>${genderLabels[s]}</option>`).join('');
@@ -162,7 +177,11 @@ async function memberForm(db, member = {}, memberOrgIds, action) {
       <label>Last name<input name="lastName" required value="${esc(member.lastName)}"></label>
       <label>Email<input type="email" name="email" value="${esc(member.email)}"></label>
       <label>Mobile<input name="mobilePhone" required value="${esc(member.mobilePhone)}"></label>
-      <label>Date of birth<input type="date" name="dateOfBirth" value="${fmtDate(member.dateOfBirth instanceof Date ? member.dateOfBirth.toISOString() : member.dateOfBirth)}"></label>
+      <fieldset class="dob-field"><legend>Date of birth</legend>
+        <select name="dobDay" aria-label="Day of birth">${dayOpts}</select>
+        <select name="dobMonth" aria-label="Month of birth">${monthOpts}</select>
+        ${keptYear}
+      </fieldset>
       <label>Day born<select name="dayBorn">
         <option value="">—</option>
         ${DAYS_OF_WEEK.map((d) => `<option value="${d}" ${d === (member.dayBorn || '') ? 'selected' : ''}>${d}</option>`).join('')}
@@ -296,7 +315,9 @@ function register(app) {
       const s = p.toString();
       return `/members${s ? `?${s}` : ''}`;
     };
-    const TABS = [['', 'All people', total], ['MEMBER', 'Members', count.MEMBER], ['REGULAR', 'Regulars', count.REGULAR], ['VISITOR', 'Visitors', count.VISITOR], ['INACTIVE', 'Inactive', count.INACTIVE]];
+    // Regulars and Inactive are no longer given out; their tabs stay while anyone has them.
+    const TABS = [['', 'All people', total], ['MEMBER', 'Members', count.MEMBER], ['VISITOR', 'Visitors', count.VISITOR], ['DISTANT', 'Distant', count.DISTANT],
+      ...(count.REGULAR ? [['REGULAR', 'Regulars', count.REGULAR]] : []), ...(count.INACTIVE ? [['INACTIVE', 'Inactive', count.INACTIVE]] : [])];
     const tabOn = (key) => (key ? statuses.length === 1 && statuses[0] === key : statuses.length === 0);
     const tabs = `<nav class="pm-tabs" id="pmTabs" data-live-sync aria-label="Status">${TABS.map(([key, label, n]) => `<a href="${qs({ statuses: key ? [key] : [] })}"${tabOn(key) ? ' aria-current="page"' : ''}>${label}<span>${(n || 0).toLocaleString()}</span></a>`).join('')}</nav>`;
 
@@ -308,7 +329,7 @@ function register(app) {
     const filtered = Boolean(q || nFilters);
     const panel = `<aside class="card pm-facets" id="pmFacets" aria-label="Filters">
         <div class="pm-fh" id="pmFh" data-live-sync><b>Filters</b>${filtered ? '<a href="/members">Clear all</a>' : '<span class="muted-text">None applied</span>'}</div>
-        <div class="pm-fg"><h3>Status</h3>${checks('status', ['MEMBER', 'REGULAR', 'VISITOR', 'INACTIVE', 'TRANSFERRED', 'DECEASED', 'OTHER'].filter((s) => count[s] || statuses.includes(s)).map((s) => [s, MEMBER_STATUS_LABELS[s], count[s] || 0]), statuses)}</div>
+        <div class="pm-fg"><h3>Status</h3>${checks('status', ['MEMBER', 'VISITOR', 'DISTANT', 'TRANSFERRED', 'DECEASED', 'REGULAR', 'INACTIVE', 'OTHER'].filter((s) => count[s] || statuses.includes(s)).map((s) => [s, MEMBER_STATUS_LABELS[s], count[s] || 0]), statuses)}</div>
         ${orgs.length ? `<div class="pm-fg"><h3>Organisations</h3>${checks('org', orgs.map((o) => [String(o.id), o.name, orgN[o.id] || 0]), orgIds.map(String))}</div>` : ''}
         ${classes.length ? `<div class="pm-fg"><h3>Bible class</h3>${classes.length <= 12
           ? chips('class', classes.map((c) => [String(c.id), c.name, `${(classN[c.id] || 0).toLocaleString()} people`]), classIds.map(String))
@@ -520,7 +541,8 @@ function register(app) {
       where, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }], take: 20000,
       include: { bibleClass: { select: { name: true } }, orgMemberships: { select: { organization: { select: { name: true } } } } },
     });
-    const day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
+    // A birthday without a year exports as "14 March", which imports back as it is.
+    const day = (d) => (!d ? '' : dobHasYear(d) ? new Date(d).toISOString().slice(0, 10) : fmtBirthday(d));
     await logActivity(db, 'members_exported', `Exported ${rows.length} member${rows.length === 1 ? '' : 's'} to CSV`, '/members', res.locals.user.id);
     sendCsv(res, `members-${new Date().toISOString().slice(0, 10)}.csv`,
       ['Member ID', 'First name', 'Last name', 'Status', 'Mobile', 'Email', 'Gender', 'Date of birth', 'Day born', 'Bible class', 'Organisations', 'Joined', 'Preferred channel'],
@@ -568,7 +590,7 @@ function register(app) {
       ['Email', m.email ? `<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>` : ''],
       ['Bible class', esc(m.bibleClass && m.bibleClass.name)],
       ['Day born', m.dayBorn ? `${esc(m.dayBorn)} <span class="muted-text">· ${esc(AKAN_NAMES[m.dayBorn] || '')}</span>` : ''],
-      ['Date of birth', esc(day(m.dateOfBirth))],
+      ['Date of birth', esc(fmtBirthday(m.dateOfBirth))],
       ['Member since', esc(day(m.joinDate))],
       ['Gender', m.gender ? esc(({ M: 'Male', F: 'Female', O: 'Other' })[m.gender] || m.gender) : ''],
       ['Emergency contact', m.emergencyContactName ? `${esc(m.emergencyContactName)}${m.emergencyContactPhone ? ` · <a href="tel:${esc(m.emergencyContactPhone)}">${esc(m.emergencyContactPhone)}</a>` : ''}` : ''],

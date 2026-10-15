@@ -5,6 +5,7 @@
 // Role model: admin-only writes, matching routes-pg/bible-classes.js.
 
 const asyncHandler = require('../lib/async-handler');
+const { meetingDaysFields, meetsOnFromForm } = require('../lib/meeting-days');
 const { esc, initials } = require('../lib/format');
 const { pageHero, statsRow, filterCard, listCard } = require('../lib/views');
 const { logActivity } = require('../lib/tenant-activity');
@@ -85,17 +86,19 @@ function register(app) {
           <span class="org-badge">${esc(initials(r.name))}</span>
           <div>
             <div class="m-name">${esc(r.name)}</div>
-            <div class="m-sub">${r.description ? esc(r.description) : (r.meetsOn ? `Meets ${esc(r.meetsOn)}` : '—')}</div>
+            <div class="m-sub">${r.description ? esc(r.description) : '—'}</div>
           </div>
         </div>
       </td>
       <td data-label="Leader">${r.leader ? `<a href="/members/${r.leader.id}">${esc(r.leader.firstName + ' ' + r.leader.lastName)}</a>` : '<span class="muted-text">—</span>'}</td>
       <td data-label="Organization">${r.organization ? esc(r.organization.name) : '<span class="muted-text">—</span>'}</td>
+      <td data-label="Meeting days">${r.meetsOn ? esc(r.meetsOn) : '<span class="muted-text">—</span>'}</td>
       <td data-label="Members"><a class="count-badge" href="/members?class=${r.id}">${r._count.bibleClassMembers}</a></td>
       ${canEdit ? `<td data-label="Edit">
         <form method="post" action="/bible-classes/${r.id}" class="filter-bar" style="gap:0.4rem;margin:0">
           <select name="leaderId" aria-label="Leader">${memberOpts(r.leaderId)}</select>
           <select name="orgId" aria-label="Organization">${orgOpts(r.orgId)}</select>
+          ${meetingDaysFields(r.meetsOn, { inline: true })}
           <button type="submit">Save</button>
         </form></td>` : ''}
     </tr>`).join('');
@@ -103,7 +106,7 @@ function register(app) {
     const list = listCard({
       title: 'All Bible Classes', count: rows.length, countLabel: 'classes',
       inner: rows.length ? `<table class="data-table members-table">
-          <thead><tr><th>Bible class</th><th>Leader</th><th>Organization</th><th>Members</th>${canEdit ? '<th>Edit</th>' : ''}</tr></thead>
+          <thead><tr><th>Bible class</th><th>Leader</th><th>Organization</th><th>Meeting days</th><th>Members</th>${canEdit ? '<th>Edit</th>' : ''}</tr></thead>
           <tbody>${rowHtml}</tbody>
         </table>` : `<div class="empty-state">
           <div class="empty-ico" aria-hidden="true">📖</div>
@@ -121,7 +124,7 @@ function register(app) {
              <label>Bible class<input name="name" required></label>
              <label>Leader<select name="leaderId">${memberOpts()}</select></label>
              <label>Organization<select name="orgId">${orgOpts()}</select></label>
-             <label>Meets<input name="meetsOn" placeholder="e.g. Sunday 8am"></label>
+             ${meetingDaysFields(null)}
              <label class="wide">Description<input name="description"></label>
              <div class="actions"><button type="submit">Add</button></div>
            </form>
@@ -147,7 +150,7 @@ function register(app) {
           description: b.description || null,
           leaderId: leaderCheck.leaderId,
           orgId: orgCheck.orgId,
-          meetsOn: b.meetsOn || null,
+          meetsOn: meetsOnFromForm(b),
         },
       });
       await logActivity(db, 'bible_class_added', `Bible class created: ${created.name}`, '/bible-classes', res.locals.user.id);
@@ -164,12 +167,15 @@ function register(app) {
     const leaderCheck = await checkLeaderId(db, b.leaderId);
     const orgCheck = await checkOrgId(db, b.orgId);
     if (!leaderCheck.ok || !orgCheck.ok) return res.redirect('/bible-classes');
+    const existing = await db.ministry.findUnique({ where: { id }, select: { meetsOn: true } });
+    if (!existing) return res.redirect('/bible-classes');
     try {
       const updated = await db.ministry.update({
         where: { id },
         data: {
           leaderId: leaderCheck.leaderId,
           orgId: orgCheck.orgId,
+          meetsOn: meetsOnFromForm(b, existing.meetsOn),
         },
       });
       await logActivity(db, 'bible_class_updated', `Bible class updated: ${updated.name}`, '/bible-classes', res.locals.user.id);
