@@ -66,6 +66,7 @@ const MEMBER_STATUS_LABELS = { VISITOR: 'Visitor', REGULAR: 'Regular', MEMBER: '
 // offered, but a member who already has one keeps it (it is shown as their
 // current choice) until someone picks another.
 const FORM_STATUSES = ['MEMBER', 'VISITOR', 'DISTANT', 'TRANSFERRED', 'DECEASED'];
+const EMERGENCY_RELATIONS = ['Spouse', 'Parent', 'Child', 'Sibling', 'Other relative', 'Guardian', 'Friend', 'Other'];
 const PREF_LABELS = { EITHER: 'Both', SMS_ONLY: 'SMS only', EMAIL_ONLY: 'Email only', NONE: 'Do not contact' };
 const MARITAL_STATUSES = ['', 'SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED', 'SEPARATED', 'OTHER'];
 const AKAN_NAMES = { Sunday: 'Akosua / Kwasi', Monday: 'Adwoa / Kwadwo', Tuesday: 'Abena / Kwabena', Wednesday: 'Akua / Kwaku', Thursday: 'Yaa / Yaw', Friday: 'Afia / Kofi', Saturday: 'Ama / Kwame' };
@@ -158,6 +159,13 @@ async function memberForm(db, member = {}, memberOrgIds, action) {
   const dobM = dobMonth(member.dateOfBirth), dobD = dobDay(member.dateOfBirth);
   const dayOpts = '<option value="">Day</option>' + Array.from({ length: 31 }, (_, i) => i + 1).map((d) => `<option value="${d}" ${d === dobD ? 'selected' : ''}>${d}</option>`).join('');
   const monthOpts = '<option value="">Month</option>' + MONTHS.map((name, i) => `<option value="${i + 1}" ${i + 1 === dobM ? 'selected' : ''}>${name}</option>`).join('');
+  // Emergency contact relationship: picked from a list. A value typed before
+  // the list existed ("uncle") is kept as the current choice until changed.
+  const relation = member.emergencyContactRelation || '';
+  const listed = EMERGENCY_RELATIONS.find((r) => r.toLowerCase() === relation.trim().toLowerCase());
+  const relationOpts = '<option value="">—</option>'
+    + (relation && !listed ? `<option value="${esc(relation)}" selected>${esc(relation)}</option>` : '')
+    + EMERGENCY_RELATIONS.map((r) => `<option value="${r}" ${r === listed ? 'selected' : ''}>${r}</option>`).join('');
   const keptYear = member.dateOfBirth && dobHasYear(member.dateOfBirth) ? `<input type="hidden" name="dobYear" value="${dobYear(member.dateOfBirth)}">` : '';
   const maritalOpts = MARITAL_STATUSES.map((s) => `<option value="${s}" ${s === (member.maritalStatus || '') ? 'selected' : ''}>${s || '—'}</option>`).join('');
   const genderLabels = { '': '—', M: 'M', F: 'F', O: 'Other' };
@@ -209,7 +217,7 @@ async function memberForm(db, member = {}, memberOrgIds, action) {
       <div class="wide-cell"><h3 class="form-section">Emergency contact</h3></div>
       <label>Contact name<input name="emergencyContactName" value="${esc(member.emergencyContactName)}"></label>
       <label>Contact phone<input name="emergencyContactPhone" value="${esc(member.emergencyContactPhone)}"></label>
-      <label>Relationship<input name="emergencyContactRelation" placeholder="e.g. spouse, parent, sibling" value="${esc(member.emergencyContactRelation)}"></label>
+      <label>Relationship<select name="emergencyContactRelation">${relationOpts}</select></label>
       <label class="wide">Notes<textarea name="notes" rows="3">${esc(member.notes)}</textarea></label>
       <div class="actions form-actions">
         <a class="btn ghost" href="/members">Cancel</a>

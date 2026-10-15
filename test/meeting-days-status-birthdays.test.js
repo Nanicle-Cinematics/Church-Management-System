@@ -201,3 +201,26 @@ test('members: five statuses on the form, Distant saved, birthdays without a yea
   assert.match(csv, /Ama,Mensah,Regular,[^\n]*,14 March,/);
   assert.match((await c.get('/members?status=DISTANT')).text, /Distant/);
 });
+
+test('members: the emergency contact relationship is picked from a list; older typed values are kept', async () => {
+  const { c, churchId } = await newChurch('member-relation');
+  const form = (await c.get('/members/new')).text;
+  const select = form.match(/<select name="emergencyContactRelation">[\s\S]*?<\/select>/);
+  assert.ok(select, 'a dropdown, not a text box');
+  assert.deepStrictEqual([...select[0].matchAll(/<option value="([^"]*)"/g)].map((m) => m[1]),
+    ['', 'Spouse', 'Parent', 'Child', 'Sibling', 'Other relative', 'Guardian', 'Friend', 'Other']);
+
+  const base = { firstName: 'Efua', lastName: 'Ansah', mobilePhone: '0244000166', gender: 'F', preferredChannel: 'NONE', membershipStatus: 'MEMBER' };
+  const created = await c.form('/members', { ...base, emergencyContactName: 'Kofi Ansah', emergencyContactRelation: 'Spouse' }, '/members/new');
+  const id = Number(created.location.match(/\/members\/(\d+)/)[1]);
+  assert.strictEqual((await tenantDb(churchId).member.findUnique({ where: { id } })).emergencyContactRelation, 'Spouse');
+
+  // Typed before the list existed: matched case-insensitively, or kept as it is.
+  await tenantDb(churchId).member.update({ where: { id }, data: { emergencyContactRelation: 'sibling' } });
+  assert.match((await c.get(`/members/${id}`)).text, /<option value="Sibling" selected>Sibling<\/option>/);
+  await tenantDb(churchId).member.update({ where: { id }, data: { emergencyContactRelation: 'Uncle' } });
+  const edit = (await c.get(`/members/${id}`)).text;
+  assert.match(edit, /<option value="Uncle" selected>Uncle<\/option>/);
+  await c.form(`/members/${id}`, { ...base, emergencyContactName: 'Kofi Ansah', emergencyContactRelation: 'Uncle' }, `/members/${id}`);
+  assert.strictEqual((await tenantDb(churchId).member.findUnique({ where: { id } })).emergencyContactRelation, 'Uncle');
+});
