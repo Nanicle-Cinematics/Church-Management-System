@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Platform › **Errors**: the last 90 days of server errors, grouped, so the same fault on different pages or records shows once. Errors are grouped by method, by path with ids replaced, and by message with numbers, ids and quoted values replaced. Each group shows its count, first and last seen, how many churches it hit, and the latest occurrence with its stack. **Mark fixed** takes a group off the Open list. If the fault happens again it reappears, marked **came back**. The Overview's error count now counts open errors only, and links here.
 - Platform › **Operators**: manage the console's own accounts without the server script, which still works. The tab lists each operator's two-factor, lock and disabled state and last sign-in. Operators can:
   - **add** an operator, whose random password is shown once on the page and who sets up two-factor at first sign-in;
   - **reset** another operator's password (shown once; they are signed out everywhere) or two-factor;
