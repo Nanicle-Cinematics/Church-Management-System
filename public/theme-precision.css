@@ -1021,6 +1021,7 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
 .op-meter span { display: block; height: 100%; background: var(--pc-accent); }
 .op-meter.near span { background: var(--pc-warn); }
 .op-meter.full span { background: var(--pc-bad); }
+.op-contact a { font-weight: 600; }
 .op-raw { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: var(--pc-hover); padding: 10px; border-radius: 8px; }
 .op-signout { margin: 0; }
 .pc-op .pc-main > .page { max-width: 1240px; }

@@ -15,6 +15,7 @@ const { requireOperator, logPlatformEvent } = require('../lib/platform-operators
 const { releaseChurchEmails, reclaimChurchEmails } = require('../lib/church-emails');
 const { renewalsOverview, extendedUntil } = require('../lib/pro-renewals');
 const { balanceState, balanceThreshold } = require('../lib/sms-balance');
+const { healthReport } = require('../lib/church-health');
 
 // Operators only (lib/platform-operators.js): church users never get here.
 function page(res, opts) {
@@ -176,7 +177,7 @@ async function platformStats() {
   };
 }
 
-function ownerSummaryCards(stats, sms = {}) {
+function ownerSummaryCards(stats, sms = {}, atRisk = 0) {
   return `${statsRow([
     { cls: 'gold', icon: icon('platform'), value: stats.churchCount.toLocaleString(), label: 'Churches onboarded' },
     { cls: 'green', icon: icon('attendance'), value: stats.activeCount.toLocaleString(), label: 'Active churches' },
@@ -190,13 +191,14 @@ function ownerSummaryCards(stats, sms = {}) {
     <div><strong>${stats.deletedCount.toLocaleString()}</strong><span>Deleted churches</span></div>
     <div><strong>${stats.trialCount.toLocaleString()}</strong><span>Trial enquiries</span></div>
     <div><strong>${stats.openErrors.toLocaleString()}</strong><span>Errors in 30 days</span></div>
+    <div${atRisk ? ' class="op-mini-low"' : ''}><strong>${atRisk.toLocaleString()}</strong><span><a href="/platform/health">Churches at risk</a></span></div>
     <div${sms.low ? ' class="op-mini-low"' : ''}><strong>${sms.balance === null || sms.balance === undefined ? '—' : Number(sms.balance).toLocaleString('en-GB')}</strong><span><a href="/platform/sms">SMS balance</a>${sms.low ? ' · low' : ''}</span></div>
   </div>`;
 }
 
 async function renderPlatformIndex(req, res) {
   const where = buildChurchWhere(req.query || {});
-  const [stats, churches, recentAudit, recentErrors, senderRequests, renewals, smsState, smsThreshold] = await Promise.all([
+  const [stats, churches, recentAudit, recentErrors, senderRequests, renewals, smsState, smsThreshold, health] = await Promise.all([
     platformStats(),
     rawDb.church.findMany({
       where,
@@ -218,7 +220,9 @@ async function renderPlatformIndex(req, res) {
     renewalsOverview(),
     balanceState().catch(() => null),
     balanceThreshold().catch(() => 200),
+    healthReport().catch(() => []),
   ]);
+  const atRisk = health.filter((h) => h.inactive || h.neverStarted).length;
   const smsBalance = smsState ? smsState.balance : null;
   const sms = { balance: smsBalance, low: smsBalance !== null && smsBalance !== undefined && Number(smsBalance) < smsThreshold };
 
@@ -280,7 +284,7 @@ async function renderPlatformIndex(req, res) {
 
   const body = `
     ${pageHero('SaaS Owner Portal', 'Manage every church, plan, access state, user footprint and operational signal across the platform.')}
-    ${ownerSummaryCards(stats, sms)}
+    ${ownerSummaryCards(stats, sms, atRisk)}
     ${renewalRows.length ? listCard({
       title: 'Pro renewals', count: renewalRows.length, countLabel: renewalRows.length === 1 ? 'church' : 'churches',
       note: 'Ending in the next 30 days or ended in the last 60. Admins are reminded 14 and 3 days before, and when it ends.',
@@ -327,7 +331,7 @@ async function renderChurchDetail(req, res) {
       where: { churchId: id, deletedAt: null },
       orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
       take: 50,
-      select: { id: true, username: true, email: true, phone: true, displayName: true, role: true, financeRole: true, createdAt: true, totpEnabled: true },
+      select: { id: true, username: true, email: true, phone: true, displayName: true, role: true, financeRole: true, createdAt: true, totpEnabled: true, lastLoginAt: true },
     }),
     rawDb.securityAuditLog.findMany({ where: { churchId: id }, orderBy: { occurredAt: 'desc' }, take: 12 }),
     rawDb.activityLog.findMany({ where: { churchId: id }, orderBy: { occurredAt: 'desc' }, take: 10 }),
@@ -344,6 +348,7 @@ async function renderChurchDetail(req, res) {
     esc(u.financeRole),
     u.totpEnabled ? '<span class="pill pill-fulfilled">2FA</span>' : '<span class="muted-text">—</span>',
     esc(isoDate(u.createdAt)),
+    u.lastLoginAt ? esc(dateTime(u.lastLoginAt)) : '<span class="muted-text">—</span>',
   ]);
 
   const auditRows = recentAudit.map((a) => [
@@ -411,7 +416,7 @@ async function renderChurchDetail(req, res) {
     })}
     ${listCard({
       title: 'Users and roles', count: users.length, countLabel: 'users',
-      inner: userRows.length ? table(['Name', 'Signs in with', 'Role', 'Finance', 'Security', 'Created'], userRows, { keyCols: 2 }) : '<p class="muted-text">No active users.</p>',
+      inner: userRows.length ? table(['Name', 'Signs in with', 'Role', 'Finance', 'Security', 'Created', 'Last sign-in'], userRows, { keyCols: 2 }) : '<p class="muted-text">No active users.</p>',
     })}
     <div class="platform-two-col">
       ${listCard({
