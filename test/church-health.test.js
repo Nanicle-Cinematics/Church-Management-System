@@ -29,6 +29,8 @@ test.before(async () => {
 test.after(async () => {
   server.close();
   const where = { churchId: { in: churchIds } };
+  await db.member.deleteMany({ where });
+  await db.activityLog.deleteMany({ where });
   await db.emailLog.deleteMany({ where });
   await db.securityAuditLog.deleteMany({ where });
   await db.account.deleteMany({ where });
@@ -37,8 +39,6 @@ test.after(async () => {
   await db.serviceType.deleteMany({ where });
   await db.expenseCategory.deleteMany({ where });
   await db.church.deleteMany({ where: { id: { in: churchIds } } });
-  await db.member.deleteMany({ where: { churchId: { in: churchIds } } });
-  await db.activityLog.deleteMany({ where: { churchId: { in: churchIds } } });
   await db.platformAuditLog.deleteMany({ where: { operatorId: { in: operatorIds } } });
   await db.platformOperator.deleteMany({ where: { id: { in: operatorIds } } });
   await db.$disconnect();
