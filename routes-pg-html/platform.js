@@ -335,6 +335,29 @@ async function renderPlatformIndex(req, res) {
   page(res, { title: 'SaaS Owner Portal', active: '/platform', noHeader: true, body });
 }
 
+// Support tools for one user (routes-pg-html/platform-support.js).
+function supportMenu(churchId, u) {
+  const base = `/platform/churches/${encodeURIComponent(churchId)}/users/${u.id}`;
+  const locked = u.lockedUntil && new Date(u.lockedUntil) > new Date();
+  const btn = (action, label, extra = '', cls = 'ghost') => `<form method="post" action="${base}/${action}" class="inline platform-inline-form">${extra}<button type="submit" class="${cls}">${label}</button></form>`;
+  return `<details class="op-help"><summary>Help${locked ? ' <span class="pill pill-failed">locked</span>' : ''}</summary>
+    <div class="op-help-body">
+      <p><b>Password reset link</b></p>
+      ${u.email ? btn('reset', 'Email it', '<input type="hidden" name="via" value="email">') : ''}
+      ${u.phone ? btn('reset', 'Text it', '<input type="hidden" name="via" value="sms">') : ''}
+      ${btn('reset', 'Show it to me', '<input type="hidden" name="via" value="show">')}
+      ${locked || u.failedAttempts ? `<p><b>Wrong passwords</b> (${u.failedAttempts || 0})</p>${btn('unlock', 'Unlock')}` : ''}
+      ${u.email && !u.emailVerifiedAt ? `<p><b>Email not verified</b></p>${btn('verify', 'Resend verification')}` : ''}
+      <p><b>Change how they sign in</b></p>
+      <form method="post" action="${base}/sign-in" class="filter-bar">
+        <input type="email" name="email" value="${esc(u.email || '')}" placeholder="Email" aria-label="Email">
+        <input name="phone" value="${esc(u.phone || '')}" placeholder="Phone" aria-label="Phone">
+        <button type="submit">Save</button>
+      </form>
+    </div>
+  </details>`;
+}
+
 async function renderChurchDetail(req, res) {
   const id = req.params.id;
   const church = await rawDb.church.findUnique({
@@ -352,7 +375,7 @@ async function renderChurchDetail(req, res) {
       where: { churchId: id, deletedAt: null },
       orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
       take: 50,
-      select: { id: true, username: true, email: true, phone: true, displayName: true, role: true, financeRole: true, createdAt: true, totpEnabled: true, lastLoginAt: true },
+      select: { id: true, username: true, email: true, phone: true, displayName: true, role: true, financeRole: true, createdAt: true, totpEnabled: true, lastLoginAt: true, emailVerifiedAt: true, failedAttempts: true, lockedUntil: true },
     }),
     rawDb.securityAuditLog.findMany({ where: { churchId: id }, orderBy: { occurredAt: 'desc' }, take: 12 }),
     rawDb.activityLog.findMany({ where: { churchId: id }, orderBy: { occurredAt: 'desc' }, take: 10 }),
@@ -370,6 +393,7 @@ async function renderChurchDetail(req, res) {
     u.totpEnabled ? '<span class="pill pill-fulfilled">2FA</span>' : '<span class="muted-text">—</span>',
     esc(isoDate(u.createdAt)),
     u.lastLoginAt ? esc(dateTime(u.lastLoginAt)) : '<span class="muted-text">—</span>',
+    supportMenu(id, u),
   ]);
 
   const auditRows = recentAudit.map((a) => [
@@ -435,9 +459,10 @@ async function renderChurchDetail(req, res) {
       inner: `${payments.length ? table(['Paid on', 'Amount', 'Method', 'Reference', 'Covers'], payments.map((p) => [esc(isoDate(p.paidOn)), `<strong>GH₵ ${esc(Number(p.amount).toLocaleString('en-GH', { minimumFractionDigits: 2 }))}</strong>`, esc(p.method), esc(p.reference || '—'), esc(p.months ? `${p.months} mo` : '—')]), { keyCols: 2 }) : '<p class="muted-text">No payments recorded.</p>'}
         <p><a class="btn ghost" href="/platform/payments?church=${encodeURIComponent(id)}#record">Record a payment</a></p>`,
     })}
+    <div id="users"></div>
     ${listCard({
       title: 'Users and roles', count: users.length, countLabel: 'users',
-      inner: userRows.length ? table(['Name', 'Signs in with', 'Role', 'Finance', 'Security', 'Created', 'Last sign-in'], userRows, { keyCols: 2 }) : '<p class="muted-text">No active users.</p>',
+      inner: userRows.length ? table(['Name', 'Signs in with', 'Role', 'Finance', 'Security', 'Created', 'Last sign-in', ''], userRows, { keyCols: 2 }) : '<p class="muted-text">No active users.</p>',
     })}
     <div class="platform-two-col">
       ${listCard({

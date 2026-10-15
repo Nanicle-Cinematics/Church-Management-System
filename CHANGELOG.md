@@ -6,6 +6,13 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Platform › church page › Users › **Help**: support tools for each user of a church.
+  - **Password reset link:** email it, text it, or show it to the operator to pass on (e.g. by WhatsApp to someone who signs in with a phone). It works once, within an hour.
+  - **Unlock** an account locked by wrong passwords.
+  - **Resend** the email-verification link.
+  - **Change how they sign in** (email and/or phone), with the same checks as the church's own Users & Roles.
+  
+  Each action is written to the church's own security log as "Platform support: …", and to the platform audit log.
 - Platform › Overview › **Growth · last 12 months**: church sign-ups and Pro upgrades per month as paired bars, with the 12-month totals, churches deleted and the upgrade rate, plus the numbers in a table. An upgrade is counted once per church per month, from either the console's upgrade record or the church's Pro start date, so earlier upgrades count too.
 - **Trial enquiries.** The marketing site's "Request demo" form now posts to Church Manager (`POST /enquiry`) instead of Formspree. Each request is saved, and the operators get an email (`ALERT_EMAIL` / `PLATFORM_ADMIN_EMAILS`) with a link to it. The person sees a thank-you page with a link back to the website. Bots are kept out by a hidden field and a limit of 5 requests an hour per address. Platform › **Trial enquiries** lists them newest first, with New, Contacted, Converted and Declined tabs, counts and the conversion rate. For each enquiry, the operator can call, WhatsApp, or email a sign-up link, keep notes, change the status, and link the church once it signs up (which marks it converted). Status changes are logged.
 - Platform › **Churches at risk**: every active church's last sign-in, last activity (anything staff did in the app) and setup (members, events, staff). Two lists: **Quiet for 30 days or more** (no sign-in and no activity) and **Never got started** (signed up a week or more ago, fewer than 5 members). Each shows the first admin's name with Call, WhatsApp and Email links. Last sign-in comes from the security log, so sign-ins from before today count. The Overview counts churches at risk. Each church's console page shows every user's last sign-in, which is now recorded on each successful sign-in (`users.last_login_at`).
