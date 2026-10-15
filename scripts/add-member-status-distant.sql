@@ -2,6 +2,8 @@
 -- MembershipStatus). Additive and safe to run twice; run it on production
 -- before deploying the code that uses it.
 --
--- ADD VALUE cannot run inside a transaction block on older Postgres, so run
--- this file on its own (psql "$DATABASE_URL" -f scripts/add-member-status-distant.sql).
+-- Either paste the ALTER TYPE line below into the Neon console's SQL Editor
+-- (on the production branch), or, with psql installed, run from the repo:
+--   psql "$DATABASE_URL" -f scripts/add-member-status-distant.sql
+-- Check: SELECT unnest(enum_range(NULL::"MembershipStatus"));  -- lists DISTANT
 ALTER TYPE "MembershipStatus" ADD VALUE IF NOT EXISTS 'DISTANT' AFTER 'MEMBER';
