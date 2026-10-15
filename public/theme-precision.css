@@ -1017,6 +1017,10 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
 .op-balance-figure strong { font-size: 34px; font-weight: 650; letter-spacing: -.02em; margin-right: 6px; }
 .op-balance.is-low { border-color: var(--pc-bad) !important; }
 .platform-mini-grid .op-mini-low strong { color: var(--pc-bad); }
+.op-meter { display: block; width: 120px; max-width: 100%; height: 6px; border-radius: 99px; background: var(--pc-hover); overflow: hidden; margin-bottom: 4px; }
+.op-meter span { display: block; height: 100%; background: var(--pc-accent); }
+.op-meter.near span { background: var(--pc-warn); }
+.op-meter.full span { background: var(--pc-bad); }
 .op-raw { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: var(--pc-hover); padding: 10px; border-radius: 8px; }
 .op-signout { margin: 0; }
 .pc-op .pc-main > .page { max-width: 1240px; }

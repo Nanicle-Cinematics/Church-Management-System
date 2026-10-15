@@ -21,6 +21,7 @@ const { pageHero, statsRow, table } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const { normalizePhoneGH, emailDeliveryInfo, smsDeliveryInfo, smsSenderFor, sendSmsBatch, SENDER_ID_RE } = require('../lib/delivery');
+const { allowanceCheck } = require('../lib/sms-usage');
 const { startBroadcast, canReceive } = require('../lib/broadcast-delivery');
 const { checkBroadcastAllowance, allowanceMessage, validateBroadcastText } = require('../lib/send-limits');
 const { icon } = require('../lib/icons');
@@ -197,6 +198,11 @@ function register(app) {
     const smsReady = smsDeliveryInfo().ready;
     const emailSettings = await db.emailSetting.findFirst();
     const emailReady = emailDeliveryInfo(emailSettings, '').ready;
+    // Texts left this month (lib/sms-usage.js): warned when under a tenth.
+    const smsLeft = await allowanceCheck(res.locals.churchId, 0);
+    const allowanceBanner = smsLeft.remaining < Math.max(1, smsLeft.allowance * 0.1)
+      ? `<div class="flash">${smsLeft.remaining ? `<strong>${smsLeft.remaining} texts left this month</strong> (of ${smsLeft.allowance}). A broadcast to more people than that will not be sent by SMS.` : `<strong>This month's SMS allowance is used up</strong> (${smsLeft.allowance} texts). SMS broadcasts will not be sent until next month, unless the platform owner raises it.`}</div>`
+      : '';
     const statusBanner = (smsReady && emailReady) ? '' : `<div class="flash">
       ${smsReady ? '' : '<strong>SMS dry-run mode.</strong> No SMS provider secret is configured — messages will be logged but not delivered. '}
       ${emailReady ? '' : '<strong>Email dry-run mode.</strong> No email provider secret is configured for this channel — messages will be logged but not delivered.'}
@@ -286,7 +292,7 @@ function register(app) {
 
     res.page({
       title: 'Send broadcast', active: '/communications', noHeader: true,
-      body: `${pageHero('Send broadcast', '')}${statusBanner}${audienceForm}${previewSection}${composeForm}
+      body: `${pageHero('Send broadcast', '')}${statusBanner}${allowanceBanner}${audienceForm}${previewSection}${composeForm}
         <p style="margin-top:1.5rem"><a href="/communications/broadcasts">View broadcast history →</a></p>`,
     });
   }));
@@ -406,6 +412,7 @@ function register(app) {
     const church = await res.locals.db.church.findUnique({ where: { id: res.locals.churchId }, select: { smsSenderId: true, smsSenderStatus: true, smsSenderNote: true } });
     const sms = smsDeliveryInfo();
     const sendingAs = await smsSenderFor({ id: res.locals.churchId, ...church });
+    const allowance = await allowanceCheck(res.locals.churchId, 0);
     const senderState = {
       APPROVED: ['sent', 'approved', `Your texts are sent as <b>${esc(church.smsSenderId)}</b>.`],
       PENDING: ['pending', 'awaiting approval', `Requested. Until it is approved, texts are sent as <b>${esc(sms.defaultSender)}</b>. Approval by the mobile networks usually takes 3–4 weeks.`],
@@ -417,6 +424,7 @@ function register(app) {
         <dl class="stats">
           <dt>Provider</dt><dd>${esc(sms.label)} <span class="pill pill-${sms.ready ? 'sent' : 'dry_run'}">${sms.ready ? 'ready' : 'dry-run only'}</span></dd>
           <dt>Sent as</dt><dd><b>${esc(sendingAs)}</b></dd>
+          <dt>This month</dt><dd>${allowance.used.toLocaleString('en-GB')} of ${allowance.allowance.toLocaleString('en-GB')} texts <span class="pill pill-${allowance.remaining ? (allowance.remaining < allowance.allowance * 0.1 ? 'pending' : 'sent') : 'failed'}">${allowance.remaining.toLocaleString('en-GB')} left</span></dd>
           ${church.smsSenderId ? `<dt>Your sender name</dt><dd>${esc(church.smsSenderId)} <span class="pill pill-${senderState[0]}">${senderState[1]}</span></dd>` : ''}
         </dl>
         <p class="muted-text">${senderState ? senderState[2] : `Texts are sent as <b>${esc(sms.defaultSender)}</b>. Ask for your church’s own name, and members will see it instead.`}</p>
