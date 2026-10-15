@@ -1024,6 +1024,13 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
 .op-contact a { font-weight: 600; }
 .op-enquiry { margin-bottom: 14px; }
 .op-enquiry-notes { white-space: normal; padding: 10px 12px; border-radius: 8px; background: var(--pc-hover); }
+/* Overview: growth, two bars a month. */
+.op-bar .op-pair { display: flex; align-items: flex-end; justify-content: center; gap: 2px; width: 100%; height: 100%; background: none; max-width: none; border-radius: 0; }
+.op-bar .op-pair span { flex: 1; max-width: 16px; border-radius: 4px 4px 1px 1px; background: var(--pc-accent); }
+.op-bar .op-pair span.b { background: var(--pc-teal); }
+.op-key { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin: 0 4px 0 10px; vertical-align: middle; }
+.op-key-a { background: var(--pc-accent); }
+.op-key-b { background: var(--pc-teal); }
 .op-raw { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: var(--pc-hover); padding: 10px; border-radius: 8px; }
 .op-signout { margin: 0; }
 .pc-op .pc-main > .page { max-width: 1240px; }

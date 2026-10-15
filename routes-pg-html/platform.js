@@ -16,6 +16,7 @@ const { releaseChurchEmails, reclaimChurchEmails } = require('../lib/church-emai
 const { renewalsOverview, extendedUntil } = require('../lib/pro-renewals');
 const { balanceState, balanceThreshold } = require('../lib/sms-balance');
 const { healthReport } = require('../lib/church-health');
+const { growthByMonth } = require('../lib/platform-growth');
 
 // Operators only (lib/platform-operators.js): church users never get here.
 function page(res, opts) {
@@ -196,9 +197,27 @@ function ownerSummaryCards(stats, sms = {}, atRisk = 0) {
   </div>`;
 }
 
+// Sign-ups and Pro upgrades for each of the last 12 months (lib/platform-growth.js).
+function growthCard(growth) {
+  const max = Math.max(1, ...growth.map((g) => Math.max(g.signups, g.upgrades)));
+  const h = (n) => (n ? Math.max(4, Math.round((n / max) * 100)) : 0);
+  const label = (m) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' });
+  const signups = growth.reduce((n, g) => n + g.signups, 0);
+  const upgrades = growth.reduce((n, g) => n + g.upgrades, 0);
+  const deleted = growth.reduce((n, g) => n + g.deleted, 0);
+  return `
+    <section class="card op-growth">
+      <div class="card-head"><h2>Growth · last 12 months</h2>
+        <span class="meta"><span class="op-key op-key-a"></span>Sign-ups ${signups} <span class="op-key op-key-b"></span>Pro upgrades ${upgrades}${deleted ? ` · ${deleted} deleted` : ''}${signups ? ` · ${Math.round((upgrades / signups) * 100)}% upgrade rate` : ''}</span></div>
+      <div class="op-bars" role="img" aria-label="Sign-ups and Pro upgrades for each of the last 12 months">${growth.map((g) => `
+        <div class="op-bar" title="${esc(label(g.month))}: ${g.signups} sign-up${g.signups === 1 ? '' : 's'}, ${g.upgrades} Pro upgrade${g.upgrades === 1 ? '' : 's'}"><span class="op-pair"><span style="height:${h(g.signups)}%"></span><span class="b" style="height:${h(g.upgrades)}%"></span></span><small>${esc(label(g.month))}</small></div>`).join('')}</div>
+      <details><summary>Numbers</summary>${table(['Month', 'Sign-ups', 'Pro upgrades', 'Deleted'], growth.map((g) => [esc(g.month), String(g.signups), String(g.upgrades), String(g.deleted)]), { keyCols: 1 })}</details>
+    </section>`;
+}
+
 async function renderPlatformIndex(req, res) {
   const where = buildChurchWhere(req.query || {});
-  const [stats, churches, recentAudit, recentErrors, senderRequests, renewals, smsState, smsThreshold, health] = await Promise.all([
+  const [stats, churches, recentAudit, recentErrors, senderRequests, renewals, smsState, smsThreshold, health, growth] = await Promise.all([
     platformStats(),
     rawDb.church.findMany({
       where,
@@ -221,6 +240,7 @@ async function renderPlatformIndex(req, res) {
     balanceState().catch(() => null),
     balanceThreshold().catch(() => 200),
     healthReport().catch(() => []),
+    growthByMonth().catch(() => []),
   ]);
   const atRisk = health.filter((h) => h.inactive || h.neverStarted).length;
   const smsBalance = smsState ? smsState.balance : null;
@@ -285,6 +305,7 @@ async function renderPlatformIndex(req, res) {
   const body = `
     ${pageHero('SaaS Owner Portal', 'Manage every church, plan, access state, user footprint and operational signal across the platform.')}
     ${ownerSummaryCards(stats, sms, atRisk)}
+    ${growth.length ? growthCard(growth) : ''}
     ${renewalRows.length ? listCard({
       title: 'Pro renewals', count: renewalRows.length, countLabel: renewalRows.length === 1 ? 'church' : 'churches',
       note: 'Ending in the next 30 days or ended in the last 60. Admins are reminded 14 and 3 days before, and when it ends.',
