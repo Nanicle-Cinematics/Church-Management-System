@@ -192,7 +192,7 @@ function register(app) {
     // Sent in the background; poll GET /api/communications/broadcasts/:id for
     // the final status and per-recipient results.
     startBroadcast(db, {
-      broadcastId: broadcast.id, audience, channel, subject, body, ignorePrefs, churchName: church.name,
+      broadcastId: broadcast.id, audience, channel, subject, body, ignorePrefs, churchName: church.name, churchId: res.locals.churchId,
     });
     res.status(202).json(broadcast);
   }));

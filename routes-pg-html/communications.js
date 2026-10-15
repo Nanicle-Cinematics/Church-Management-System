@@ -20,7 +20,7 @@ const { esc } = require('../lib/format');
 const { pageHero, statsRow, table } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
-const { normalizePhoneGH, emailDeliveryInfo } = require('../lib/delivery');
+const { normalizePhoneGH, emailDeliveryInfo, smsDeliveryInfo, smsSenderFor, sendSmsBatch, SENDER_ID_RE } = require('../lib/delivery');
 const { startBroadcast, canReceive } = require('../lib/broadcast-delivery');
 const { checkBroadcastAllowance, allowanceMessage, validateBroadcastText } = require('../lib/send-limits');
 const { icon } = require('../lib/icons');
@@ -194,7 +194,7 @@ function register(app) {
     const reachableSms = bothCount + smsOnlyCount;
     const reachableEmail = bothCount + emailOnlyCount;
 
-    const smsReady = !!process.env.ARKESEL_API_KEY;
+    const smsReady = smsDeliveryInfo().ready;
     const emailSettings = await db.emailSetting.findFirst();
     const emailReady = emailDeliveryInfo(emailSettings, '').ready;
     const statusBanner = (smsReady && emailReady) ? '' : `<div class="flash">
@@ -333,7 +333,7 @@ function register(app) {
     const church = await db.church.findUnique({ where: { id: res.locals.churchId } });
     const userId = res.locals.user.id;
     startBroadcast(db, {
-      broadcastId: broadcast.id, audience, channel, subject, body, ignorePrefs, churchName: church.name,
+      broadcastId: broadcast.id, audience, channel, subject, body, ignorePrefs, churchName: church.name, churchId: res.locals.churchId,
     }, (updated) => logActivity(db, 'announcement', `Broadcast to ${audienceLbl}: ${audience.length} recipient(s) [${updated.status.toLowerCase()}]`, `/communications/broadcasts/${broadcast.id}`, userId));
 
     flash(req, `Broadcast queued for ${audience.length} member${audience.length === 1 ? '' : 's'} — it is sending now. This page updates by itself.`, 'success');
@@ -403,6 +403,37 @@ function register(app) {
     const settings = await res.locals.db.emailSetting.findUnique({ where: { churchId: res.locals.churchId } })
       || { provider: 'SMTP', senderName: '', senderEmail: '', replyToEmail: '', testRecipientEmail: '' };
     const ready = emailDeliveryInfo(settings, '').ready;
+    const church = await res.locals.db.church.findUnique({ where: { id: res.locals.churchId }, select: { smsSenderId: true, smsSenderStatus: true, smsSenderNote: true } });
+    const sms = smsDeliveryInfo();
+    const sendingAs = await smsSenderFor({ id: res.locals.churchId, ...church });
+    const senderState = {
+      APPROVED: ['sent', 'approved', `Your texts are sent as <b>${esc(church.smsSenderId)}</b>.`],
+      PENDING: ['pending', 'awaiting approval', `Requested. Until it is approved, texts are sent as <b>${esc(sms.defaultSender)}</b>. Approval by the mobile networks usually takes 3–4 weeks.`],
+      REJECTED: ['failed', 'not approved', `It could not be approved${church.smsSenderNote ? `: ${esc(church.smsSenderNote)}` : ''}. Texts are sent as <b>${esc(sms.defaultSender)}</b>. You can ask for another name.`],
+    }[church.smsSenderStatus] || null;
+    const smsCard = `
+      <div class="card" id="sms">
+        <h2>SMS delivery</h2>
+        <dl class="stats">
+          <dt>Provider</dt><dd>${esc(sms.label)} <span class="pill pill-${sms.ready ? 'sent' : 'dry_run'}">${sms.ready ? 'ready' : 'dry-run only'}</span></dd>
+          <dt>Sent as</dt><dd><b>${esc(sendingAs)}</b></dd>
+          ${church.smsSenderId ? `<dt>Your sender name</dt><dd>${esc(church.smsSenderId)} <span class="pill pill-${senderState[0]}">${senderState[1]}</span></dd>` : ''}
+        </dl>
+        <p class="muted-text">${senderState ? senderState[2] : `Texts are sent as <b>${esc(sms.defaultSender)}</b>. Ask for your church’s own name, and members will see it instead.`}</p>
+        <form class="form" method="post" action="/communications/sms-sender">
+          <label>SMS sender name<input name="senderId" required pattern="[A-Za-z0-9]{3,11}" maxlength="11" value="${esc(church.smsSenderStatus === 'REJECTED' ? '' : church.smsSenderId || '')}" placeholder="e.g. DUNWELL">
+            <span class="hint">3 to 11 letters or numbers, no spaces. Each name must be approved by the mobile networks before it is used.</span></label>
+          <div class="actions">
+            <button type="submit">${church.smsSenderId ? 'Ask for this name' : 'Request sender name'}</button>
+          </div>
+        </form>
+        ${church.smsSenderId ? `<form method="post" action="/communications/sms-sender" style="margin-top:0.5rem" onsubmit="return confirm('Stop using your own sender name? Texts will be sent as ${esc(sms.defaultSender)}.')">
+          <input type="hidden" name="remove" value="1"><button class="link" type="submit">Remove sender name</button></form>` : ''}
+        <form class="form" method="post" action="/communications/sms-test" style="margin-top:1rem">
+          <label>Send a test SMS to<input name="phone" required inputmode="tel" placeholder="024 412 7781"></label>
+          <div class="actions"><button type="submit" class="ghost">Send test SMS</button></div>
+        </form>
+      </div>`;
     const body = `
       <div class="card">
         <h2>Delivery profile</h2>
@@ -414,12 +445,7 @@ function register(app) {
         </dl>
         <p class="muted-text">${ready ? 'This provider is configured and ready to send.' : 'No live provider secret is configured for this church\'s selected provider — these settings are stored, but sends will run in dry-run mode until it\'s configured.'}</p>
       </div>
-      <div class="card">
-        <h2>SMS delivery</h2>
-        <dl class="stats">
-          <dt>Provider</dt><dd>Arkesel <span class="pill pill-${process.env.ARKESEL_API_KEY ? 'sent' : 'dry_run'}">${process.env.ARKESEL_API_KEY ? 'ready' : 'dry-run only'}</span></dd>
-        </dl>
-      </div>
+      ${smsCard}
       <div class="card">
         <h2>Configure email</h2>
         <form class="form" method="post" action="/communications/email-settings">
@@ -437,6 +463,48 @@ function register(app) {
         </form>
       </div>`;
     res.page({ title: 'Email Settings', active: '/communications', noHeader: true, body: `${pageHero('Email Settings', '')}${body}` });
+  }));
+
+  // A church's own SMS sender name: requested here, approved by the platform
+  // operator after registering it with the SMS provider (routes-pg-html/platform.js).
+  app.post('/communications/sms-sender', requireAdmin, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    if (req.body && req.body.remove) {
+      await db.church.update({ where: { id: res.locals.churchId }, data: { smsSenderId: null, smsSenderStatus: null, smsSenderNote: null } });
+      await logActivity(db, 'sms_sender_removed', 'SMS sender name removed', '/communications/email-settings', res.locals.user.id);
+      flash(req, 'Sender name removed. Texts are sent with the default name.', 'success');
+      return res.redirect('/communications/email-settings#sms');
+    }
+    const senderId = String((req.body && req.body.senderId) || '').trim();
+    if (!SENDER_ID_RE.test(senderId)) {
+      flash(req, 'A sender name is 3 to 11 letters or numbers, with no spaces or symbols.');
+      return res.redirect('/communications/email-settings#sms');
+    }
+    const current = await db.church.findUnique({ where: { id: res.locals.churchId }, select: { smsSenderId: true, smsSenderStatus: true } });
+    if (current.smsSenderId === senderId && current.smsSenderStatus !== 'REJECTED') {
+      flash(req, current.smsSenderStatus === 'APPROVED' ? 'That name is already approved and in use.' : 'That name is already waiting for approval.', 'info');
+      return res.redirect('/communications/email-settings#sms');
+    }
+    await db.church.update({ where: { id: res.locals.churchId }, data: { smsSenderId: senderId, smsSenderStatus: 'PENDING', smsSenderNote: null } });
+    await logActivity(db, 'sms_sender_requested', `SMS sender name requested: ${senderId}`, '/communications/email-settings', res.locals.user.id);
+    flash(req, `"${senderId}" requested. Texts keep the default name until it is approved.`, 'success');
+    res.redirect('/communications/email-settings#sms');
+  }));
+
+  // One text, to a number the admin types, so they can see their sender
+  // name arrive, or the gateway's own reason when it doesn't.
+  app.post('/communications/sms-test', requireAdmin, asyncHandler(async (req, res) => {
+    const phone = normalizePhoneGH((req.body && req.body.phone) || '');
+    if (!phone) { flash(req, 'Enter a valid phone number for the test.'); return res.redirect('/communications/email-settings#sms'); }
+    const church = await res.locals.db.church.findUnique({ where: { id: res.locals.churchId }, select: { name: true } });
+    let r;
+    try { r = await sendSmsBatch([phone], `Test message from ${church.name} on Church Manager.`, { churchId: res.locals.churchId }); }
+    catch (e) { r = { ok: false, error: e.message }; }
+    await logActivity(res.locals.db, 'sms_test_sent', `Test SMS to ${phone}: ${r.ok ? 'accepted' : r.dryRun ? 'dry run' : 'failed'}`, '/communications/email-settings', res.locals.user.id);
+    if (r.dryRun) flash(req, `Not sent: ${r.message}`, 'info');
+    else if (r.ok) flash(req, `Sent to ${phone} as "${r.sender}". If it does not arrive within a few minutes, the sender name is usually the reason: it must be approved first.`, 'success');
+    else flash(req, `The SMS provider refused it: ${r.error || 'no reason given'}.`);
+    res.redirect('/communications/email-settings#sms');
   }));
 
   app.post('/communications/email-settings', requireAdmin, asyncHandler(async (req, res) => {

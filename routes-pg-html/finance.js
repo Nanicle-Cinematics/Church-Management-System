@@ -383,14 +383,14 @@ async function memberOutstandingDetail(db, memberId) {
 // Sends a message to a member over the channel(s) their preference allows —
 // direct port of the original's sendMemberMessage(), using Phase 9a's
 // lib/delivery.js instead of the old SQLite-era sendSmsBatch/sendEmailEach.
-async function sendMemberMessage(db, member, churchName, smsText, emailSubject, emailText) {
+async function sendMemberMessage(db, member, churchName, smsText, emailSubject, emailText, churchId = member.churchId) {
   const pref = member.preferredChannel || 'NONE';
   if (pref === 'NONE') return { ok: false, reason: 'do_not_contact' };
   const phone = (pref === 'EITHER' || pref === 'SMS_ONLY') ? normalizePhoneGH(member.mobilePhone) : null;
   const email = (pref === 'EITHER' || pref === 'EMAIL_ONLY') ? (member.email || null) : null;
   if (!phone && !email) return { ok: false, reason: 'no_contact' };
   let sms = null, mail = null;
-  if (phone) { try { sms = await sendSmsBatch([phone], smsText); } catch (e) { sms = { ok: false, error: e.message }; } }
+  if (phone) { try { sms = await sendSmsBatch([phone], smsText, { churchId }); } catch (e) { sms = { ok: false, error: e.message }; } }
   if (email) { try { mail = await sendEmailEach(db, [{ addr: email, token: member.unsubscribeToken }], emailSubject, emailText, { churchName }); } catch (e) { mail = { ok: false, error: e.message }; } }
   const channels = [];
   if (phone) channels.push('SMS');
@@ -1992,7 +1992,7 @@ function register(app) {
     const emailBody = `Dear ${memberName},\n\nThank you for your payment. This is your official receipt.\n\n` +
       `Receipt no:   ${r.receiptNumber}\nDate:         ${when}\nPledge:       ${r.pledge.harvest.harvestName}${r.pledge.harvest.harvestYear ? ' ' + r.pledge.harvest.harvestYear : ''}\n` +
       `Amount paid:  ${fmtMoney(r.amount)}\nTotal pledged:${fmtMoney(r.pledge.pledgedAmount)}\nPaid to date: ${fmtMoney(r.paidToDate)}\n${balanceLine}\n\nGod bless you.\n${church.name}`;
-    const result = await sendMemberMessage(db, member, church.name, sms, `Payment receipt ${r.receiptNumber} — ${church.name}`, emailBody);
+    const result = await sendMemberMessage(db, member, church.name, sms, `Payment receipt ${r.receiptNumber} — ${church.name}`, emailBody, res.locals.churchId);
     if (!result.ok) return res.redirect(`/finance/pledges/payments/${r.id}/receipt?sent=${result.reason === 'do_not_contact' ? 'donotcontact' : 'nocontact'}`);
     await db.pledgePayment.update({ where: { id: r.id }, data: { sentAt: new Date(), sentChannel: result.channels } });
     await logActivity(db, 'receipt_sent', `Sent receipt ${r.receiptNumber} to ${memberName}`, `/finance/pledges/payments/${r.id}/receipt`, res.locals.user.id);
@@ -2047,7 +2047,7 @@ function register(app) {
     const lines = pledges.map((p) => `  • ${p.harvest.harvestName}: ${fmtMoney(p.pledgedAmount - p.paidAmount)} outstanding`).join('\n');
     const sms = `Dear ${member.firstName}, our records show a total outstanding pledge balance of ${fmtMoney(total)} across ${pledges.length} pledge(s). Kindly redeem it when you can. Thank you. — ${church.name}`;
     const emailBody = `Dear ${memberName},\n\nThis is a friendly statement of your outstanding pledge balance.\n\n${lines}\n\nTotal outstanding: ${fmtMoney(total)}\n\nKindly redeem your pledge(s) at your earliest convenience.\n\nGod bless you.\n${church.name}`;
-    const result = await sendMemberMessage(db, member, church.name, sms, `Your pledge statement — ${church.name}`, emailBody);
+    const result = await sendMemberMessage(db, member, church.name, sms, `Your pledge statement — ${church.name}`, emailBody, res.locals.churchId);
     if (!result.ok) return res.redirect(`/finance/pledges/statement/${member.id}?sent=${result.reason === 'do_not_contact' ? 'donotcontact' : 'nocontact'}`);
     await logActivity(db, 'statement_sent', `Sent outstanding-pledge statement to ${memberName}`, `/finance/pledges/statement/${member.id}`, res.locals.user.id);
     res.redirect(`/finance/pledges/statement/${member.id}?sent=${result.dryRun ? 'dry' : 'sent'}`);

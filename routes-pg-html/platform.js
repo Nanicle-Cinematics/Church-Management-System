@@ -193,7 +193,7 @@ function ownerSummaryCards(stats) {
 
 async function renderPlatformIndex(req, res) {
   const where = buildChurchWhere(req.query || {});
-  const [stats, churches, recentAudit, recentErrors] = await Promise.all([
+  const [stats, churches, recentAudit, recentErrors, senderRequests] = await Promise.all([
     platformStats(),
     rawDb.church.findMany({
       where,
@@ -207,6 +207,30 @@ async function renderPlatformIndex(req, res) {
       take: 6,
       include: { church: { select: { name: true, slug: true } } },
     }).catch(() => []),
+    rawDb.church.findMany({
+      where: { smsSenderStatus: 'PENDING', deletedAt: null },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, slug: true, smsSenderId: true },
+    }),
+  ]);
+
+  // SMS sender names churches have asked for (Communications › SMS
+  // delivery). Register each with the SMS provider first; approve it here
+  // only once the provider has, or texts are accepted and never arrive.
+  const senderRows = senderRequests.map((c) => [
+    `<a class="platform-church-link" href="/platform/churches/${c.id}"><strong>${esc(c.name)}</strong><small>${esc(c.slug)}</small></a>`,
+    `<strong>${esc(c.smsSenderId)}</strong>`,
+    `<div class="platform-actions">
+      <form method="post" action="/platform/churches/${c.id}/sms-sender" class="inline platform-inline-form">
+        <input type="hidden" name="action" value="approve"><input type="hidden" name="senderId" value="${esc(c.smsSenderId)}">
+        <button type="submit">Approve</button>
+      </form>
+      <form method="post" action="/platform/churches/${c.id}/sms-sender" class="inline platform-inline-form">
+        <input type="hidden" name="action" value="reject"><input type="hidden" name="senderId" value="${esc(c.smsSenderId)}">
+        <input name="note" maxlength="200" placeholder="Reason (shown to the church)">
+        <button type="submit" class="danger">Reject</button>
+      </form>
+    </div>`,
   ]);
 
   const rows = churches.map((c) => [
@@ -236,6 +260,11 @@ async function renderPlatformIndex(req, res) {
   const body = `
     ${pageHero('SaaS Owner Portal', 'Manage every church, plan, access state, user footprint and operational signal across the platform.')}
     ${ownerSummaryCards(stats)}
+    ${senderRows.length ? listCard({
+      title: 'SMS sender names to approve', count: senderRows.length, countLabel: senderRows.length === 1 ? 'request' : 'requests',
+      note: 'Register each name with the SMS provider first, and approve it here once the provider has.',
+      inner: table(['Church', 'Sender name', ''], senderRows, { keyCols: 2 }),
+    }) : ''}
     ${portalFilters(req.query || {})}
     ${listCard({
       title: 'Churches onboarded', count: churches.length, countLabel: churches.length === 1 ? 'church' : 'churches',
@@ -403,6 +432,33 @@ function register(app) {
       if (e.code !== 'P2025') throw e;
       flash(req, 'Church not found.');
     }
+    res.redirect(platformReturn(req));
+  }));
+
+  // Approve or reject a church's SMS sender name. The name is posted back
+  // and must still match, so a request changed since the page loaded is not
+  // approved by mistake.
+  app.post('/platform/churches/:id/sms-sender', requireOperator, asyncHandler(async (req, res) => {
+    const action = String(req.body?.action || '');
+    const note = String(req.body?.note || '').trim().slice(0, 200);
+    if (!['approve', 'reject'].includes(action)) { flash(req, 'Invalid sender name action.'); return res.redirect(platformReturn(req)); }
+    const church = await rawDb.church.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, slug: true, smsSenderId: true, smsSenderStatus: true } });
+    if (!church || church.smsSenderStatus !== 'PENDING' || church.smsSenderId !== String(req.body?.senderId || '')) {
+      flash(req, 'That request has changed or is no longer waiting. Check the list again.');
+      return res.redirect(platformReturn(req));
+    }
+    await rawDb.church.update({
+      where: { id: church.id },
+      data: action === 'approve' ? { smsSenderStatus: 'APPROVED', smsSenderNote: null } : { smsSenderStatus: 'REJECTED', smsSenderNote: note || null },
+    });
+    const event = action === 'approve' ? 'platform.sms_sender_approved' : 'platform.sms_sender_rejected';
+    const subject = `${church.name} (${church.slug}): ${church.smsSenderId}${note && action === 'reject' ? ` (${note})` : ''}`;
+    await rawDb.securityAuditLog.create({ data: {
+      churchId: church.id, actorId: null, event, subject,
+      ip: requestIp(req), userAgent: requestUserAgent(req),
+    } });
+    await logPlatformEvent(req, { operator: res.locals.operator, event, subject, churchId: church.id });
+    flash(req, action === 'approve' ? `"${church.smsSenderId}" approved for ${church.name}. Their texts now use it.` : `"${church.smsSenderId}" rejected for ${church.name}.`, 'success');
     res.redirect(platformReturn(req));
   }));
 

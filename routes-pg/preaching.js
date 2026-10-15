@@ -70,7 +70,7 @@ async function sendPreachingReminder(db, plan, userId, churchName) {
   const phone = normalizePhoneGH(c.phone);
   let sms = null, email = null;
   if (phone) {
-    try { sms = await sendSmsBatch([phone], msg); }
+    try { sms = await sendSmsBatch([phone], msg, { churchId: plan.churchId }); }
     catch (e) { sms = { ok: false, error: e.message }; }
   }
   if (c.email) {
