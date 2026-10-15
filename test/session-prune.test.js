@@ -28,15 +28,14 @@ test('the session store schedules no prune timer, even after a session is touche
 
 test('the real app touches the store without starting a prune timer', async () => {
   const app = createTenantApp({ pool });
-  // express-session only exposes the store per request, so read it off one.
-  let store;
-  app.get('/__store-probe', (req, res) => { store = req.sessionStore; res.end(); });
+  const store = app.locals.sessionStore;
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
-    await (await fetch(`${base}/login`)).text(); // issues a session (CSRF token) — touches the store
-    await (await fetch(`${base}/__store-probe`)).text();
-    assert.ok(store, 'probe did not see a session store');
+    const res = await fetch(`${base}/login`); // issues a session (CSRF token) — touches the store
+    await res.text();
+    assert.ok(store, 'the app did not expose its session store');
+    assert.ok((res.headers.getSetCookie() || []).some((c) => c.startsWith('connect.sid=')), 'the store was touched');
     assert.strictEqual(store.pruneTimer, undefined);
   } finally {
     server.close();
