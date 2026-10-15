@@ -13,6 +13,7 @@ const { icon } = require('../lib/icons');
 const { operatorLayout } = require('../lib/operator-shell');
 const { requireOperator, logPlatformEvent } = require('../lib/platform-operators');
 const { releaseChurchEmails, reclaimChurchEmails } = require('../lib/church-emails');
+const { renewalsOverview, extendedUntil } = require('../lib/pro-renewals');
 
 // Operators only (lib/platform-operators.js): church users never get here.
 function page(res, opts) {
@@ -193,7 +194,7 @@ function ownerSummaryCards(stats) {
 
 async function renderPlatformIndex(req, res) {
   const where = buildChurchWhere(req.query || {});
-  const [stats, churches, recentAudit, recentErrors, senderRequests] = await Promise.all([
+  const [stats, churches, recentAudit, recentErrors, senderRequests, renewals] = await Promise.all([
     platformStats(),
     rawDb.church.findMany({
       where,
@@ -212,6 +213,20 @@ async function renderPlatformIndex(req, res) {
       orderBy: { name: 'asc' },
       select: { id: true, name: true, slug: true, smsSenderId: true },
     }),
+    renewalsOverview(),
+  ]);
+
+  // Pro plans ending in the next 30 days or ended in the last 60, soonest
+  // first. Extending adds to the current end date (lib/pro-renewals.js).
+  const REMINDER_LABELS = { '14d': '14 days before', '3d': '3 days before', lapsed: 'on lapsing' };
+  const renewalRows = renewals.map((c) => [
+    `<a class="platform-church-link" href="/platform/churches/${c.id}"><strong>${esc(c.name)}</strong><small>${esc(c.slug)}</small></a>`,
+    `${esc(isoDate(c.proUntil))}<small>${c.lapsed ? `<span class="pill pill-failed">ended ${Math.abs(c.daysLeft)} day${Math.abs(c.daysLeft) === 1 ? '' : 's'} ago</span>` : `<span class="pill pill-${c.daysLeft <= 3 ? 'failed' : 'pending'}">${c.daysLeft} day${c.daysLeft === 1 ? '' : 's'} left</span>`}</small>`,
+    esc(c.lastReminder ? `Sent ${REMINDER_LABELS[c.lastReminder]}` : 'None yet'),
+    `<form method="post" action="/platform/churches/${c.id}/extend" class="inline platform-inline-form">
+      <select name="months" aria-label="Extend by">${[1, 3, 6, 12].map((m) => `<option value="${m}"${m === 12 ? ' selected' : ''}>${m} month${m === 1 ? '' : 's'}</option>`).join('')}</select>
+      <button type="submit">Extend</button>
+    </form>`,
   ]);
 
   // SMS sender names churches have asked for (Communications › SMS
@@ -260,6 +275,11 @@ async function renderPlatformIndex(req, res) {
   const body = `
     ${pageHero('SaaS Owner Portal', 'Manage every church, plan, access state, user footprint and operational signal across the platform.')}
     ${ownerSummaryCards(stats)}
+    ${renewalRows.length ? listCard({
+      title: 'Pro renewals', count: renewalRows.length, countLabel: renewalRows.length === 1 ? 'church' : 'churches',
+      note: 'Ending in the next 30 days or ended in the last 60. Admins are reminded 14 and 3 days before, and when it ends.',
+      inner: table(['Church', 'Pro until', 'Reminders', ''], renewalRows, { keyCols: 2 }),
+    }) : ''}
     ${senderRows.length ? listCard({
       title: 'SMS sender names to approve', count: senderRows.length, countLabel: senderRows.length === 1 ? 'request' : 'requests',
       note: 'Register each name with the SMS provider first, and approve it here once the provider has.',
@@ -438,6 +458,25 @@ function register(app) {
   // Approve or reject a church's SMS sender name. The name is posted back
   // and must still match, so a request changed since the page loaded is not
   // approved by mistake.
+  // Extend a Pro plan by whole months from its current end (or from today
+  // if it has lapsed). Use Plan above to set a date from scratch.
+  app.post('/platform/churches/:id/extend', requireOperator, asyncHandler(async (req, res) => {
+    const months = Number(req.body?.months);
+    if (![1, 3, 6, 12].includes(months)) { flash(req, 'Choose 1, 3, 6 or 12 months.'); return res.redirect(platformReturn(req)); }
+    const church = await rawDb.church.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, slug: true, plan: true, proUntil: true, proSince: true } });
+    if (!church) { flash(req, 'Church not found.'); return res.redirect(platformReturn(req)); }
+    const proUntil = extendedUntil(church.plan === 'pro' ? church.proUntil : null, months);
+    await rawDb.church.update({ where: { id: church.id }, data: { plan: 'pro', proUntil, proSince: church.plan === 'pro' && church.proSince ? church.proSince : new Date() } });
+    const subject = `${church.name} (${church.slug}) Pro extended ${months} month${months === 1 ? '' : 's'}, until ${isoDate(proUntil)}`;
+    await rawDb.securityAuditLog.create({ data: {
+      churchId: church.id, actorId: null, event: 'platform.plan_extended', subject,
+      ip: requestIp(req), userAgent: requestUserAgent(req),
+    } });
+    await logPlatformEvent(req, { operator: res.locals.operator, event: 'platform.plan_extended', subject, churchId: church.id });
+    flash(req, `${church.name}: Pro until ${isoDate(proUntil)}.`, 'success');
+    res.redirect(platformReturn(req));
+  }));
+
   app.post('/platform/churches/:id/sms-sender', requireOperator, asyncHandler(async (req, res) => {
     const action = String(req.body?.action || '');
     const note = String(req.body?.note || '').trim().slice(0, 200);
