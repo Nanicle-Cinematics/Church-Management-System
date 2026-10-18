@@ -25,7 +25,6 @@ const { pickEnum, cleanDate, memberFieldError, createMemberWithId, GENDERS, MARI
 
 const MEMBERSHIP_STATUSES = ['VISITOR', 'REGULAR', 'MEMBER', 'DISTANT', 'INACTIVE', 'TRANSFERRED', 'DECEASED', 'OTHER'];
 const MEMBERS_PER_PAGE = 25;
-const MEMBER_ID_PREFIX = 'MBR';
 
 function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
@@ -60,21 +59,6 @@ function memberErrors(b) {
   if (b.email && !isEmailish(b.email)) return 'Enter a valid email address, or leave it blank.';
   if (b.mobilePhone && !isPhoneish(b.mobilePhone)) return 'Enter a valid mobile number (at least 7 digits).';
   return memberFieldError(b);
-}
-
-async function nextMemberId(db) {
-  // Tenant-scoped automatically — the scoped client only sees this
-  // church's members, so numbering restarts at MBR-001 per church.
-  const rows = await db.member.findMany({
-    where: { externalId: { startsWith: `${MEMBER_ID_PREFIX}-` } },
-    select: { externalId: true },
-  });
-  let max = 0;
-  for (const r of rows) {
-    const m = /-(\d+)$/.exec(r.externalId || '');
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return `${MEMBER_ID_PREFIX}-${String(max + 1).padStart(3, '0')}`;
 }
 
 function parseMemberBody(b) {

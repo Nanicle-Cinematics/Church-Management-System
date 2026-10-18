@@ -28,6 +28,7 @@ const { pageHero, statsRow, listCard, table } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const ledger = require('../lib/ledger-pg');
+const { nextMemberId } = require('../lib/member-input');
 const { createReceipt, pendingReceiptNo } = require('../lib/receipts');
 const { sendSmsBatch, sendEmailEach, normalizePhoneGH } = require('../lib/delivery');
 const { amountInWords } = require('../lib/money');
@@ -3071,17 +3072,19 @@ function register(app) {
   app.get('/finance/settings', requireFinanceReportAccess, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const canManage = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
-    const s = (await db.financeSetting.findFirst()) || { receiptPrefix: 'RCT', voucherPrefix: 'PV', smallExpenseMax: 500, mediumExpenseMax: 5000 };
+    const s = (await db.financeSetting.findFirst()) || { receiptPrefix: 'RCT', voucherPrefix: 'PV', memberPrefix: 'MBR', smallExpenseMax: 500, mediumExpenseMax: 5000 };
     const dis = canManage ? '' : 'disabled';
     const body = `
       <section class="card">
-        <div class="card-head"><h2>Finance settings</h2><span class="meta">Receipt and voucher numbering</span></div>
+        <div class="card-head"><h2>Finance settings</h2><span class="meta">Receipt, voucher and member ID numbering</span></div>
         <form class="form" method="post" action="/finance/settings">
           <label>Receipt prefix<input name="receiptPrefix" required maxlength="24" value="${esc(s.receiptPrefix)}" ${dis}></label>
           <label>Voucher prefix<input name="voucherPrefix" required maxlength="24" value="${esc(s.voucherPrefix)}" ${dis}></label>
+          <label>Member ID prefix<input name="memberPrefix" required maxlength="24" value="${esc(s.memberPrefix || 'MBR')}" ${dis}></label>
           <label>Small expense limit<input type="number" step="0.01" min="0" name="smallExpenseMax" value="${esc(s.smallExpenseMax)}" ${dis}${res.locals.user.role === 'ADMIN' ? '' : ' readonly'}></label>
           <label>Medium expense limit<input type="number" step="0.01" min="0" name="mediumExpenseMax" value="${esc(s.mediumExpenseMax)}" ${dis}${res.locals.user.role === 'ADMIN' ? '' : ' readonly'}></label>
           <label class="wide">Next receipt preview<input value="${esc(await nextReceiptNo(db, todayISO()))}" disabled></label>
+          <label class="wide">Next member ID preview<input value="${esc(await nextMemberId(db))}" disabled></label>
           <label class="wide">Next voucher preview<input value="${esc(await nextVoucherNo(db, todayISO()))}" disabled></label>
           ${canManage ? '<div class="actions"><button type="submit">Save settings</button></div>' : '<p class="muted-text wide">Only finance fund managers can change these settings.</p>'}
         </form>
@@ -3096,7 +3099,8 @@ function register(app) {
     const clean = (v) => String(v || '').trim().replace(/\s+/g, '-').toUpperCase();
     const receiptPrefix = clean(b.receiptPrefix);
     const voucherPrefix = clean(b.voucherPrefix);
-    if (!receiptPrefix || !voucherPrefix || receiptPrefix.length > 24 || voucherPrefix.length > 24 || !isMoneyNonNeg(b.smallExpenseMax || 0) || !isMoneyNonNeg(b.mediumExpenseMax || 0)) {
+    const memberPrefix = clean(b.memberPrefix) || 'MBR';
+    if (!receiptPrefix || !voucherPrefix || receiptPrefix.length > 24 || voucherPrefix.length > 24 || memberPrefix.length > 24 || !isMoneyNonNeg(b.smallExpenseMax || 0) || !isMoneyNonNeg(b.mediumExpenseMax || 0)) {
       flash(req, 'Enter valid prefixes and expense limits.');
       return res.redirect('/finance/settings');
     }
@@ -3104,7 +3108,7 @@ function register(app) {
       flash(req, 'The small expense limit cannot be higher than the medium limit.');
       return res.redirect('/finance/settings');
     }
-    const data = { receiptPrefix, voucherPrefix, smallExpenseMax: Number(b.smallExpenseMax || 0), mediumExpenseMax: Number(b.mediumExpenseMax || 0) };
+    const data = { receiptPrefix, voucherPrefix, memberPrefix, smallExpenseMax: Number(b.smallExpenseMax || 0), mediumExpenseMax: Number(b.mediumExpenseMax || 0) };
     // The limits decide WHO may approve an expense. A Treasurer (tier 1) could
     // otherwise raise them until their own tier covers everything, defeating
     // the Finance Admin / Admin tiers. Only an Admin may change them.

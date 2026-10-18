@@ -41,6 +41,7 @@ test.after(async () => {
     await db.financialPeriod.deleteMany({ where });
     await db.fund.deleteMany({ where });
     await db.account.deleteMany({ where });
+    await db.member.deleteMany({ where });
     await db.user.deleteMany({ where });
     await db.church.deleteMany({ where: { id: { in: createdChurchIds } } });
   }
@@ -320,6 +321,15 @@ test('finance settings: prefixes change numbering, bad input is rejected, change
   assert.strictEqual(s.receiptPrefix, 'GRACE-CHURCH');
   assert.strictEqual(s.voucherPrefix, 'GC-PAY');
   assert.strictEqual(s.mediumExpenseMax, 2000);
+  assert.strictEqual(s.memberPrefix, 'MBR', 'left blank, the member prefix stays MBR');
+
+  // A church's own member prefix numbers its next member, starting at 001.
+  csrf = await csrfFrom(c, '/finance/settings');
+  await c.postForm('/finance/settings', { receiptPrefix: 'RCT', voucherPrefix: 'PV', memberPrefix: 'grace', smallExpenseMax: '200', mediumExpenseMax: '2000', _csrf: csrf });
+  assert.strictEqual((await db.financeSetting.findFirst({ where: { churchId } })).memberPrefix, 'GRACE');
+  const { createMemberWithId } = require('../lib/member-input');
+  const first = await createMemberWithId(require('../lib/tenant').tenantDb(churchId), { firstName: 'Ama', lastName: 'Mensah', membershipStatus: 'MEMBER' });
+  assert.strictEqual(first.externalId, 'GRACE-001');
 
   // Saving again updates in place rather than creating a second row.
   csrf = await csrfFrom(c, '/finance/settings');

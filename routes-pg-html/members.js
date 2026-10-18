@@ -85,13 +85,6 @@ function memberErrors(b) {
   return memberFieldError(b);
 }
 
-async function nextMemberId(db) {
-  const rows = await db.member.findMany({ where: { externalId: { startsWith: 'MBR-' } }, select: { externalId: true } });
-  let max = 0;
-  for (const r of rows) { const m = /-(\d+)$/.exec(r.externalId || ''); if (m) max = Math.max(max, parseInt(m[1], 10)); }
-  return `MBR-${String(max + 1).padStart(3, '0')}`;
-}
-
 function parseMemberBody(b) {
   return {
     bibleClassId: b.bibleClassId ? Number(b.bibleClassId) : null,
