@@ -1269,6 +1269,7 @@ model FinanceSetting {
   church               Church   @relation(fields: [churchId], references: [id])
   receiptPrefix        String   @default("RCT") @map("receipt_prefix")
   voucherPrefix        String   @default("PV") @map("voucher_prefix")
+  memberPrefix         String   @default("MBR") @map("member_prefix")
   smallExpenseMax      Float    @default(500) @map("small_expense_max")
   mediumExpenseMax     Float    @default(5000) @map("medium_expense_max")
   // Monthly allowances: the day of the month they fall due (null = off) and
