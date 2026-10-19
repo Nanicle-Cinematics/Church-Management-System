@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Security
+
+- **Password spraying is throttled.** Sign-in was limited per IP *and* email, so one IP trying a single password against many addresses never reached a limit. Church sign-in now also limits each IP to 100 attempts per 15 minutes, and the operator console to 50.
+- **Public QR check-in and RSVP show less, and expire.** A result shows a first name and last initial only (no surname, member ID or class), and a phone number no longer finds anyone. A check-in link works from 12 hours before the event to a day after it ends; an RSVP link until a day after. Old QR codes stop working.
+- **Two-factor secrets can be encrypted at rest** (`lib/secret-box.js`). Set `TOTP_ENCRYPTION_KEY` (`fly secrets set TOTP_ENCRYPTION_KEY=...`), deploy, then run `node scripts/encrypt-totp-secrets.js` once. Secrets stored earlier keep working until then. Keep the key: if it is lost, those users sign in with a recovery code and an admin resets their two-factor.
+
 ### Added
 
 - **View as church** (support). A church admin can allow Church Manager support to see their church's app, read-only, for 1 hour, 24 hours or 3 days, under Settings › **Support access**, and can turn it off at any time. While access is on, the church's console page offers **View as church (read-only)**. The operator then sees the app as one of the church's admins does, under a banner that says so, with **End**.

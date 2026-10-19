@@ -18,6 +18,7 @@ const { flash } = require('../lib/tenant-flash');
 const { PLAN_LIMITS, isPro } = require('../routes-pg/settings');
 const QRCode = require('qrcode');
 const { createTotpSecret, verifyTotp, createRecoveryCodes, consumeRecoveryCode } = require('../lib/mfa');
+const { seal } = require('../lib/secret-box');
 const { logSecurityEvent } = require('../lib/security-audit');
 const { logActivity } = require('../lib/tenant-activity');
 const { db: rawDb } = require('../lib/tenant');
@@ -270,7 +271,7 @@ function register(app) {
     const recovery = createRecoveryCodes();
     await res.locals.db.user.update({
       where: { id: res.locals.user.id },
-      data: { totpEnabled: true, totpSecret: secret, totpRecoveryCodes: recovery.serialized },
+      data: { totpEnabled: true, totpSecret: seal(secret), totpRecoveryCodes: recovery.serialized },
     });
     delete req.session.mfaSetupSecret;
     delete req.session.mfaSetupUri;
