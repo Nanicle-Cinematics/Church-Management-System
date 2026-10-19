@@ -62,13 +62,13 @@ function client() {
 
 async function signIn(email) {
   const c = client();
-  assert.strictEqual((await c.json('/login', { email, password: 'password123' })).status, 200);
+  assert.strictEqual((await c.json('/login', { email, password: 'Tr0ubadour-7!' })).status, 200);
   return c;
 }
 
 async function newChurch(tag) {
   const email = unique(tag);
-  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' });
+  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   return { churchId: church.id, admin: await signIn(email) };
 }
@@ -197,7 +197,7 @@ test('an Excel file with real date cells and member IDs; columns can be re-match
 test('only admins can import, only their own upload, and bad files are refused politely', async () => {
   const { churchId, admin } = await newChurch('imp-perm');
   const email = unique('editor');
-  await db.user.create({ data: { churchId, username: `ed-${Date.now()}`, email, passwordHash: await bcrypt.hash('password123', 4), role: 'EDITOR', financeRole: 'CASHIER' } });
+  await db.user.create({ data: { churchId, username: `ed-${Date.now()}`, email, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 4), role: 'EDITOR', financeRole: 'CASHIER' } });
   const editor = await signIn(email);
   assert.strictEqual((await editor.get('/members/import')).status, 403);
   assert.doesNotMatch((await editor.get('/members')).text, /href="\/members\/import"/);

@@ -82,7 +82,7 @@ function uniqueEmail(tag) {
 }
 async function signedInChurch(tag) {
   const c = client();
-  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'password123' });
+  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'Tr0ubadour-7!' });
   assert.strictEqual(signup.status, 201);
   createdChurchIds.push(signup.body.church.id);
   return { client: c, churchId: signup.body.church.id };
@@ -97,10 +97,10 @@ function csrfOf(html) {
 // actuals) has to go through this second-user approval step.
 async function approveExpense(churchId, expenseId) {
   const email = uniqueEmail('approver');
-  const passwordHash = await bcrypt.hash('password123', 10);
+  const passwordHash = await bcrypt.hash('Tr0ubadour-7!', 10);
   await db.user.create({ data: { churchId, username: `approver-${Date.now()}`, email, passwordHash, role: 'VIEWER', financeRole: 'TREASURER' } });
   const approver = client();
-  const login = await approver.postJson('/login', { email, password: 'password123' });
+  const login = await approver.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(login.status, 200);
   const page = await approver.getHtml('/finance/expenses');
   const csrf = csrfOf(page.text);
@@ -139,9 +139,9 @@ test('unit: approver tiers and who passes which gate', () => {
 
 async function userWithRole(churchId, tag, financeRole, role = 'VIEWER') {
   const email = uniqueEmail(tag);
-  const user = await db.user.create({ data: { churchId, username: `${tag}-${Date.now()}`, email, passwordHash: await bcrypt.hash('password123', 10), role, financeRole } });
+  const user = await db.user.create({ data: { churchId, username: `${tag}-${Date.now()}`, email, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 10), role, financeRole } });
   const c = client();
-  assert.strictEqual((await c.postJson('/login', { email, password: 'password123' })).status, 200);
+  assert.strictEqual((await c.postJson('/login', { email, password: 'Tr0ubadour-7!' })).status, 200);
   return { client: c, user };
 }
 async function recordExpense(churchId, amount, recordedBy) {

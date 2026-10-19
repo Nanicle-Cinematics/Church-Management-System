@@ -81,17 +81,17 @@ function extractCsrf(html) {
 }
 async function signedInClient(tag, email) {
   const client = htmlClient();
-  const signup = await client.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: email || uniqueEmail(tag), password: 'password123' });
+  const signup = await client.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: email || uniqueEmail(tag), password: 'Tr0ubadour-7!' });
   assert.strictEqual(signup.status, 201);
   createdChurchIds.push(signup.body.church.id);
   return { client, churchId: signup.body.church.id };
 }
 async function addUser(churchId, role, financeRole) {
   const email = uniqueEmail(`u-${role}-${financeRole}`.toLowerCase());
-  const passwordHash = await bcrypt.hash('password123', 10);
+  const passwordHash = await bcrypt.hash('Tr0ubadour-7!', 10);
   await db.user.create({ data: { churchId, username: `u-${Date.now()}`, email, passwordHash, role, financeRole } });
   const client = htmlClient();
-  const login = await client.postJson('/login', { email, password: 'password123' });
+  const login = await client.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(login.status, 200);
   return client;
 }
@@ -211,7 +211,7 @@ test('a stale form goes back to its page with an explanation instead of a dead e
   const res = await fetch(`${base}/users`, {
     method: 'POST', redirect: 'manual',
     headers: { 'content-type': 'application/x-www-form-urlencoded', referer: `${base}/users/new`, cookie: client.cookie() },
-    body: new URLSearchParams({ username: 'x', email: 'x@example.test', password: 'password123', _csrf: 'stale' }).toString(),
+    body: new URLSearchParams({ username: 'x', email: 'x@example.test', password: 'Tr0ubadour-7!', _csrf: 'stale' }).toString(),
   });
   assert.strictEqual(res.status, 303);
   assert.strictEqual(res.headers.get('location'), '/users/new');
@@ -225,7 +225,7 @@ test('adding a user whose email belongs to another church says so', async () => 
   const otherEmail = (await db.user.findFirst({ where: { churchId: other.churchId } })).email;
   const { client } = await signedInClient('html-email-taken');
   const form = await client.getHtml('/users/new');
-  const res = await client.postForm('/users', { username: 'dup', email: otherEmail, password: 'password123', role: 'VIEWER', financeRole: 'NONE', _csrf: extractCsrf(form.text) });
+  const res = await client.postForm('/users', { username: 'dup', email: otherEmail, password: 'Tr0ubadour-7!', role: 'VIEWER', financeRole: 'NONE', _csrf: extractCsrf(form.text) });
   assert.strictEqual(res.status, 302);
   const page = await client.getHtml('/users/new');
   assert.match(page.text, /already used by an account in another church/);

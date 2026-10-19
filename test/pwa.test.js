@@ -23,9 +23,9 @@ test.before(async () => {
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
   const email = `pwa-${process.pid}-${Date.now()}@example.test`;
-  const { church } = await signupChurch({ churchName: 'Pwa Test Church', name: 'Owner', email, password: 'password123' });
+  const { church } = await signupChurch({ churchName: 'Pwa Test Church', name: 'Owner', email, password: 'Tr0ubadour-7!' });
   churchId = church.id;
-  const res = await fetch(`${base}/login`, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'password123' }) });
+  const res = await fetch(`${base}/login`, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'Tr0ubadour-7!' }) });
   assert.strictEqual(res.status, 200);
   cookie = res.headers.getSetCookie().find((c) => c.startsWith('connect.sid=')).split(';')[0];
 });

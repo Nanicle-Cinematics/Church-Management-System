@@ -97,7 +97,7 @@ test('unauthenticated GET /preaching redirects to /login', async () => {
 test('signed-in user sees the preaching page, CSRF token is present and required, and can schedule/archive an appointment', async () => {
   const client = htmlClient();
   const signup = await client.postJson('/signup', {
-    churchName: 'HTML Test Church', name: 'Admin Person', email: uniqueEmail('html-preaching'), password: 'password123',
+    churchName: 'HTML Test Church', name: 'Admin Person', email: uniqueEmail('html-preaching'), password: 'Tr0ubadour-7!',
   });
   assert.strictEqual(signup.status, 201);
   createdChurchIds.push(signup.body.church.id);

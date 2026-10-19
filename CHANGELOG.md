@@ -6,6 +6,11 @@ All notable changes to this project are documented here.
 
 ### Security
 
+- **Password rules.** A chosen password must be at least 10 characters (was 8), must not be a well-known one however it is dressed up ("Password123!", "Welcome2024"), a single repeated character or all digits, and must not contain the person's own email name. This applies to sign-up, password reset, new teammates and admin resets. Existing passwords are untouched.
+- **A reminder to turn on two-factor** at the top of the dashboard for Admins and finance accounts that have not, until they do.
+- **Reset and check-in links no longer reach logs.** The error log and Sentry now store URLs with the secret part (reset, verify, check-in, RSVP and unsubscribe links) and the query string removed.
+- **Uploaded photos and logos are saved under the type their bytes show**, not the type the browser claimed.
+
 - **Password spraying is throttled.** Sign-in was limited per IP *and* email, so one IP trying a single password against many addresses never reached a limit. Church sign-in now also limits each IP to 100 attempts per 15 minutes, and the operator console to 50.
 - **Public QR check-in and RSVP show less, and expire.** A result shows a first name and last initial only (no surname, member ID or class), and a phone number no longer finds anyone. A check-in link works from 12 hours before the event to a day after it ends; an RSVP link until a day after. Old QR codes stop working.
 - **Two-factor secrets can be encrypted at rest** (`lib/secret-box.js`). Set `TOTP_ENCRYPTION_KEY` (`fly secrets set TOTP_ENCRYPTION_KEY=...`), deploy, then run `node scripts/encrypt-totp-secrets.js` once. Secrets stored earlier keep working until then. Keep the key: if it is lost, those users sign in with a recovery code and an admin resets their two-factor.

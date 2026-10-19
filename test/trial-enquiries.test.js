@@ -47,7 +47,7 @@ test.after(async () => {
 const unique = (tag) => `${tag}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
 
 async function proChurch(tag, proUntil) {
-  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'password123' });
+  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   await db.church.update({ where: { id: church.id }, data: { plan: 'pro', proSince: new Date(), proUntil } });
   return church.id;
@@ -127,7 +127,7 @@ test('the demo form files an enquiry; bots and incomplete forms do not; 5 an hou
 
 test('the inbox: statuses, notes, linking the church they signed up as', async () => {
   const t = await db.trialSignup.create({ data: { churchName: `${TAG} Bethel`, contactName: 'Kofi', phone: '0244127781', email: 'kofi@example.test', status: 'new' } });
-  const { church } = await signupChurch({ churchName: `${TAG} Bethel Church`, name: 'Kofi', email: unique('trial-convert'), password: 'password123' });
+  const { church } = await signupChurch({ churchName: `${TAG} Bethel Church`, name: 'Kofi', email: unique('trial-convert'), password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   const op = await signedInOperator();
 

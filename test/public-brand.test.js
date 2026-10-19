@@ -21,7 +21,7 @@ test.before(async () => {
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
   const email = `brand-${process.pid}-${Date.now()}@example.test`;
-  const { church } = await signupChurch({ churchName: 'Grace Chapel Brandtest', name: 'Owner', email, password: 'password123' });
+  const { church } = await signupChurch({ churchName: 'Grace Chapel Brandtest', name: 'Owner', email, password: 'Tr0ubadour-7!' });
   churchId = church.id;
   token = crypto.randomBytes(16).toString('hex');
   await tenantDb(churchId).event.create({ data: { title: 'Sunday', startsAt: new Date(), checkinToken: token } });

@@ -25,6 +25,7 @@ const { db: rawDb } = require('../lib/tenant');
 const { loginLabel } = require('../lib/phone');
 const { parseLogins, loginTakenMessage, releasedOnDelete, freeUsernameFromRemovedUsers } = require('../lib/user-logins');
 const { canAddUser, upgradeMessage } = require('../lib/plan');
+const { passwordProblem } = require('../lib/password-policy');
 
 const ROLES = ['ADMIN', 'EDITOR', 'VIEWER'];
 const FINANCE_ROLES = ['NONE', 'CASHIER', 'TREASURER', 'AUDITOR', 'FINANCE_ADMIN'];
@@ -53,7 +54,7 @@ function register(app) {
        </form>
        <a class="btn ghost" href="/users/${u.id}/edit">Edit sign-in</a>
        <form method="post" action="/users/${u.id}/reset" class="inline">
-         <input type="password" name="password" placeholder="new password" minlength="8" required>
+         <input type="password" name="password" placeholder="new password" minlength="10" required>
          <button type="submit">Reset</button>
        </form>
        ${u.totpEnabled ? `<form method="post" action="/users/${u.id}/disable-2fa" class="inline" onsubmit="return confirm('Disable 2FA for ${esc(u.username)}?')"><button type="submit">Disable 2FA</button></form>` : ''}
@@ -76,7 +77,7 @@ function register(app) {
         <label>Email<input type="email" name="email" autocomplete="off"></label>
         <label>Phone number<input type="tel" name="phone" inputmode="tel" placeholder="e.g. 024 412 7781" autocomplete="off"></label>
         <p class="hint" style="grid-column:1/-1;margin:-4px 0 0">Give an email, a phone number, or both: they sign in with either. Without an email they cannot reset a forgotten password themselves; you reset it for them here.</p>
-        <label>Password<input type="password" name="password" required minlength="8"></label>
+        <label>Password<input type="password" name="password" required minlength="10"></label>
         <label>Role<select name="role">
           <option value="ADMIN">admin (full access)</option>
           <option value="EDITOR">editor (add and edit)</option>
@@ -103,7 +104,8 @@ function register(app) {
     const logins = parseLogins(b);
     if (logins.error) { flash(req, logins.error); return res.redirect('/users/new'); }
     const { email, phone } = logins;
-    if (!b.password || String(b.password).length < 8) { flash(req, 'Password must be at least 8 characters.'); return res.redirect('/users/new'); }
+    const passwordError = passwordProblem(b.password, { email });
+    if (passwordError) { flash(req, passwordError); return res.redirect('/users/new'); }
     const role = ROLES.includes(b.role) ? b.role : 'VIEWER';
     const financeRole = FINANCE_ROLES.includes(b.financeRole) ? b.financeRole : 'NONE';
 
@@ -213,7 +215,8 @@ function register(app) {
 
   app.post('/users/:id/reset', requireOwner, asyncHandler(async (req, res) => {
     const { password } = req.body || {};
-    if (!password || String(password).length < 8) { flash(req, 'Password must be at least 8 characters.'); return res.redirect('/users'); }
+    const passwordError = passwordProblem(password);
+    if (passwordError) { flash(req, passwordError); return res.redirect('/users'); }
     try {
       const passwordHash = await bcrypt.hash(String(password), 10);
       const resetId = Number(req.params.id);

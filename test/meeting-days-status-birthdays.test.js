@@ -75,7 +75,7 @@ function client() {
 async function newChurch(tag) {
   const c = client();
   const email = `${tag}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
-  const signup = await c.json('/signup', { churchName: `${tag} Church`, name: 'Admin', email, password: 'password123' });
+  const signup = await c.json('/signup', { churchName: `${tag} Church`, name: 'Admin', email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(signup.status, 201);
   churchIds.push(signup.body.church.id);
   return { c, churchId: signup.body.church.id };

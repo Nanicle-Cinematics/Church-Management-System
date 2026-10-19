@@ -48,7 +48,7 @@ test.after(async () => {
 const unique = (tag) => `${tag}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
 
 async function proChurch(tag, proUntil) {
-  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'password123' });
+  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   await db.church.update({ where: { id: church.id }, data: { plan: 'pro', proSince: new Date(), proUntil } });
   return church.id;
@@ -96,7 +96,7 @@ async function signedInOperator() {
 
 async function freeChurch(tag) {
   const email = unique(tag);
-  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' });
+  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   return { churchId: church.id, email };
 }
@@ -142,7 +142,7 @@ test('the church sees its month\'s use; the operator sees every church\'s and se
   await usage.recordUsage(churchId, 40, 'Hello all');
 
   const admin = client();
-  await fetch(`${base}/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'password123' }) })
+  await fetch(`${base}/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'Tr0ubadour-7!' }) })
     .then((r) => { const c = r.headers.getSetCookie().find((x) => x.startsWith('connect.sid=')); admin.cookie = c.split(';')[0]; });
   const card = await (await fetch(`${base}/communications/email-settings`, { headers: { cookie: admin.cookie } })).text();
   assert.match(card, /40 of 100 texts/);

@@ -65,7 +65,7 @@ function uniqueEmail(tag) {
 async function newSignedInChurch(tag) {
   const client = cookieClient();
   const email = uniqueEmail(tag);
-  const res = await client.post('/signup', { churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' });
+  const res = await client.post('/signup', { churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' });
   createdChurchIds.push(res.body.church.id);
   // These tests cover user management, not the Free plan's seat limit — that
   // has its own coverage in test/plan-limits.test.js — so they run on Pro,
@@ -76,10 +76,10 @@ async function newSignedInChurch(tag) {
 
 async function addNonAdminUser(churchId, role) {
   const email = uniqueEmail(`non-admin-${role.toLowerCase()}`);
-  const passwordHash = await bcrypt.hash('password123', 10);
+  const passwordHash = await bcrypt.hash('Tr0ubadour-7!', 10);
   const user = await db.user.create({ data: { churchId, username: `u-${Date.now()}`, email, passwordHash, role, financeRole: 'NONE' } });
   const client = cookieClient();
-  const login = await client.post('/login', { email, password: 'password123' });
+  const login = await client.post('/login', { email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(login.status, 200);
   return { client, userId: user.id };
 }
@@ -94,13 +94,13 @@ test('owner sees themself in the user list after signup (seeded ADMIN)', async (
 test('invite a new user with a role and finance role; duplicate username in same church rejected', async () => {
   const { client } = await newSignedInChurch('users-invite');
   const invited = await client.post('/api/users', {
-    username: 'treasurer1', email: uniqueEmail('treasurer'), password: 'password123', role: 'VIEWER', financeRole: 'TREASURER',
+    username: 'treasurer1', email: uniqueEmail('treasurer'), password: 'Tr0ubadour-7!', role: 'VIEWER', financeRole: 'TREASURER',
   });
   assert.strictEqual(invited.status, 201);
   assert.strictEqual(invited.body.financeRole, 'TREASURER');
 
   const dup = await client.post('/api/users', {
-    username: 'treasurer1', email: uniqueEmail('treasurer2'), password: 'password123',
+    username: 'treasurer1', email: uniqueEmail('treasurer2'), password: 'Tr0ubadour-7!',
   });
   assert.strictEqual(dup.status, 409);
 });
@@ -109,9 +109,9 @@ test('email is globally unique across churches, not just per-church', async () =
   const a = await newSignedInChurch('users-global-email-a');
   const b = await newSignedInChurch('users-global-email-b');
   const email = uniqueEmail('shared');
-  const first = await a.client.post('/api/users', { username: 'person', email, password: 'password123' });
+  const first = await a.client.post('/api/users', { username: 'person', email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(first.status, 201);
-  const second = await b.client.post('/api/users', { username: 'person', email, password: 'password123' });
+  const second = await b.client.post('/api/users', { username: 'person', email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(second.status, 409);
 });
 
@@ -123,7 +123,7 @@ test('cannot demote the church\'s last admin', async () => {
 
 test('reset-password, disable-2fa, delete a teammate; cannot delete self', async () => {
   const { client, ownerId } = await newSignedInChurch('users-manage');
-  const invited = await client.post('/api/users', { username: 'staff1', email: uniqueEmail('staff'), password: 'password123' });
+  const invited = await client.post('/api/users', { username: 'staff1', email: uniqueEmail('staff'), password: 'Tr0ubadour-7!' });
   const id = invited.body.id;
 
   assert.strictEqual((await client.post(`/api/users/${id}/reset-password`, { password: 'newpassword123' })).status, 204);
@@ -138,7 +138,7 @@ test('reset-password, disable-2fa, delete a teammate; cannot delete self', async
 test('cross-tenant: church B admin cannot see or modify church A\'s users', async () => {
   const a = await newSignedInChurch('users-cross-a');
   const b = await newSignedInChurch('users-cross-b');
-  const invited = await a.client.post('/api/users', { username: 'a-staff', email: uniqueEmail('a-staff'), password: 'password123' });
+  const invited = await a.client.post('/api/users', { username: 'a-staff', email: uniqueEmail('a-staff'), password: 'Tr0ubadour-7!' });
 
   const bList = await b.client.get('/api/users');
   assert.ok(!bList.body.some((u) => u.id === invited.body.id));
@@ -151,5 +151,5 @@ test('non-admin (VIEWER) cannot manage users at all', async () => {
   const { churchId } = await newSignedInChurch('users-rbac');
   const { client: viewer } = await addNonAdminUser(churchId, 'VIEWER');
   assert.strictEqual((await viewer.get('/api/users')).status, 403);
-  assert.strictEqual((await viewer.post('/api/users', { username: 'x', email: uniqueEmail('x'), password: 'password123' })).status, 403);
+  assert.strictEqual((await viewer.post('/api/users', { username: 'x', email: uniqueEmail('x'), password: 'Tr0ubadour-7!' })).status, 403);
 });

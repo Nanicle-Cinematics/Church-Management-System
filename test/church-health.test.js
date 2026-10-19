@@ -48,7 +48,7 @@ test.after(async () => {
 const unique = (tag) => `${tag}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
 
 async function proChurch(tag, proUntil) {
-  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'password123' });
+  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   await db.church.update({ where: { id: church.id }, data: { plan: 'pro', proSince: new Date(), proUntil } });
   return church.id;
@@ -98,7 +98,7 @@ const daysAgo = (n) => new Date(Date.now() - n * DAY);
 
 async function church(tag, { age, members = 0, signedInDaysAgo = null, activeDaysAgo = null }) {
   const email = unique(tag);
-  const { church: c } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' });
+  const { church: c } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' });
   churchIds.push(c.id);
   await db.church.update({ where: { id: c.id }, data: { createdAt: daysAgo(age) } });
   if (members) await db.member.createMany({ data: Array.from({ length: members }, (_, i) => ({ churchId: c.id, firstName: `M${i}`, lastName: tag })) });
@@ -129,7 +129,7 @@ test('quiet, never started, and fine', async () => {
 test('signing in stamps the user\'s last sign-in', async () => {
   const c = await church('health-login', { age: 1 });
   assert.strictEqual((await db.user.findFirst({ where: { churchId: c.id } })).lastLoginAt, null);
-  const res = await fetch(`${base}/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: c.email, password: 'password123' }) });
+  const res = await fetch(`${base}/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: c.email, password: 'Tr0ubadour-7!' }) });
   assert.strictEqual(res.status, 200);
   const user = await db.user.findFirst({ where: { churchId: c.id } });
   assert.ok(user.lastLoginAt && Date.now() - user.lastLoginAt < 60000);

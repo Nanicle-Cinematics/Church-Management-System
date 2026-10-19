@@ -83,7 +83,7 @@ function uniqueEmail(tag) {
 }
 async function signedInChurch(tag) {
   const c = client();
-  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'password123' });
+  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'Tr0ubadour-7!' });
   assert.strictEqual(signup.status, 201);
   createdChurchIds.push(signup.body.church.id);
   return { client: c, churchId: signup.body.church.id };
@@ -98,10 +98,10 @@ function csrfOf(html) {
 // actuals) has to go through this second-user approval step.
 async function approveExpense(churchId, expenseId) {
   const email = uniqueEmail('approver');
-  const passwordHash = await bcrypt.hash('password123', 10);
+  const passwordHash = await bcrypt.hash('Tr0ubadour-7!', 10);
   await db.user.create({ data: { churchId, username: `approver-${Date.now()}`, email, passwordHash, role: 'VIEWER', financeRole: 'TREASURER' } });
   const approver = client();
-  const login = await approver.postJson('/login', { email, password: 'password123' });
+  const login = await approver.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(login.status, 200);
   const page = await approver.getHtml('/finance/expenses');
   const csrf = csrfOf(page.text);
@@ -155,9 +155,9 @@ test('accounting is gated: anonymous redirected, user without a finance role is 
   const r = await anon.getHtml('/finance/accounting');
   assert.strictEqual(r.status, 302);
   const email = uniqueEmail('plain');
-  await db.user.create({ data: { churchId, username: `plain-${Date.now()}`, email, passwordHash: await bcrypt.hash('password123', 10), role: 'VIEWER', financeRole: 'NONE' } });
+  await db.user.create({ data: { churchId, username: `plain-${Date.now()}`, email, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 10), role: 'VIEWER', financeRole: 'NONE' } });
   const plain = client();
-  await plain.postJson('/login', { email, password: 'password123' });
+  await plain.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   for (const p of ['/finance/accounting', '/finance/accounting/trial-balance.csv', '/finance/audit', '/finance/settings']) {
     assert.strictEqual((await plain.getHtml(p)).status, 403, p);
   }
@@ -257,9 +257,9 @@ test('a recorder who edits their own submitted expense still cannot approve it, 
   await submitExpense(c, fund, cat);
   const e = await db.expense.findFirst({ where: { churchId } });
   const email = uniqueEmail('editor');
-  const editorUser = await db.user.create({ data: { churchId, username: `editor-${Date.now()}`, email, passwordHash: await bcrypt.hash('password123', 10), role: 'VIEWER', financeRole: 'TREASURER' } });
+  const editorUser = await db.user.create({ data: { churchId, username: `editor-${Date.now()}`, email, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 10), role: 'VIEWER', financeRole: 'TREASURER' } });
   const editor = client();
-  await editor.postJson('/login', { email, password: 'password123' });
+  await editor.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   const csrf = await csrfFrom(editor, `/finance/expenses/${e.id}/edit`);
   await editor.postForm(`/finance/expenses/${e.id}/edit`, { spentOn: '2026-06-01', expenseCatId: String(cat.id), amount: '120', fundId: String(fund.id), description: 'Tweaked by editor', _csrf: csrf });
   assert.strictEqual((await db.expense.findUnique({ where: { id: e.id } })).recordedBy, editorUser.id);

@@ -38,12 +38,12 @@ function client() {
 
 async function adminOf(tag) {
   const email = unique(tag);
-  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' });
+  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   // Pro, so the Free plan's staff limit does not get in the way.
   await db.church.update({ where: { id: church.id }, data: { plan: 'pro' } });
   const c = client();
-  assert.strictEqual((await c.post('/login', { email, password: 'password123' })).status, 200);
+  assert.strictEqual((await c.post('/login', { email, password: 'Tr0ubadour-7!' })).status, 200);
   return { churchId: church.id, client: c };
 }
 
@@ -72,14 +72,14 @@ test.after(async () => {
 
 test('an admin adds a phone-only user, who signs in however the number is typed', async () => {
   const local = freshLocal();
-  const created = await A.client.post('/api/users', { username: `steward${Date.now()}`, phone: local, password: 'password123', role: 'VIEWER' });
+  const created = await A.client.post('/api/users', { username: `steward${Date.now()}`, phone: local, password: 'Tr0ubadour-7!', role: 'VIEWER' });
   assert.strictEqual(created.status, 201);
   assert.strictEqual(created.body.phone, stored(local));
   assert.strictEqual(created.body.email, null);
 
   const spaced = `${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}`;
   for (const typed of [local, spaced, stored(local), `00233${local.slice(1)}`]) {
-    const res = await client().post('/login', { email: typed, password: 'password123' });
+    const res = await client().post('/login', { email: typed, password: 'Tr0ubadour-7!' });
     assert.strictEqual(res.status, 200, `signs in with ${typed}`);
   }
   assert.strictEqual((await client().post('/login', { email: local, password: 'wrong-password' })).status, 401);
@@ -88,14 +88,14 @@ test('an admin adds a phone-only user, who signs in however the number is typed'
 test('a user with both can sign in with either; email verification does not block a phone-only user', async () => {
   const local = freshLocal();
   const email = unique('both');
-  assert.strictEqual((await A.client.post('/api/users', { username: `both${Date.now()}`, email, phone: local, password: 'password123' })).status, 201);
-  assert.strictEqual((await client().post('/login', { email: local, password: 'password123' })).status, 200);
+  assert.strictEqual((await A.client.post('/api/users', { username: `both${Date.now()}`, email, phone: local, password: 'Tr0ubadour-7!' })).status, 201);
+  assert.strictEqual((await client().post('/login', { email: local, password: 'Tr0ubadour-7!' })).status, 200);
 
   const phoneOnly = freshLocal();
-  await A.client.post('/api/users', { username: `ponly${Date.now()}`, phone: phoneOnly, password: 'password123' });
+  await A.client.post('/api/users', { username: `ponly${Date.now()}`, phone: phoneOnly, password: 'Tr0ubadour-7!' });
   process.env.REQUIRE_EMAIL_VERIFICATION = '1';
   try {
-    assert.strictEqual((await client().post('/login', { email: phoneOnly, password: 'password123' })).status, 200);
+    assert.strictEqual((await client().post('/login', { email: phoneOnly, password: 'Tr0ubadour-7!' })).status, 200);
   } finally {
     delete process.env.REQUIRE_EMAIL_VERIFICATION;
   }
@@ -103,19 +103,19 @@ test('a user with both can sign in with either; email verification does not bloc
 
 test('a phone number can only have one account, across churches', async () => {
   const local = freshLocal();
-  assert.strictEqual((await A.client.post('/api/users', { username: `one${Date.now()}`, phone: local, password: 'password123' })).status, 201);
-  const again = await B.client.post('/api/users', { username: `two${Date.now()}`, phone: `+233${local.slice(1)}`, password: 'password123' });
+  assert.strictEqual((await A.client.post('/api/users', { username: `one${Date.now()}`, phone: local, password: 'Tr0ubadour-7!' })).status, 201);
+  const again = await B.client.post('/api/users', { username: `two${Date.now()}`, phone: `+233${local.slice(1)}`, password: 'Tr0ubadour-7!' });
   assert.strictEqual(again.status, 409);
   assert.match(again.body.error, /another church/);
-  assert.strictEqual((await A.client.post('/api/users', { username: 'x', password: 'password123' })).status, 400, 'an email or phone is required');
-  assert.strictEqual((await A.client.post('/api/users', { username: 'y', phone: '12', password: 'password123' })).status, 400, 'a bad number is refused');
+  assert.strictEqual((await A.client.post('/api/users', { username: 'x', password: 'Tr0ubadour-7!' })).status, 400, 'an email or phone is required');
+  assert.strictEqual((await A.client.post('/api/users', { username: 'y', phone: '12', password: 'Tr0ubadour-7!' })).status, 400, 'a bad number is refused');
 });
 
 test('removing a user, or deleting their church, frees the number', async () => {
   const local = freshLocal();
-  const created = await A.client.post('/api/users', { username: `gone${Date.now()}`, phone: local, password: 'password123' });
+  const created = await A.client.post('/api/users', { username: `gone${Date.now()}`, phone: local, password: 'Tr0ubadour-7!' });
   assert.strictEqual((await A.client.del(`/api/users/${created.body.id}`)).status, 204);
-  const reuse = await A.client.post('/api/users', { username: `back${Date.now()}`, phone: local, password: 'password123' });
+  const reuse = await A.client.post('/api/users', { username: `back${Date.now()}`, phone: local, password: 'Tr0ubadour-7!' });
   assert.strictEqual(reuse.status, 201, 'a removed user\'s number can be given to someone new');
 
   await releaseChurchEmails(db, A.churchId);
@@ -127,33 +127,33 @@ test('removing a user, or deleting their church, frees the number', async () => 
 
 test('a removed user\'s username can be given to someone new, including users removed before this fix', async () => {
   const name = `reuse${Date.now()}`;
-  const first = await A.client.post('/api/users', { username: name, email: unique('reuse1'), password: 'password123' });
+  const first = await A.client.post('/api/users', { username: name, email: unique('reuse1'), password: 'Tr0ubadour-7!' });
   assert.strictEqual(first.status, 201);
   assert.strictEqual((await A.client.del(`/api/users/${first.body.id}`)).status, 204);
-  assert.strictEqual((await A.client.post('/api/users', { username: name, email: unique('reuse2'), password: 'password123' })).status, 201);
+  assert.strictEqual((await A.client.post('/api/users', { username: name, email: unique('reuse2'), password: 'Tr0ubadour-7!' })).status, 201);
 
   // An older removal kept the username as it was.
   const legacyName = `legacy${Date.now()}`;
-  const legacy = await A.client.post('/api/users', { username: legacyName, email: unique('legacy'), password: 'password123' });
+  const legacy = await A.client.post('/api/users', { username: legacyName, email: unique('legacy'), password: 'Tr0ubadour-7!' });
   await db.user.update({ where: { id: legacy.body.id }, data: { deletedAt: new Date(), email: null } });
-  assert.strictEqual((await A.client.post('/api/users', { username: legacyName, phone: freshLocal(), password: 'password123' })).status, 201);
+  assert.strictEqual((await A.client.post('/api/users', { username: legacyName, phone: freshLocal(), password: 'Tr0ubadour-7!' })).status, 201);
   assert.strictEqual((await db.user.findUnique({ where: { id: legacy.body.id } })).username, `deleted+${legacy.body.id}+${legacyName}`);
 });
 
 test('an admin edits how a user signs in: add a phone, change the email, keep at least one', async () => {
   const email = unique('edit');
-  const created = await A.client.post('/api/users', { username: `edit${Date.now()}`, email, password: 'password123' });
+  const created = await A.client.post('/api/users', { username: `edit${Date.now()}`, email, password: 'Tr0ubadour-7!' });
   const id = created.body.id;
   const local = freshLocal();
 
   const added = await A.client.put(`/api/users/${id}/login`, { email, phone: local });
   assert.strictEqual(added.status, 200);
   assert.strictEqual(added.body.phone, stored(local));
-  assert.strictEqual((await client().post('/login', { email: local, password: 'password123' })).status, 200, 'now signs in with the phone');
+  assert.strictEqual((await client().post('/login', { email: local, password: 'Tr0ubadour-7!' })).status, 200, 'now signs in with the phone');
 
   const phoneOnly = await A.client.put(`/api/users/${id}/login`, { phone: local });
   assert.strictEqual(phoneOnly.body.email, null);
-  assert.strictEqual((await client().post('/login', { email, password: 'password123' })).status, 401, 'the old email no longer signs in');
+  assert.strictEqual((await client().post('/login', { email, password: 'Tr0ubadour-7!' })).status, 401, 'the old email no longer signs in');
 
   assert.strictEqual((await A.client.put(`/api/users/${id}/login`, {})).status, 400, 'at least one is required');
   const otherChurchEmail = (await db.user.findFirst({ where: { churchId: B.churchId } })).email;

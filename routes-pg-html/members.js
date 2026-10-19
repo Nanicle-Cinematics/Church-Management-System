@@ -28,7 +28,7 @@ const path = require('path');
 const multer = require('multer');
 const asyncHandler = require('../lib/async-handler');
 const { pickEnum, cleanDate, memberFieldError, createMemberWithId, GENDERS, MARITAL_STATUSES: MARITAL_ENUM, PREFERRED_CHANNELS } = require('../lib/member-input');
-const { esc, initials, fmtDate, DAYS_OF_WEEK, MONTHS, looksLikeImage, dobMonth, dobDay, dobYear, dobHasYear, birthDate, fmtBirthday } = require('../lib/format');
+const { esc, initials, fmtDate, DAYS_OF_WEEK, MONTHS, looksLikeImage, imageExt, dobMonth, dobDay, dobYear, dobHasYear, birthDate, fmtBirthday } = require('../lib/format');
 const { pageHero, pager, ICON_EYE, ICON_PENCIL, ICON_TRASH, memberAvatar } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
@@ -706,7 +706,7 @@ function register(app) {
     if (!looksLikeImage(req.file.buffer)) {
       return res.status(400).send(`<p>That file does not look like a valid image. Upload a JPG, PNG, WebP or GIF.</p><p><a href="/members/${id}">Back</a></p>`);
     }
-    const ext = EXT_FROM_MIME[req.file.mimetype.toLowerCase()] || 'jpg';
+    const ext = imageExt(req.file.buffer);
     const filename = `${id}.${ext}`;
     fs.writeFileSync(path.join(PHOTO_DIR, filename), req.file.buffer);
     // Remove any stale photos with other extensions for this member.

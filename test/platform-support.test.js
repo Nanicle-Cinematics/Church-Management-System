@@ -49,7 +49,7 @@ test.after(async () => {
 const unique = (tag) => `${tag}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
 
 async function proChurch(tag, proUntil) {
-  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'password123' });
+  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   await db.church.update({ where: { id: church.id }, data: { plan: 'pro', proSince: new Date(), proUntil } });
   return church.id;
@@ -97,10 +97,10 @@ async function signedInOperator() {
 
 async function setup() {
   const ownerEmail = unique('support-owner');
-  const { church } = await signupChurch({ churchName: 'Support Church', name: 'Owner', email: ownerEmail, password: 'password123' });
+  const { church } = await signupChurch({ churchName: 'Support Church', name: 'Owner', email: ownerEmail, password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   const owner = await db.user.findFirst({ where: { churchId: church.id } });
-  const phoneUser = await db.user.create({ data: { churchId: church.id, username: `phone-${Date.now()}`, phone: `+23324${String(Date.now()).slice(-7)}`, passwordHash: await bcrypt.hash('password123', 4), role: 'EDITOR' } });
+  const phoneUser = await db.user.create({ data: { churchId: church.id, username: `phone-${Date.now()}`, phone: `+23324${String(Date.now()).slice(-7)}`, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 4), role: 'EDITOR' } });
   return { churchId: church.id, owner, phoneUser };
 }
 

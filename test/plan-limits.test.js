@@ -86,7 +86,7 @@ async function signupChurch(tag) {
   const res = await fetch(`${base}/signup`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ churchName: `${tag} Church`, name: 'Owner', email: uniqueEmail(tag), password: 'password123' }),
+    body: JSON.stringify({ churchName: `${tag} Church`, name: 'Owner', email: uniqueEmail(tag), password: 'Tr0ubadour-7!' }),
   });
   assert.strictEqual(res.status, 201);
   const set = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
@@ -115,12 +115,12 @@ test('a Free church is refused a third staff account', async () => {
   const c = await signupChurch('plan-seats');
   // Signup created the owner, so one seat remains.
   const second = await c.post('/api/users', {
-    username: 'second', email: uniqueEmail('seat2'), password: 'password123',
+    username: 'second', email: uniqueEmail('seat2'), password: 'Tr0ubadour-7!',
   });
   assert.strictEqual(second.status, 201);
 
   const third = await c.post('/api/users', {
-    username: 'third', email: uniqueEmail('seat3'), password: 'password123',
+    username: 'third', email: uniqueEmail('seat3'), password: 'Tr0ubadour-7!',
   });
   assert.strictEqual(third.status, 402, 'third seat should be refused on Free');
   assert.strictEqual(third.body.code, 'plan_limit');
@@ -128,13 +128,13 @@ test('a Free church is refused a third staff account', async () => {
 
 test('upgrading to Pro lifts the seat limit immediately', async () => {
   const c = await signupChurch('plan-seats-pro');
-  await c.post('/api/users', { username: 'second', email: uniqueEmail('p2'), password: 'password123' });
-  const blocked = await c.post('/api/users', { username: 'third', email: uniqueEmail('p3'), password: 'password123' });
+  await c.post('/api/users', { username: 'second', email: uniqueEmail('p2'), password: 'Tr0ubadour-7!' });
+  const blocked = await c.post('/api/users', { username: 'third', email: uniqueEmail('p3'), password: 'Tr0ubadour-7!' });
   assert.strictEqual(blocked.status, 402);
 
   await c.goPro();
   const allowed = await c.post('/api/users', {
-    username: 'third', email: uniqueEmail('p4'), password: 'password123',
+    username: 'third', email: uniqueEmail('p4'), password: 'Tr0ubadour-7!',
   });
   assert.strictEqual(allowed.status, 201, 'Pro should accept the seat that Free refused');
 });

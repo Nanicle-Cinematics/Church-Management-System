@@ -34,9 +34,9 @@ function client() {
 
 async function signedIn(role, financeRole = 'NONE') {
   const email = unique(role.toLowerCase());
-  await db.user.create({ data: { churchId, username: `${role}-${Date.now()}`, email, passwordHash: await bcrypt.hash('password123', 4), role, financeRole } });
+  await db.user.create({ data: { churchId, username: `${role}-${Date.now()}`, email, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 4), role, financeRole } });
   const c = client();
-  assert.strictEqual((await c.post('/login', { email, password: 'password123' })).status, 200);
+  assert.strictEqual((await c.post('/login', { email, password: 'Tr0ubadour-7!' })).status, 200);
   return c;
 }
 
@@ -44,7 +44,7 @@ test.before(async () => {
   const app = createTenantApp({ pool });
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
-  const { church } = await signupChurch({ churchName: 'Editor Role Church', name: 'Owner', email: unique('owner'), password: 'password123' });
+  const { church } = await signupChurch({ churchName: 'Editor Role Church', name: 'Owner', email: unique('owner'), password: 'Tr0ubadour-7!' });
   churchId = church.id;
   editor = await signedIn('EDITOR', 'CASHIER');
   viewer = await signedIn('VIEWER');

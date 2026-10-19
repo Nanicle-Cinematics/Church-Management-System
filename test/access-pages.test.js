@@ -38,13 +38,13 @@ function client() {
 
 async function signIn(email) {
   const c = client();
-  assert.strictEqual((await c.post('/login', { email, password: 'password123' })).status, 200);
+  assert.strictEqual((await c.post('/login', { email, password: 'Tr0ubadour-7!' })).status, 200);
   return c;
 }
 
 async function staff(role, financeRole = 'NONE') {
   const email = unique(`${role}-${financeRole}`.toLowerCase());
-  await db.user.create({ data: { churchId, username: `${role}-${financeRole}-${Date.now()}`, email, passwordHash: await bcrypt.hash('password123', 4), role, financeRole } });
+  await db.user.create({ data: { churchId, username: `${role}-${financeRole}-${Date.now()}`, email, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 4), role, financeRole } });
   return signIn(email);
 }
 
@@ -53,7 +53,7 @@ test.before(async () => {
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
   const ownerEmail = unique('owner');
-  const { church } = await signupChurch({ churchName: 'Access Pages Church', name: 'Owner', email: ownerEmail, password: 'password123' });
+  const { church } = await signupChurch({ churchName: 'Access Pages Church', name: 'Owner', email: ownerEmail, password: 'Tr0ubadour-7!' });
   churchId = church.id;
   owner = await signIn(ownerEmail);
   viewer = await staff('VIEWER');
