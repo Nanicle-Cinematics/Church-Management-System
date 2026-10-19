@@ -10,6 +10,7 @@ const { esc } = require('../lib/format');
 const { db } = require('../lib/tenant');
 const { createRateLimiter } = require('../lib/rate-limit');
 const { createTotpSecret, verifyTotp, createRecoveryCodes, consumeRecoveryCode } = require('../lib/mfa');
+const { seal } = require('../lib/secret-box');
 const { operatorAuthPage } = require('../lib/operator-shell');
 const {
   authenticateOperator, startPendingOperator, pendingOperatorId, createOperatorSession,
@@ -20,6 +21,12 @@ const loginLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 10,
   key: (req) => `op|${req.ip}|${String(req.body?.email || '').trim().toLowerCase()}`,
+});
+// Same spraying gap as the church login: the limiter above is per email.
+const loginIpLimit = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  key: (req) => `op-ip|${req.ip}`,
 });
 const codeLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
@@ -81,7 +88,7 @@ function register(app) {
     res.send(operatorAuthPage('Sign in', loginBody()));
   });
 
-  app.post('/platform/login', loginLimit, asyncHandler(async (req, res) => {
+  app.post('/platform/login', loginIpLimit, loginLimit, asyncHandler(async (req, res) => {
     const { email, password } = req.body || {};
     const result = await authenticateOperator(email, password);
     if (result.status === 'locked') {
@@ -141,7 +148,7 @@ function register(app) {
     // Only claim setup if no one finished it in another tab meanwhile.
     const claimed = await db.platformOperator.updateMany({
       where: { id: operator.id, totpEnabled: false },
-      data: { totpEnabled: true, totpSecret: secret, totpRecoveryCodes: recovery.serialized },
+      data: { totpEnabled: true, totpSecret: seal(secret), totpRecoveryCodes: recovery.serialized },
     });
     if (claimed.count !== 1) return res.redirect('/platform/login');
     await logPlatformEvent(req, { operator, event: 'operator.mfa_enabled', subject: operator.email });

@@ -53,6 +53,37 @@ function pickSigValid(token, memberId, sig) {
   const given = Buffer.from(String(sig || ''));
   return given.length === expected.length && crypto.timingSafeEqual(given, expected);
 }
+// A QR code is shown to a whole room, then photographed and forwarded, so the
+// link only works around its event: from 12 hours before it starts (check-in)
+// until a day after it ends. RSVP links go out in advance, so they have no
+// opening time, only the same closing one.
+const HOUR = 3600000;
+function publicLinkOpen(ev, kind) {
+  const start = new Date(ev.startsAt).getTime();
+  const end = new Date(ev.endsAt || ev.startsAt).getTime();
+  const now = Date.now();
+  return now <= end + 24 * HOUR && (kind === 'rsvp' || now >= start - 12 * HOUR);
+}
+// Resolves the link's church and event, or answers 404 itself and returns null.
+async function openPublicLink(req, res, kind) {
+  const resolved = await resolveChurchByCheckinToken(req.params.token);
+  const label = kind === 'rsvp' ? 'RSVP' : 'Check-in';
+  if (!resolved) {
+    res.status(404).send(authPage(`${label} link not recognized`, kind === 'rsvp'
+      ? '<p>This RSVP link is not valid.</p>'
+      : '<p>This check-in QR is no longer valid. Please ask an usher for help.</p>'));
+    return null;
+  }
+  if (!publicLinkOpen(resolved.event, kind)) {
+    res.status(404).send(authPage(`${label} is closed`, `<p>This ${label.toLowerCase()} link only works around the time of the event. Please ask an usher for help.</p>`));
+    return null;
+  }
+  return resolved;
+}
+// Anyone holding the link can search, so a result shows a first name and last
+// initial, never a full name, member ID or class.
+const publicName = (m) => `${m.firstName} ${String(m.lastName || '').charAt(0)}${m.lastName ? '.' : ''}`.trim();
+
 function memberSearchWhere(q) {
   const words = q.split(/\s+/).filter(Boolean);
   const fullNameMatch = words.length >= 2
@@ -62,7 +93,6 @@ function memberSearchWhere(q) {
     { externalId: q.toUpperCase() },
     { firstName: { contains: q, mode: 'insensitive' } },
     { lastName: { contains: q, mode: 'insensitive' } },
-    { mobilePhone: { contains: q } },
     ...fullNameMatch,
   ];
 }
@@ -500,10 +530,8 @@ function register(app) {
 
   // ---------- Public self-service check-in (no session) ----------
   app.get('/checkin/:token', publicRateLimit, asyncHandler(async (req, res) => {
-    const resolved = await resolveChurchByCheckinToken(req.params.token);
-    if (!resolved) {
-      return res.status(404).send(authPage('Check-in link not recognized', '<p>This check-in QR is no longer valid. Please ask an usher for help.</p>'));
-    }
+    const resolved = await openPublicLink(req, res, 'checkin');
+    if (!resolved) return;
     const { event: ev } = resolved;
     const when = new Date(ev.startsAt).toLocaleString('en-GB', { weekday: 'long', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
     res.send(churchPage(resolved, `Check in · ${ev.title}`, `
@@ -517,17 +545,15 @@ function register(app) {
   }));
 
   app.post('/checkin/:token', publicRateLimit, asyncHandler(async (req, res) => {
-    const resolved = await resolveChurchByCheckinToken(req.params.token);
-    if (!resolved) {
-      return res.status(404).send(authPage('Check-in link not recognized', '<p>This check-in QR is no longer valid.</p>'));
-    }
+    const resolved = await openPublicLink(req, res, 'checkin');
+    if (!resolved) return;
     const { event: ev, db } = resolved;
 
     const confirmedCheckin = async (m) => {
       await db.attendance.upsert({ where: { eventId_memberId: { eventId: ev.id, memberId: m.id } }, update: {}, create: { eventId: ev.id, memberId: m.id } });
       await logActivity(db, 'attendance_recorded', `${m.firstName} ${m.lastName} self-checked in to ${ev.title}`, `/events/${ev.id}`, null);
       return res.send(churchPage(resolved, `✓ Checked in, ${m.firstName}`, `
-        <p style="font-size:1.1rem">Welcome, <strong>${esc(m.firstName)} ${esc(m.lastName)}</strong>.</p>
+        <p style="font-size:1.1rem">Welcome, <strong>${esc(publicName(m))}</strong>.</p>
         <p>You're checked in to <strong>${esc(ev.title)}</strong>. Have a blessed time. 🙏</p>
         <p style="margin-top:1.25rem"><a href="/checkin/${esc(req.params.token)}">Check in another person</a></p>`));
     };
@@ -546,7 +572,7 @@ function register(app) {
     if (q.length < MIN_PUBLIC_QUERY) return res.redirect(`/checkin/${req.params.token}`);
     const matches = await db.member.findMany({
       where: { deletedAt: null, OR: memberSearchWhere(q) },
-      include: { bibleClass: { select: { name: true } }, attendance: { where: { eventId: ev.id }, select: { eventId: true } } },
+      select: { id: true, firstName: true, lastName: true, attendance: { where: { eventId: ev.id }, select: { eventId: true } } },
       orderBy: { lastName: 'asc' },
       take: 12,
     });
@@ -567,8 +593,7 @@ function register(app) {
         <input type="hidden" name="sig" value="${pickSig(req.params.token, m.id)}">
         <button type="submit" ${m.attendance.length ? 'disabled' : ''}>
           <div class="who">
-            <div class="name">${esc(m.firstName)} ${esc(m.lastName)}</div>
-            <div class="meta">${esc(m.externalId) || ''}${m.bibleClass ? ' · ' + esc(m.bibleClass.name) : ''}</div>
+            <div class="name">${esc(publicName(m))}</div>
           </div>
           <span class="pick-tag">${m.attendance.length ? '✓ already checked in' : 'Tap to check in'}</span>
         </button>
@@ -583,10 +608,8 @@ function register(app) {
   // ---------- Public self-service RSVP (no session) ----------
   // Same search-then-pick flow as check-in: the page never lists the roster.
   app.get('/rsvp/:token', publicRateLimit, asyncHandler(async (req, res) => {
-    const resolved = await resolveChurchByCheckinToken(req.params.token);
-    if (!resolved) {
-      return res.status(404).send(authPage('RSVP link not recognized', '<p>This RSVP link is not valid.</p>'));
-    }
+    const resolved = await openPublicLink(req, res, 'rsvp');
+    if (!resolved) return;
     const { event: ev } = resolved;
     const done = req.query.ok === '1';
     res.send(churchPage(resolved, `RSVP · ${ev.title}`, `
@@ -601,8 +624,8 @@ function register(app) {
   }));
 
   app.post('/rsvp/:token', publicRateLimit, asyncHandler(async (req, res) => {
-    const resolved = await resolveChurchByCheckinToken(req.params.token);
-    if (!resolved) return res.status(404).send('Not found');
+    const resolved = await openPublicLink(req, res, 'rsvp');
+    if (!resolved) return;
     const { event: ev, db } = resolved;
     const response = RSVP_RESPONSES.includes(req.body.response) ? req.body.response : 'GOING';
     const statusFilter = { in: ['MEMBER', 'REGULAR', 'VISITOR'] };
@@ -630,7 +653,7 @@ function register(app) {
     if (q.length < MIN_PUBLIC_QUERY) return res.redirect(`/rsvp/${req.params.token}`);
     const matches = await db.member.findMany({
       where: { deletedAt: null, membershipStatus: statusFilter, OR: memberSearchWhere(q) },
-      orderBy: { lastName: 'asc' }, take: 12, select: { id: true, firstName: true, lastName: true, externalId: true },
+      orderBy: { lastName: 'asc' }, take: 12, select: { id: true, firstName: true, lastName: true },
     });
     if (matches.length === 0) {
       return res.send(churchPage(resolved, 'No match found', `
@@ -642,8 +665,7 @@ function register(app) {
         <input type="hidden" name="memberId" value="${m.id}">
         <input type="hidden" name="sig" value="${pickSig(req.params.token, m.id)}">
         <input type="hidden" name="response" value="${esc(response)}">
-        <button type="submit"><div class="who"><div class="name">${esc(m.firstName)} ${esc(m.lastName)}</div>
-          <div class="meta">${esc(m.externalId) || ''}</div></div><span class="pick-tag">Tap to send RSVP</span></button>
+        <button type="submit"><div class="who"><div class="name">${esc(publicName(m))}</div></div><span class="pick-tag">Tap to send RSVP</span></button>
       </form>`).join('');
     res.send(churchPage(resolved, 'Pick your name', `
       <p class="muted-text">${matches.length} match${matches.length === 1 ? '' : 'es'} for "${esc(q)}":</p>
