@@ -2,6 +2,12 @@ name: deploy
 
 # Deploys only after the "tests" workflow has PASSED on main. It used to run on
 # every push to main in parallel with the tests, so a red build still shipped.
+#
+# This repo is public and this job holds the production deploy token, so it
+# must only ever deploy code pushed to THIS repository. `branches: [main]` is
+# matched against the branch NAME, which a pull request from a fork can also
+# call "main"; without the checks below, such a PR with passing tests would
+# make this job build the fork's code with FLY_API_TOKEN.
 on:
   workflow_run:
     workflows: ["tests"]
@@ -16,7 +22,7 @@ concurrency:
 jobs:
   fly:
     name: Deploy to Fly.io
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: read
