@@ -49,13 +49,13 @@ function client() {
 
 async function signIn(email) {
   const c = client();
-  assert.strictEqual((await c.json('/login', { email, password: 'password123' })).status, 200);
+  assert.strictEqual((await c.json('/login', { email, password: 'Tr0ubadour-7!' })).status, 200);
   return c;
 }
 
 async function newChurch(tag) {
   const email = unique(tag);
-  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' });
+  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   await db.church.update({ where: { id: church.id }, data: { plan: 'pro' } });
   const fund = await db.fund.create({ data: { churchId: church.id, name: 'General Fund' } });
@@ -64,7 +64,7 @@ async function newChurch(tag) {
 
 async function staff(churchId, role, financeRole, extra = {}) {
   const email = unique(`${role}-${financeRole}`.toLowerCase());
-  const user = await db.user.create({ data: { churchId, username: `${role}-${financeRole}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, email, passwordHash: await bcrypt.hash('password123', 4), role, financeRole, ...extra } });
+  const user = await db.user.create({ data: { churchId, username: `${role}-${financeRole}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, email, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 4), role, financeRole, ...extra } });
   return { user, client: await signIn(email) };
 }
 

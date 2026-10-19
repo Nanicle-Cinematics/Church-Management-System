@@ -49,7 +49,7 @@ test.after(async () => {
 const unique = (tag) => `${tag}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
 
 async function proChurch(tag, proUntil) {
-  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'password123' });
+  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   await db.church.update({ where: { id: church.id }, data: { plan: 'pro', proSince: new Date(), proUntil } });
   return church.id;
@@ -99,9 +99,9 @@ const local = (d) => new Date(d).toISOString().slice(0, 16);
 
 async function churchUser() {
   const email = unique('ann-church');
-  const { church } = await signupChurch({ churchName: 'Notice Church', name: 'Owner', email, password: 'password123' });
+  const { church } = await signupChurch({ churchName: 'Notice Church', name: 'Owner', email, password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
-  const res = await fetch(`${base}/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'password123' }) });
+  const res = await fetch(`${base}/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'Tr0ubadour-7!' }) });
   const cookie = res.headers.getSetCookie().find((c) => c.startsWith('connect.sid=')).split(';')[0];
   return (p) => fetch(base + p, { headers: { cookie } }).then((r) => r.text());
 }

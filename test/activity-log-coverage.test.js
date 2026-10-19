@@ -98,7 +98,7 @@ function extractCsrf(html) {
 async function signedInClient(tag) {
   const client = htmlClient();
   const signup = await client.postJson('/signup', {
-    churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'password123',
+    churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'Tr0ubadour-7!',
   });
   assert.strictEqual(signup.status, 201);
   const churchId = signup.body.church.id;

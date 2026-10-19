@@ -18,6 +18,7 @@ const asyncHandler = require('../lib/async-handler');
 const { canAddUser, upgradeMessage } = require('../lib/plan');
 const { logSecurityEvent } = require('../lib/security-audit');
 const { revokeUserSessions } = require('../lib/auth');
+const { passwordProblem } = require('../lib/password-policy');
 
 const ROLES = ['ADMIN', 'EDITOR', 'VIEWER'];
 const FINANCE_ROLES = ['NONE', 'CASHIER', 'TREASURER', 'AUDITOR', 'FINANCE_ADMIN'];
@@ -52,7 +53,8 @@ function register(app) {
     const logins = parseLogins(b);
     if (logins.error) return res.status(400).json({ error: logins.error });
     const { email, phone } = logins;
-    if (!b.password || String(b.password).length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
+    const passwordError = passwordProblem(b.password, { email });
+    if (passwordError) return res.status(400).json({ error: passwordError });
     const role = ROLES.includes(b.role) ? b.role : 'VIEWER';
     const financeRole = FINANCE_ROLES.includes(b.financeRole) ? b.financeRole : 'NONE';
 
@@ -111,7 +113,8 @@ function register(app) {
 
   app.post('/api/users/:id/reset-password', requireOwner, asyncHandler(async (req, res) => {
     const { password } = req.body || {};
-    if (!password || String(password).length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
+    const passwordError = passwordProblem(password);
+    if (passwordError) return res.status(400).json({ error: passwordError });
     try {
       const passwordHash = await bcrypt.hash(String(password), 10);
       const id = Number(req.params.id);

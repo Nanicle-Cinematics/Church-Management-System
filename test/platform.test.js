@@ -111,7 +111,7 @@ async function signedInOperator(operator) {
 
 async function newChurch(tag, email) {
   const c = client();
-  const res = await c.post('/signup', { churchName: `${tag} Church`, name: 'Owner', email: email || unique(tag), password: 'password123' });
+  const res = await c.post('/signup', { churchName: `${tag} Church`, name: 'Owner', email: email || unique(tag), password: 'Tr0ubadour-7!' });
   assert.strictEqual(res.status, 201);
   createdChurchIds.push(res.body.church.id);
   return { client: c, churchId: res.body.church.id };

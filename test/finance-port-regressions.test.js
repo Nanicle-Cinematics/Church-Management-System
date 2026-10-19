@@ -93,7 +93,7 @@ function uniqueEmail(tag) {
 }
 async function signedInChurch(tag) {
   const c = client();
-  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'password123' });
+  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'Tr0ubadour-7!' });
   assert.strictEqual(signup.status, 201);
   createdChurchIds.push(signup.body.church.id);
   return { client: c, churchId: signup.body.church.id };
@@ -108,10 +108,10 @@ function csrfOf(html) {
 // actuals) has to go through this second-user approval step.
 async function approveExpense(churchId, expenseId) {
   const email = uniqueEmail('approver');
-  const passwordHash = await bcrypt.hash('password123', 10);
+  const passwordHash = await bcrypt.hash('Tr0ubadour-7!', 10);
   await db.user.create({ data: { churchId, username: `approver-${Date.now()}`, email, passwordHash, role: 'VIEWER', financeRole: 'TREASURER' } });
   const approver = client();
-  const login = await approver.postJson('/login', { email, password: 'password123' });
+  const login = await approver.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(login.status, 200);
   const page = await approver.getHtml('/finance/expenses');
   const csrf = csrfOf(page.text);

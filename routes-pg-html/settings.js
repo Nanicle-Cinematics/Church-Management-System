@@ -12,7 +12,7 @@
 
 const asyncHandler = require('../lib/async-handler');
 const { loginLabel } = require('../lib/phone');
-const { esc, looksLikeImage } = require('../lib/format');
+const { esc, imageExt } = require('../lib/format');
 const { pageHero, statsRow } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { PLAN_LIMITS, isPro } = require('../routes-pg/settings');
@@ -201,11 +201,11 @@ function register(app) {
 
   app.post('/settings/logo', requireOwner, logoUpload.single('logo'), asyncHandler(async (req, res) => {
     if (!csrfValid(req)) return res.status(403).send('Security check failed. Refresh Settings and try again.');
-    if (!req.file || !looksLikeImage(req.file.buffer)) {
+    const ext = req.file && imageExt(req.file.buffer);
+    if (!ext) {
       flash(req, 'That file does not look like a valid image.');
       return res.redirect('/settings');
     }
-    const ext = LOGO_EXT_FROM_MIME[String(req.file.mimetype).toLowerCase()] || 'png';
     deleteTenantLogo(res.locals.churchId);
     fs.writeFileSync(path.join(LOGO_DIR, `${res.locals.churchId}.${ext}`), req.file.buffer);
     await logActivity(res.locals.db, 'settings_logo_updated', 'Church logo updated', '/settings', res.locals.user.id);

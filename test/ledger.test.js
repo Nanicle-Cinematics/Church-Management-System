@@ -36,7 +36,7 @@ function uniqueEmail(tag) {
 }
 
 async function newChurch(tag) {
-  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: uniqueEmail(tag), password: 'password123' });
+  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: uniqueEmail(tag), password: 'Tr0ubadour-7!' });
   createdChurchIds.push(church.id);
   return church.id;
 }

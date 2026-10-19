@@ -78,7 +78,7 @@ function client() {
 
 async function newChurch(tag) {
   const c = client();
-  const res = await c.json('/signup', { churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'password123' });
+  const res = await c.json('/signup', { churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'Tr0ubadour-7!' });
   assert.strictEqual(res.status, 201);
   churchIds.push(res.body.church.id);
   return { c, churchId: res.body.church.id };
@@ -177,9 +177,9 @@ test('the test SMS answers in words, and only admins can change the sender name'
   assert.match((await c.page(SETTINGS)).text, /Enter a valid phone number/);
 
   const editorEmail = unique('sms-editor');
-  await db.user.create({ data: { churchId, username: `sms-editor-${Date.now()}`, email: editorEmail, passwordHash: await bcrypt.hash('password123', 4), role: 'EDITOR', financeRole: 'NONE' } });
+  await db.user.create({ data: { churchId, username: `sms-editor-${Date.now()}`, email: editorEmail, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 4), role: 'EDITOR', financeRole: 'NONE' } });
   const editor = client();
-  assert.strictEqual((await editor.json('/login', { email: editorEmail, password: 'password123' })).status, 200);
+  assert.strictEqual((await editor.json('/login', { email: editorEmail, password: 'Tr0ubadour-7!' })).status, 200);
   const refused = await editor.form('/communications/sms-sender', { senderId: 'HIJACK' }, '/members');
   assert.strictEqual(refused.status, 403);
   assert.strictEqual((await db.church.findUnique({ where: { id: churchId } })).smsSenderId, null);

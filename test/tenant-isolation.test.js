@@ -21,7 +21,7 @@ const unique = (tag) => `${tag}-${process.pid}-${Date.now()}-${Math.random().toS
 
 async function church(tag) {
   const email = unique(tag);
-  const { church: c } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' });
+  const { church: c } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' });
   createdChurchIds.push(c.id);
   const tdb = tenantDb(c.id);
   const member = await tdb.member.create({ data: { firstName: `${tag}First`, lastName: `${tag}Secret` } });
@@ -106,7 +106,7 @@ function client() {
       return { status: res.status, text: await res.text() };
     },
     async login(email) {
-      const res = await fetch(`${base}/login`, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'password123' }) });
+      const res = await fetch(`${base}/login`, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'Tr0ubadour-7!' }) });
       remember(res);
       assert.strictEqual(res.status, 200);
     },

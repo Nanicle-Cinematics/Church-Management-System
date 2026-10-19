@@ -49,7 +49,7 @@ test.after(async () => {
 const unique = (tag) => `${tag}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
 
 async function proChurch(tag, proUntil) {
-  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'password123' });
+  const { church } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email: unique(tag), password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   await db.church.update({ where: { id: church.id }, data: { plan: 'pro', proSince: new Date(), proUntil } });
   return church.id;
@@ -97,10 +97,10 @@ async function signedInOperator() {
 
 async function churchAdmin() {
   const email = unique('view-admin');
-  const { church } = await signupChurch({ churchName: 'Viewed Church', name: 'Owner', email, password: 'password123' });
+  const { church } = await signupChurch({ churchName: 'Viewed Church', name: 'Owner', email, password: 'Tr0ubadour-7!' });
   churchIds.push(church.id);
   const c = client();
-  const res = await fetch(`${base}/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'password123' }) });
+  const res = await fetch(`${base}/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'Tr0ubadour-7!' }) });
   c.cookie = res.headers.getSetCookie().find((x) => x.startsWith('connect.sid=')).split(';')[0];
   // Reuse the cookie through the helper's form() by priming it with a page load.
   const page = (p) => fetch(base + p, { headers: { cookie: c.cookie }, redirect: 'manual' }).then(async (r) => ({ status: r.status, location: r.headers.get('location'), text: await r.text() }));
