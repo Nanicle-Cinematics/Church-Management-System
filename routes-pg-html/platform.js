@@ -142,13 +142,13 @@ function quickControls(church, compact = false) {
     </form>`;
   }
   return `${planForm}<form method="post" action="/platform/churches/${church.id}/access" class="inline platform-inline-form"
-      onsubmit="return confirm('Suspend access for this church? Its users will be blocked immediately.')">
+      data-confirm="Suspend access for this church? Its users will be blocked immediately.">
       <input type="hidden" name="action" value="suspend">
       <input name="reason" required maxlength="500" placeholder="Suspension reason">
       <button type="submit" class="danger">Suspend</button>
     </form>
     <form method="post" action="/platform/churches/${church.id}/access" class="inline platform-inline-form"
-      onsubmit="return confirm('Delete this church? Access is blocked immediately and its login emails are freed for reuse. It can be restored for 30 days.')">
+      data-confirm="Delete this church? Access is blocked immediately and its login emails are freed for reuse. It can be restored for 30 days.">
       <input type="hidden" name="action" value="delete">
       <input name="confirmSlug" required placeholder="Type ${esc(church.slug)}">
       <input name="reason" required maxlength="500" placeholder="Deletion reason">

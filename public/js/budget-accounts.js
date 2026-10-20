@@ -1,0 +1,3 @@
+/* Moved out of routes-pg-html/finance.js so the page carries no inline script (see the
+   Content-Security-Policy in lib/tenant-http.js). Loaded with defer. */
+(function(){document.querySelectorAll('form').forEach(function(f){var t=f.querySelector('select[name=lineType]'),a=f.querySelector('select[data-account-picker]');if(!t||!a)return;function sync(){[].forEach.call(a.querySelectorAll('optgroup'),function(g){var on=g.label.toLowerCase().indexOf(t.value.toLowerCase())===0;g.hidden=!on;g.disabled=!on;});var o=a.options[a.selectedIndex];if(o&&o.parentNode.tagName==='OPTGROUP'&&o.parentNode.disabled)a.value='';}t.addEventListener('change',sync);sync();});})();

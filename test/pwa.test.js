@@ -103,7 +103,9 @@ test('"Install app" starts hidden and is offered in the sidebar, the phone menu 
   const app = await (await get('/', { cookie })).text();
   assert.match(app, /<button class="pc-item pc-install" type="button" data-install-app hidden>/);
   assert.match(app, /<button class="pc-tile" type="button" data-sheet-cmd="install" data-install-app hidden/);
-  assert.match(app, /cmd === 'install' && window\.PwaInstall/);
+  // The phone menu's command handler lives in the page's script file now, not inline.
+  assert.match(app, /<script src="\/static\/js\/palette\.js\?v=[0-9a-f]+" defer><\/script>/);
+  assert.match(require('fs').readFileSync(require('path').join(__dirname, '../public/js/palette.js'), 'utf8'), /cmd === 'install' && window\.PwaInstall/);
   const login = await (await get('/login')).text();
   assert.match(login, /<button class="pa-install" type="button" data-install-app hidden>/);
 });

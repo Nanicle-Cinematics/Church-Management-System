@@ -161,7 +161,7 @@ function register(app) {
               <input type="file" name="logo" accept="image/jpeg,image/png,image/webp,image/gif" required>
               <button type="submit">${tenantLogoPath(church.id) ? 'Replace logo' : 'Upload logo'}</button>
             </form>
-            ${tenantLogoPath(church.id) ? `<form method="post" action="/settings/logo/delete" onsubmit="return confirm('Remove your custom logo and restore the default?')">
+            ${tenantLogoPath(church.id) ? `<form method="post" action="/settings/logo/delete" data-confirm="Remove your custom logo and restore the default?">
               <button class="link" type="submit">Restore default logo</button>
             </form>` : ''}
             <small class="muted-text">PNG, JPG, WebP or GIF · maximum 4 MB · square images work best.</small>

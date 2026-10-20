@@ -48,7 +48,7 @@ function register(app) {
       const locked = o.lockedUntil && new Date(o.lockedUntil) > new Date();
       const state = o.disabledAt ? '<span class="pill pill-failed">disabled</span>'
         : `${o.totpEnabled ? '<span class="pill pill-sent">2FA on</span>' : '<span class="pill pill-pending">2FA at next sign-in</span>'}${locked ? ' <span class="pill pill-failed">locked</span>' : ''}`;
-      const act = (action, label, cls = 'ghost', confirmText = '') => `<form method="post" action="/platform/operators/${o.id}/${action}" class="inline platform-inline-form"${confirmText ? ` onsubmit="return confirm('${esc(confirmText)}')"` : ''}><button type="submit" class="${cls}">${label}</button></form>`;
+      const act = (action, label, cls = 'ghost', confirmText = '') => `<form method="post" action="/platform/operators/${o.id}/${action}" class="inline platform-inline-form"${confirmText ? ` data-confirm="${esc(confirmText)}"` : ''}><button type="submit" class="${cls}">${label}</button></form>`;
       const self = o.id === me.id;
       return [
         `<strong>${esc(o.displayName || o.email)}</strong><small>${esc(o.email)}${self ? ' · you' : ''}</small>`,

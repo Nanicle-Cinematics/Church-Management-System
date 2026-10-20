@@ -101,7 +101,7 @@ function register(app) {
               ${canEdit ? `<td style="white-space:nowrap">
                 <a href="/inventory/${it.id}/edit" class="link">Edit</a>
                 ${isAdmin ? `<form method="post" action="/inventory/${it.id}/delete" class="inline"
-                      onsubmit="return confirm('Archive this item? It will be hidden but not permanently deleted.')">
+                      data-confirm="Archive this item? It will be hidden but not permanently deleted.">
                   <button type="submit" class="link">Archive</button>
                 </form>` : ''}
               </td>` : ''}

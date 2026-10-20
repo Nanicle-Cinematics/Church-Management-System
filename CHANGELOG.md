@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ### Security
 
+- **Strict script policy (CSP).** Pages can no longer run inline script. `script-src` is now `'self'` (it allowed `'unsafe-inline'`), so markup injected into a page cannot execute code. All 14 inline scripts moved to `public/js/`, and the 45 inline `onclick` / `onsubmit` / `onchange` handlers and 6 `javascript:` print links became `data-` attributes handled by `public/js/ui.js` (`data-confirm`, `data-prompt`, `data-autosubmit`, `data-print`, `data-reload`, ...). This also fixes a bug: confirm messages that contained a member's or user's name were built into inline JavaScript, so a name with a quote in it could run script when someone clicked Delete or Send. Messages now travel as plain text. Styles still allow inline `style=""`. `test/csp.test.js` fails if inline script or a handler comes back.
 - **Password rules.** A chosen password must be at least 10 characters (was 8), must not be a well-known one however it is dressed up ("Password123!", "Welcome2024"), a single repeated character or all digits, and must not contain the person's own email name. This applies to sign-up, password reset, new teammates and admin resets. Existing passwords are untouched.
 - **A reminder to turn on two-factor** at the top of the dashboard for Admins and finance accounts that have not, until they do.
 - **Reset and check-in links no longer reach logs.** The error log and Sentry now store URLs with the secret part (reset, verify, check-in, RSVP and unsubscribe links) and the query string removed.

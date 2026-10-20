@@ -192,7 +192,7 @@ function register(app) {
     if (!ev) return res.status(404).send('Not found');
     const extra = isAdmin ? `<div class="form-extra-actions" style="grid-column:1/-1;margin-top:0.6rem">
       <form method="post" action="/attendance/${id}/delete"
-            onsubmit="return confirm('Delete this service and its counts? This cannot be undone.')" style="display:inline">
+            data-confirm="Delete this service and its counts? This cannot be undone." style="display:inline">
         <button class="danger" type="submit">Delete service</button>
       </form>
     </div>` : '';

@@ -68,7 +68,7 @@ async function usageCard(month) {
   });
   return `
     <form method="get" action="/platform/sms" class="filter-bar" id="usage">
-      <label>Month <select name="month" onchange="this.form.submit()">${months.map((m) => `<option value="${m}"${m === month ? ' selected' : ''}>${esc(label(m))}</option>`).join('')}</select></label>
+      <label>Month <select name="month" data-autosubmit>${months.map((m) => `<option value="${m}"${m === month ? ' selected' : ''}>${esc(label(m))}</option>`).join('')}</select></label>
       <noscript><button type="submit">Show</button></noscript>
     </form>
     ${listCard({

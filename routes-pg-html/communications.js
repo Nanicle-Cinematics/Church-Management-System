@@ -286,7 +286,7 @@ function register(app) {
           <strong>Override member preferences (urgent only)</strong> — sends to opted-out members too.
         </label>
         <div class="actions">
-          <button type="submit" onclick="return confirm('Send this broadcast?')">📣 Send broadcast</button>
+          <button type="submit" data-confirm="Send this broadcast?">📣 Send broadcast</button>
         </div>
       </form>` : '';
 
@@ -381,7 +381,7 @@ function register(app) {
     });
     // While the background send is running, reload every few seconds so the
     // status and per-recipient log fill in without the admin refreshing.
-    const refresher = b.status === 'SENDING' ? '<script>setTimeout(function(){location.reload();},4000);</script>' : '';
+    const refresher = b.status === 'SENDING' ? '<span data-refresh="4000" hidden></span>' : '';
     const body = `${refresher}
       <div class="card">
         <div class="card-head">
@@ -435,7 +435,7 @@ function register(app) {
             <button type="submit">${church.smsSenderId ? 'Ask for this name' : 'Request sender name'}</button>
           </div>
         </form>
-        ${church.smsSenderId ? `<form method="post" action="/communications/sms-sender" style="margin-top:0.5rem" onsubmit="return confirm('Stop using your own sender name? Texts will be sent as ${esc(sms.defaultSender)}.')">
+        ${church.smsSenderId ? `<form method="post" action="/communications/sms-sender" style="margin-top:0.5rem" data-confirm="Stop using your own sender name? Texts will be sent as ${esc(sms.defaultSender)}.">
           <input type="hidden" name="remove" value="1"><button class="link" type="submit">Remove sender name</button></form>` : ''}
         <form class="form" method="post" action="/communications/sms-test" style="margin-top:1rem">
           <label>Send a test SMS to<input name="phone" required inputmode="tel" placeholder="024 412 7781"></label>

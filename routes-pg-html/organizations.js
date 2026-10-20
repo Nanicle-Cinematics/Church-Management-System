@@ -86,7 +86,7 @@ function register(app) {
       const actions = `
         <div class="row-actions">
           <a class="icon-btn view" href="/organizations/${o.id}" title="Manage" aria-label="Manage">${ICON_EYE}</a>
-          ${isAdmin ? `<form method="post" action="/organizations/${o.id}/archive" onsubmit="return confirm('Archive this organization? It will be hidden from the list.')">
+          ${isAdmin ? `<form method="post" action="/organizations/${o.id}/archive" data-confirm="Archive this organization? It will be hidden from the list.">
             <button class="icon-btn del" type="submit" title="Archive" aria-label="Archive">${ICON_TRASH}</button>
           </form>` : ''}
         </div>`;
@@ -175,7 +175,7 @@ function register(app) {
              </td>
              <td data-label="Role"><span class="pill ${mm.role === 'leader' ? 'pill-member' : 'pill-regular'}">${esc(mm.role)}</span></td>
              ${canEdit ? `<td data-label="Actions">
-               <form method="post" action="/organizations/${id}/remove" onsubmit="return confirm('Remove this member from ${esc(o.name).replace(/'/g, "\\'")}?')">
+               <form method="post" action="/organizations/${id}/remove" data-confirm="Remove this member from ${esc(o.name)}?">
                  <input type="hidden" name="memberId" value="${m.id}">
                  <button class="icon-btn del" type="submit" title="Remove" aria-label="Remove">${ICON_TRASH}</button>
                </form></td>` : ''}

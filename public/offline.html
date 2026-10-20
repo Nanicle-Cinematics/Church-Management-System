@@ -23,12 +23,12 @@
 </style>
 </head>
 <body>
-<main>
+<main data-reload-on-online>
   <img src="/static/icon-192.png" alt="">
   <h1>You're offline</h1>
   <p>Church Manager needs an internet connection to load your church's records. Check your Wi-Fi or mobile data, then try again.</p>
-  <button type="button" onclick="location.reload()">Try again</button>
+  <button type="button" data-reload>Try again</button>
 </main>
-<script>window.addEventListener('online', function () { location.reload(); });</script>
+<script src="/static/js/ui.js" defer></script>
 </body>
 </html>

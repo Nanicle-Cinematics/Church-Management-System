@@ -5,14 +5,16 @@
 
    Church pages are never cached: they hold members' and finance records, and
    an installed app is often on a shared phone or office computer. Only the
-   offline page and its icon are kept. */
-const OFFLINE_CACHE = 'church-manager-offline-v1';
+   offline page, its icon and its one script are kept. */
+const OFFLINE_CACHE = 'church-manager-offline-v2';
 const OFFLINE_URL = '/static/offline.html';
 const OFFLINE_ICON = '/static/icon-192.png';
+const OFFLINE_SCRIPT = '/static/js/ui.js';
+const OFFLINE_ASSETS = [OFFLINE_ICON, OFFLINE_SCRIPT];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(OFFLINE_CACHE)
-    .then((cache) => cache.addAll([OFFLINE_URL, OFFLINE_ICON]))
+    .then((cache) => cache.addAll([OFFLINE_URL, ...OFFLINE_ASSETS]))
     .then(() => self.skipWaiting()));
 });
 
@@ -24,15 +26,16 @@ self.addEventListener('activate', (event) => {
     .then(() => self.clients.claim()));
 });
 
-// Page loads (and the offline page's icon) only; everything else goes to the
-// network untouched.
+// Page loads (and the offline page's icon and script) only; everything else
+// goes to the network untouched.
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   if (req.mode === 'navigate') {
     event.respondWith(fetch(req).catch(() => caches.match(OFFLINE_URL)));
-  } else if (new URL(req.url).pathname === OFFLINE_ICON) {
-    event.respondWith(fetch(req).catch(() => caches.match(OFFLINE_ICON)));
+  } else {
+    const asset = OFFLINE_ASSETS.find((a) => new URL(req.url).pathname === a);
+    if (asset) event.respondWith(fetch(req).catch(() => caches.match(asset)));
   }
 });
 

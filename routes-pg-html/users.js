@@ -57,8 +57,8 @@ function register(app) {
          <input type="password" name="password" placeholder="new password" minlength="10" required>
          <button type="submit">Reset</button>
        </form>
-       ${u.totpEnabled ? `<form method="post" action="/users/${u.id}/disable-2fa" class="inline" onsubmit="return confirm('Disable 2FA for ${esc(u.username)}?')"><button type="submit">Disable 2FA</button></form>` : ''}
-       ${u.id !== res.locals.user.id ? `<form method="post" action="/users/${u.id}/delete" class="inline" onsubmit="return confirm('Delete ${esc(u.username)}?')"><button class="danger" type="submit">Delete</button></form>` : ''}</div>`,
+       ${u.totpEnabled ? `<form method="post" action="/users/${u.id}/disable-2fa" class="inline" data-confirm="Disable 2FA for ${esc(u.username)}?"><button type="submit">Disable 2FA</button></form>` : ''}
+       ${u.id !== res.locals.user.id ? `<form method="post" action="/users/${u.id}/delete" class="inline" data-confirm="Delete ${esc(u.username)}?"><button class="danger" type="submit">Delete</button></form>` : ''}</div>`,
     ]);
     const body = `
       ${pageHero('Users & Roles', 'Admin-only access control for staff and ministry administrators.')}
