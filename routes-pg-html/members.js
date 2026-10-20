@@ -26,6 +26,7 @@
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const { scriptTag } = require('../lib/style-tags');
 const asyncHandler = require('../lib/async-handler');
 const { pickEnum, cleanDate, memberFieldError, createMemberWithId, GENDERS, MARITAL_STATUSES: MARITAL_ENUM, PREFERRED_CHANNELS } = require('../lib/member-input');
 const { esc, initials, fmtDate, DAYS_OF_WEEK, MONTHS, looksLikeImage, imageExt, dobMonth, dobDay, dobYear, dobHasYear, birthDate, fmtBirthday } = require('../lib/format');
@@ -352,7 +353,7 @@ function register(app) {
       const actions = `<div class="row-actions">
           <a class="icon-btn view" href="/members/${r.id}" title="View" aria-label="View ${esc(r.firstName)}">${ICON_EYE}</a>
           ${canEdit ? `<a class="icon-btn edit" href="/members/${r.id}#edit" title="Edit" aria-label="Edit">${ICON_PENCIL}</a>` : ''}
-          ${isAdmin ? `<form method="post" action="/members/${r.id}/delete" onsubmit="return confirm('Archive this member? They will be hidden but not permanently deleted.')">
+          ${isAdmin ? `<form method="post" action="/members/${r.id}/delete" data-confirm="Archive this member? They will be hidden but not permanently deleted.">
             <button class="icon-btn del" type="submit" title="Archive" aria-label="Archive">${ICON_TRASH}</button>
           </form>` : ''}
         </div>`;
@@ -412,42 +413,7 @@ function register(app) {
         <span class="pm-bulk-sep"></span>
         <button class="pm-bulk-btn" id="pmBulkClear" type="button" aria-label="Clear selection">${icon('x')}</button>
       </div>
-      <script>
-        // Selection survives paging and live filtering (kept for this tab in
-        // sessionStorage) and feeds the SMS composer and the CSV export.
-        (function () {
-          var KEY = 'cm-members-selected', MAX = ${MAX_SELECTED}, sel;
-          try { sel = JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch (e) { sel = []; }
-          sel = sel.filter(function (x) { return /^\\d+$/.test(String(x)); }).map(String);
-          var bar = document.getElementById('pmBulk');
-          function save() { try { sessionStorage.setItem(KEY, JSON.stringify(sel)); } catch (e) { /* private mode */ } }
-          function paint() {
-            document.querySelectorAll('.pm-box').forEach(function (b) { b.checked = sel.indexOf(b.value) > -1; b.closest('tr').classList.toggle('is-selected', b.checked); });
-            var boxes = Array.prototype.slice.call(document.querySelectorAll('.pm-box')), all = document.querySelector('.pm-all');
-            if (all) { var on = boxes.filter(function (b) { return b.checked; }).length; all.checked = boxes.length > 0 && on === boxes.length; all.indeterminate = on > 0 && on < boxes.length; }
-            bar.hidden = !sel.length;
-            document.body.classList.toggle('pm-bulk-on', sel.length > 0);
-            document.getElementById('pmBulkN').textContent = sel.length;
-            document.getElementById('pmBulkSms').href = '/communications/broadcast?member_ids=' + sel.join(',');
-            document.getElementById('pmBulkCsv').href = '/members/export.csv?ids=' + sel.join(',');
-          }
-          function toggle(id, on) {
-            var i = sel.indexOf(id);
-            if (on && i < 0) { if (sel.length >= MAX) { alert('You can select up to ' + MAX + ' people at a time.'); return false; } sel.push(id); }
-            if (!on && i > -1) sel.splice(i, 1);
-            return true;
-          }
-          document.addEventListener('change', function (e) {
-            if (e.target.classList.contains('pm-box')) { if (!toggle(e.target.value, e.target.checked)) e.target.checked = false; save(); paint(); e.stopPropagation(); }
-            else if (e.target.classList.contains('pm-all')) { document.querySelectorAll('.pm-box').forEach(function (b) { toggle(b.value, e.target.checked); }); save(); paint(); e.stopPropagation(); }
-          }, true);
-          // Ticking a box is not a filter change: keep it from the live search's input listener.
-          document.addEventListener('input', function (e) { if (e.target.classList.contains('pm-box') || e.target.classList.contains('pm-all')) e.stopPropagation(); }, true);
-          document.getElementById('pmBulkClear').addEventListener('click', function () { sel = []; save(); paint(); });
-          document.addEventListener('results:updated', paint);
-          paint();
-        })();
-      </script>` : ''}
+      ${scriptTag('members-select', `data-max="${MAX_SELECTED}"`)}` : ''}
       <div class="pp-scrim" id="ppScrim" hidden></div>
       <aside class="pp-drawer" id="ppDrawer" role="dialog" aria-modal="true" aria-labelledby="ppTitle" aria-hidden="true">
         <div class="pp-top"><span>Member</span><span class="pp-grow"></span>
@@ -455,58 +421,7 @@ function register(app) {
           <button class="pc-ib" id="ppClose" type="button" aria-label="Close">${icon('x')}</button></div>
         <div class="pp-body" id="ppBody" aria-live="polite"></div>
       </aside>
-      <script>
-        // Slide-in profile: clicking a name or row opens a summary without
-        // leaving the list. ?open=ID keeps it in the address bar, so Back
-        // closes it and the link can be shared. Ctrl/Cmd-click still opens
-        // the full profile as a normal link.
-        (function () {
-          var drawer = document.getElementById('ppDrawer'), scrim = document.getElementById('ppScrim'), bodyEl = document.getElementById('ppBody'), full = document.getElementById('ppFull');
-          var lastFocus = null, token = 0;
-          function urlWith(id) { var u = new URL(location.href); if (id) u.searchParams.set('open', id); else u.searchParams.delete('open'); return u.pathname + u.search; }
-          function show(id) {
-            var mine = ++token;
-            full.href = '/members/' + id;
-            bodyEl.innerHTML = '<div class="pp-loading">Loading…</div>';
-            drawer.setAttribute('aria-hidden', 'false'); drawer.classList.add('on'); scrim.hidden = false; document.body.classList.add('pp-open');
-            document.getElementById('ppClose').focus();
-            fetch('/members/' + id + '/panel', { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
-              .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
-              .then(function (r) { if (mine !== token) return; bodyEl.innerHTML = r.ok ? r.t : '<div class="pp-loading">' + r.t.replace(/</g, '&lt;') + '</div>'; })
-              .catch(function () { if (mine === token) bodyEl.innerHTML = '<div class="pp-loading">Could not load this member. Check your connection and try again.</div>'; });
-          }
-          function hide() {
-            drawer.classList.remove('on'); drawer.setAttribute('aria-hidden', 'true'); scrim.hidden = true; document.body.classList.remove('pp-open');
-            if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
-            lastFocus = null;
-          }
-          function open(id) { if (!lastFocus) lastFocus = document.activeElement; history.pushState({ open: id }, '', urlWith(id)); show(id); }
-          function close() { if (new URL(location.href).searchParams.get('open')) history.back(); else hide(); }
-          document.addEventListener('click', function (e) {
-            var row = e.target.closest('.members-table tbody tr');
-            if (!row || e.target.closest('.row-actions, .pm-sel, button, input, select') || (e.target.closest('a') && !e.target.closest('a.m-name'))) return;
-            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-            var link = row.querySelector('a.m-name'), m = link && link.getAttribute('href').match(/\\/members\\/(\\d+)/);
-            if (!m) return;
-            e.preventDefault(); lastFocus = link; open(m[1]);
-          });
-          document.getElementById('ppClose').addEventListener('click', close);
-          scrim.addEventListener('click', close);
-          document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('on')) { e.stopPropagation(); close(); } }, true);
-          window.addEventListener('popstate', function () { var id = new URL(location.href).searchParams.get('open'); if (id) show(id); else hide(); });
-          var first = new URL(location.href).searchParams.get('open');
-          // Opened from a shared link: put the plain list underneath, so Back closes the panel instead of leaving.
-          if (/^\\d+$/.test(first || '')) { history.replaceState(null, '', urlWith(null)); history.pushState({ open: first }, '', urlWith(first)); show(first); }
-        })();
-        (function () {
-          var btn = document.querySelector('.pm-fbtn'), body = document.body;
-          function set(open) { body.classList.toggle('pm-sheet-open', open); btn.setAttribute('aria-expanded', open); }
-          btn.addEventListener('click', function () { set(!body.classList.contains('pm-sheet-open')); });
-          document.addEventListener('click', function (e) { if (body.classList.contains('pm-sheet-open') && !e.target.closest('#pmFacets') && !e.target.closest('.pm-fbtn')) set(false); });
-          document.querySelector('.pm-sheet-foot button').addEventListener('click', function (e) { if (window.matchMedia('(max-width: 900px)').matches) { e.preventDefault(); set(false); } });
-          document.addEventListener('keydown', function (e) { if (e.key === 'Escape') set(false); });
-        })();
-      </script>`;
+      ${scriptTag('members-panel')}`;
 
     res.page({ title: 'Members', active: '/members', noHeader: true, body });
   }));
@@ -645,7 +560,7 @@ function register(app) {
         <button type="submit">${m.photoFilename ? 'Replace photo' : 'Upload photo'}</button>
       </form>
       ${m.photoFilename ? `
-        <form method="post" action="/members/${id}/photo/delete" onsubmit="return confirm('Remove this photo?')">
+        <form method="post" action="/members/${id}/photo/delete" data-confirm="Remove this photo?">
           <button class="link" type="submit">Remove photo</button>
         </form>` : ''}`;
     const body = renderMemberProfile({

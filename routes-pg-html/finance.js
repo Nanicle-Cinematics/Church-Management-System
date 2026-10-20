@@ -25,6 +25,7 @@
 const asyncHandler = require('../lib/async-handler');
 const { esc, fmtMoney, fmtOutstanding, todayISO, isMoneyPositive, isMoneyNonNeg, isValidDate, DAYS_OF_WEEK } = require('../lib/format');
 const { pageHero, statsRow, listCard, table } = require('../lib/views');
+const { scriptTag } = require('../lib/style-tags');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const ledger = require('../lib/ledger-pg');
@@ -236,7 +237,7 @@ async function budgetAccountSelect(db, selected) {
     .map((a) => `<option value="${a.id}" ${Number(selected) === a.id ? 'selected' : ''}>${esc(a.code + ' · ' + a.name)}</option>`).join('')}</optgroup>`;
   return `<select name="accountId" data-account-picker><option value="">— all accounts —</option>${group('INCOME', 'Income accounts')}${group('EXPENSE', 'Expense accounts')}</select>`;
 }
-const BUDGET_ACCOUNT_SCRIPT = `<script>(function(){document.querySelectorAll('form').forEach(function(f){var t=f.querySelector('select[name=lineType]'),a=f.querySelector('select[data-account-picker]');if(!t||!a)return;function sync(){[].forEach.call(a.querySelectorAll('optgroup'),function(g){var on=g.label.toLowerCase().indexOf(t.value.toLowerCase())===0;g.hidden=!on;g.disabled=!on;});var o=a.options[a.selectedIndex];if(o&&o.parentNode.tagName==='OPTGROUP'&&o.parentNode.disabled)a.value='';}t.addEventListener('change',sync);sync();});})();</script>`;
+const BUDGET_ACCOUNT_SCRIPT = `${scriptTag('budget-accounts')}`;
 /** { ok } or { ok:false, message } — an account must be of the same kind as the line (income/expense). */
 async function accountMatchesLine(db, accountId, lineType) {
   if (!accountId) return { ok: true };
@@ -486,8 +487,8 @@ const backTo = (req, fallback) => ((req.body && req.body.return_to) === '/financ
 
 function expenseActions(e, { canWrite, canApprove, user, limitSettings, returnTo }) {
   const back = returnTo ? `<input type="hidden" name="return_to" value="${esc(returnTo)}">` : '';
-  const reject = `<form method="post" action="/finance/expenses/${e.id}/reject" style="display:inline" onsubmit="return confirm('Reject this expense?')">${back}<button type="submit" class="btn-link${returnTo ? ' ghost' : ''}">Reject</button></form>`;
-  const approve = `<form method="post" action="/finance/expenses/${e.id}/approve" style="display:inline" onsubmit="return confirm('Approve and pay this expense?')">${back}<button type="submit" class="btn-link">Approve</button></form>`;
+  const reject = `<form method="post" action="/finance/expenses/${e.id}/reject" style="display:inline" data-confirm="Reject this expense?">${back}<button type="submit" class="btn-link${returnTo ? ' ghost' : ''}">Reject</button></form>`;
+  const approve = `<form method="post" action="/finance/expenses/${e.id}/approve" style="display:inline" data-confirm="Approve and pay this expense?">${back}<button type="submit" class="btn-link">Approve</button></form>`;
   const buttons = [];
   let note = '';
   if (canWrite) buttons.push(`<a class="btn-link" href="/finance/expenses/${e.id}/edit">Edit</a>`);
@@ -664,7 +665,7 @@ function register(app) {
       if (s.status !== 'COUNTED') return '<span class="muted-text">Done</span>';
       if (!canApprove) return '<span class="muted-text">Awaiting</span>';
       if (s.enteredBy === user.id) return '<span class="muted-text" title="Someone other than the person who entered it must verify">Another officer</span>';
-      return `<form method="post" action="/finance/cash-counts/${s.id}/verify" onsubmit="return confirm('Verify ${esc(s.sheetNo)} (${esc(fmtMoney(s.countedAmount))})?')"><input type="hidden" name="return_to" value="/finance"><button type="submit" class="btn pf-sm">Verify</button></form>`;
+      return `<form method="post" action="/finance/cash-counts/${s.id}/verify" data-confirm="Verify ${esc(s.sheetNo)} (${esc(fmtMoney(s.countedAmount))})?"><input type="hidden" name="return_to" value="/finance"><button type="submit" class="btn pf-sm">Verify</button></form>`;
     };
     const collections = `<section class="pd-card">
       <div class="pd-ch"><div><h2>Sunday collections</h2><p class="sub">Cash count sheets · counted, then verified by a second officer</p></div>${toVerify ? `<span class="pill pill-pending">${toVerify} to verify</span>` : sheets.length ? '<span class="pill pill-ok">All verified</span>' : ''}</div>
@@ -883,7 +884,7 @@ function register(app) {
     </form>`;
     const actions = `<div class="finance-report-actions">
       <a class="btn ghost" href="/finance/reports/${type}.csv?${query}">Export CSV</a>
-      <button class="btn" type="button" onclick="window.print()">Print / save PDF</button>
+      <button class="btn" type="button" data-print>Print / save PDF</button>
     </div>`;
     const summary = statsRow([
       { cls: 'green', icon: icon('trend'), value: fmtMoney(income), label: `Income · ${compare(income, priorIncome)}` },
@@ -1106,7 +1107,7 @@ function register(app) {
           `${esc(incomeCategoryLabel(r.category))}${r.subcategory ? '<br><span class="muted-text">' + esc(r.subcategory) + '</span>' : ''}`,
           r.memberId ? `<a href="/members/${r.memberId}">${esc(r.member.firstName + ' ' + r.member.lastName)}</a>` : esc(r.receivedFrom || 'Anonymous'),
           fmtMoney(r.amount), esc(r.paymentMethod || 'Cash'), esc((r.fund && r.fund.name) || 'General fund'), esc((r.project && r.project.name) || '—'), esc(r.receiptNumber || '—'),
-          canWrite ? `<form method="post" action="/finance/income/${r.id}/delete" onsubmit="return confirm('Reverse and archive this income record?')"><button class="link" type="submit">Reverse</button></form>` : '',
+          canWrite ? `<form method="post" action="/finance/income/${r.id}/delete" data-confirm="Reverse and archive this income record?"><button class="link" type="submit">Reverse</button></form>` : '',
         ])) : '<p class="muted-text">No generic income recorded yet.</p>'}`;
     res.page({ title: 'Finance · Generic Income', active: '/finance', noHeader: true, body: `${pageHero('Generic Income', '')}${body}` });
   }));
@@ -1216,7 +1217,7 @@ function register(app) {
           rows.map((r) => [
             esc(r.collectionDate.toISOString().slice(0, 10)), esc(dayBornLabel(r.dayBorn)), fmtMoney(r.amount), r.headCount || 0,
             esc(r.paymentMethod || 'Cash'), esc((r.fund && r.fund.name) || 'General fund'), esc(r.receiptNumber || '—'),
-            canWrite ? `<form method="post" action="/finance/day-borns/${r.id}/delete" onsubmit="return confirm('Reverse and archive this collection?')"><button class="link" type="submit">Reverse</button></form>` : '',
+            canWrite ? `<form method="post" action="/finance/day-borns/${r.id}/delete" data-confirm="Reverse and archive this collection?"><button class="link" type="submit">Reverse</button></form>` : '',
           ])) : '<p class="muted-text">No standalone day-born collections recorded yet.</p>'}
       </section>`;
     res.page({ title: 'Finance · Day-Borns', active: '/finance', noHeader: true, body: `${pageHero('Day-Born Collections', '')}${body}` });
@@ -1600,7 +1601,7 @@ function register(app) {
           <div class="actions"><button type="submit">Save breakdown</button></div>
         </form>` : ''}
       </section>
-      ${canWrite ? `<form method="post" action="/finance/services/${id}/delete" onsubmit="return confirm('Archive this service and reverse its journal entry?')">
+      ${canWrite ? `<form method="post" action="/finance/services/${id}/delete" data-confirm="Archive this service and reverse its journal entry?">
         <button class="danger" type="submit">Archive service</button>
       </form>` : ''}`;
     res.page({ title: `Service · ${service.serviceType.typeName}`, active: '/finance', noHeader: true, body: `${pageHero(`Service · ${esc(service.serviceType.typeName)}`, '')}${body}` });
@@ -1780,7 +1781,7 @@ function register(app) {
         </form>` : ''}
       </section>
       ${pledgesSection}
-      ${canWrite ? `<form method="post" action="/finance/harvests/${id}/delete" onsubmit="return confirm('Archive this harvest and reverse its journal entry?')">
+      ${canWrite ? `<form method="post" action="/finance/harvests/${id}/delete" data-confirm="Archive this harvest and reverse its journal entry?">
         <button class="danger" type="submit">Archive harvest</button>
       </form>` : ''}`;
     res.page({ title: `Harvest · ${harvest.harvestName}`, active: '/finance', noHeader: true, body: `${pageHero(`Harvest · ${esc(harvest.harvestName)}`, '')}${body}` });
@@ -1952,12 +1953,12 @@ function register(app) {
     const memberName = `${member.firstName} ${member.lastName}`.trim();
     const outstanding = Number(r.pledge.pledgedAmount) - Number(r.paidToDate);
     const sendForm = canWrite
-      ? `<form method="post" action="/finance/pledges/payments/${r.id}/send" onsubmit="return confirm('Send this receipt to ${esc(memberName)} via their preferred channel?')">
+      ? `<form method="post" action="/finance/pledges/payments/${r.id}/send" data-confirm="Send this receipt to ${esc(memberName)} via their preferred channel?">
            <button type="submit">📤 Send receipt to ${esc(member.firstName)}</button>
          </form>` : '';
     const body = `
       <div class="screen-only receipt-actions">
-        <a class="btn" href="javascript:window.print()">🖨 Print / save as PDF</a>
+        <a class="btn" href="#" data-print>🖨 Print / save as PDF</a>
         ${sendForm}
         <a class="btn-link" href="/finance/receipts">← Back to receipts</a>
       </div>
@@ -2011,7 +2012,7 @@ function register(app) {
     const memberName = `${member.firstName} ${member.lastName}`.trim();
     const totalOutstanding = pledges.reduce((a, p) => a + (Number(p.pledgedAmount) - Number(p.paidAmount)), 0);
     const sendForm = canWrite && pledges.length
-      ? `<form method="post" action="/finance/pledges/statement/${member.id}/send" onsubmit="return confirm('Send this outstanding-balance statement to ${esc(memberName)}?')">
+      ? `<form method="post" action="/finance/pledges/statement/${member.id}/send" data-confirm="Send this outstanding-balance statement to ${esc(memberName)}?">
            <button type="submit">📤 Send statement to ${esc(member.firstName)}</button>
          </form>` : '';
     const rowsHtml = pledges.length
@@ -2020,7 +2021,7 @@ function register(app) {
       : '<p class="muted-text">This member has no outstanding pledges. 🎉</p>';
     const body = `
       <div class="screen-only receipt-actions">
-        <a class="btn" href="javascript:window.print()">🖨 Print / save as PDF</a>
+        <a class="btn" href="#" data-print>🖨 Print / save as PDF</a>
         ${sendForm}
         <a class="btn-link" href="/finance/receipts">← Back to receipts</a>
       </div>
@@ -2105,7 +2106,7 @@ function register(app) {
     const createdByName = (creator && creator.displayName) || '—';
     const body = `
       <div class="screen-only receipt-actions">
-        <a class="btn" href="javascript:window.print()">🖨 Print / save as PDF</a>
+        <a class="btn" href="#" data-print>🖨 Print / save as PDF</a>
         <a class="btn-link" href="/finance/receipts">← Back to receipts</a>
       </div>
       <div class="print-doc receipt-doc">
@@ -2133,7 +2134,7 @@ function register(app) {
     const totalGiving = rows.reduce((s, r) => s + r.total, 0);
     const yearSel = `<form method="get" class="filter-bar" style="margin:0">
         <label class="muted-text" style="display:flex;align-items:center;gap:0.4rem">Year
-          <select name="year" onchange="this.form.submit()">${givingYears().map((y) => `<option ${String(y) === year ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
+          <select name="year" data-autosubmit>${givingYears().map((y) => `<option ${String(y) === year ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
       </form>`;
     const inner = rows.length
       ? table(['Member', 'Gifts', `Total ${year}`, 'Statement'],
@@ -2160,14 +2161,14 @@ function register(app) {
     const { lines, byGroup, total } = await memberGivingForYear(db, id, year);
     const name = `${m.firstName} ${m.lastName}`.trim();
     const yearSel = `<form method="get" class="screen-only" style="display:inline">
-        <label>Year <select name="year" onchange="this.form.submit()">${givingYears().map((y) => `<option ${String(y) === year ? 'selected' : ''}>${y}</option>`).join('')}</select></label></form>`;
+        <label>Year <select name="year" data-autosubmit>${givingYears().map((y) => `<option ${String(y) === year ? 'selected' : ''}>${y}</option>`).join('')}</select></label></form>`;
     const rowsHtml = lines.length
       ? table(['Date', 'Category', 'Details', 'Amount'], lines.map((l) => [esc(l.dt), esc(l.category), esc(l.detail) || '—', fmtMoney(l.amount)]))
       : `<p class="muted-text">No giving was recorded for ${esc(name)} in ${year}.</p>`;
     const subtotals = Object.entries(byGroup).map(([g, a]) => `<div class="rc-line"><span>${esc(g)}</span><span>${fmtMoney(a)}</span></div>`).join('');
     const body = `
       <div class="screen-only receipt-actions">
-        <a class="btn" href="javascript:window.print()">🖨 Print / save as PDF</a>
+        <a class="btn" href="#" data-print>🖨 Print / save as PDF</a>
         ${yearSel}
         <a class="btn-link" href="/finance/statements?year=${year}">← Back to statements</a>
       </div>
@@ -2230,7 +2231,7 @@ function register(app) {
     ]);
     const body = `
       <div class="screen-only receipt-actions">
-        <a class="btn" href="javascript:window.print()">🖨 Print / save as PDF</a>
+        <a class="btn" href="#" data-print>🖨 Print / save as PDF</a>
         <a class="btn-link" href="/finance/vouchers">← Back to vouchers</a>
       </div>
       <div class="print-doc receipt-doc">
@@ -2439,7 +2440,7 @@ function register(app) {
            <form class="form" method="post" action="/finance/budgets" style="margin-top:0.75rem">
              <label class="wide">Name<input name="name" required placeholder="e.g. ${now.getFullYear()} Annual Budget"></label>
              <label>Year<input type="number" name="year" required value="${now.getFullYear()}"></label>
-             <label>Scope<select name="scope" onchange="this.form.month.disabled = this.value !== 'MONTHLY'">
+             <label>Scope<select name="scope" data-disable-unless="month=MONTHLY">
                <option value="ANNUAL">Annual</option><option value="MONTHLY">Monthly</option></select></label>
              <label>Month (if monthly)<input type="number" name="month" min="1" max="12" disabled></label>
              <label class="wide">Notes<input name="notes"></label>
@@ -2531,7 +2532,7 @@ function register(app) {
         ${lines.length ? table(['Type', 'Category', 'Account', 'Fund', 'Budgeted', 'Actual', 'Variance', canEditLines ? '' : null].filter(Boolean),
           lines.map((l) => [l.lineType, esc(l.category), esc(l.accountLabel), esc((l.fund && l.fund.name) || 'All funds'), fmtMoney(l.amount), fmtMoney(l.actual),
             fmtOutstanding(-l.variance),
-            ...(canEditLines ? [`<a class="btn-link" href="/finance/budgets/${id}/lines/${l.id}/edit">Edit</a> <form style="display:inline" method="post" action="/finance/budgets/${id}/lines/${l.id}/delete" onsubmit="return confirm('Remove this budget line?')"><button class="link" type="submit">Remove</button></form>`] : [])]))
+            ...(canEditLines ? [`<a class="btn-link" href="/finance/budgets/${id}/lines/${l.id}/edit">Edit</a> <form style="display:inline" method="post" action="/finance/budgets/${id}/lines/${l.id}/delete" data-confirm="Remove this budget line?"><button class="link" type="submit">Remove</button></form>`] : [])]))
           : '<p class="muted-text">No budget lines yet.</p>'}
       </section>
       ${addLineForm}`;
@@ -2737,7 +2738,7 @@ function register(app) {
       ${table(['Account', 'Fund', 'Debit', 'Credit', 'Memo'],
         entry.lines.map((l) => [esc(l.account.name), esc((l.fund && l.fund.name) || '—'), fmtMoney(l.debit), fmtMoney(l.credit), esc(l.memo) || '—']))}
       ${canManage && entry.status !== 'REVERSED' && !entry.reversesId ? `
-        <form method="post" action="/finance/journal/${entry.id}/reverse" onsubmit="return confirm('Reverse this journal entry?')" style="margin-top:1rem">
+        <form method="post" action="/finance/journal/${entry.id}/reverse" data-confirm="Reverse this journal entry?" style="margin-top:1rem">
           <label>Reason<input name="reason" placeholder="Why is this being reversed?"></label>
           <div class="actions"><button class="danger" type="submit">Reverse entry</button></div>
         </form>` : ''}`;
@@ -3147,7 +3148,7 @@ function register(app) {
     const kq = kind ? `&kind=${encodeURIComponent(kind)}` : '';
     const body = `
       <form method="get" action="/finance/audit" class="filter-bar">
-        <select name="kind" onchange="this.form.submit()">
+        <select name="kind" data-autosubmit>
           <option value="">All finance events</option>
           ${FINANCE_ACTIVITY_KINDS.map((k) => `<option value="${esc(k)}" ${k === kind ? 'selected' : ''}>${esc(k.replace(/_/g, ' '))}</option>`).join('')}
         </select>
@@ -3184,7 +3185,7 @@ function register(app) {
       ${periods.length ? table(['Year', 'Month', 'Status', 'Closed at', 'Actions'],
         periods.map((p) => [p.year, p.month ?? '—', `<span class="pill pill-${esc(p.status.toLowerCase())}">${esc(p.status)}</span>`,
           p.closedAt ? esc(p.closedAt.toISOString().slice(0, 10)) : '—',
-          canReopen && p.status === 'LOCKED' ? `<form method="post" action="/finance/periods/unlock" class="form" style="display:flex;gap:0.5rem;align-items:center" onsubmit="return confirm('Reopen this period for backdated postings?')">
+          canReopen && p.status === 'LOCKED' ? `<form method="post" action="/finance/periods/unlock" class="form" style="display:flex;gap:0.5rem;align-items:center" data-confirm="Reopen this period for backdated postings?">
             <input type="hidden" name="year" value="${p.year}"><input type="hidden" name="month" value="${p.month}">
             <input type="text" name="reason" placeholder="Reason for reopening (required)" required style="width:14rem">
             <button class="link" type="submit">Unlock</button></form>` : '']))

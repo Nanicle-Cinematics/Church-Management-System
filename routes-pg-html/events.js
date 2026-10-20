@@ -522,7 +522,7 @@ function register(app) {
           <p class="qr-url muted-text">${esc(url)}</p>
         </div>
         <div class="qr-actions screen-only">
-          <button onclick="window.print()">🖨 Print this QR sign</button>
+          <button data-print>🖨 Print this QR sign</button>
         </div>
       </div>`;
     res.page({ title: `Check-in QR · ${ev.title}`, active: '/events', body });

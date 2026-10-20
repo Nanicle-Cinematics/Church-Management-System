@@ -98,7 +98,7 @@ async function renderPayments(req, res) {
     esc(p.reference || '—'),
     esc(p.months ? `${p.months} mo` : '—'),
     esc(p.recordedBy || '—'),
-    `<form method="post" action="/platform/payments/${p.id}/delete" onsubmit="return confirm('Delete this payment record? It does not change the church\\'s plan.')">
+    `<form method="post" action="/platform/payments/${p.id}/delete" data-confirm="Delete this payment record? It does not change the church's plan.">
       <button class="link danger" type="submit">Delete</button></form>`,
   ]);
 

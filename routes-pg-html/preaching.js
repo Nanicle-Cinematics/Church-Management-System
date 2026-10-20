@@ -143,7 +143,7 @@ function register(app) {
            ${next.topic ? `<p>Topic: ${esc(next.topic)}${next.scripture ? ` · ${esc(next.scripture)}` : ''}</p>` : ''}
            ${next.reminderSentAt ? `<p class="muted-text">Reminder last sent ${esc(iso(next.reminderSentAt).replace('T', ' '))}.</p>` : ''}
            ${isAdmin ? (preachingHasContact(next)
-             ? `<form method="post" action="/preaching/${next.id}/remind" onsubmit="return confirm('Send an SMS / email reminder to this preacher?')">
+             ? `<form method="post" action="/preaching/${next.id}/remind" data-confirm="Send an SMS / email reminder to this preacher?">
                   <button class="btn primary" type="submit">＋ Send reminder</button>
                 </form>`
              : '<p class="muted-text">Add a phone or email for this preacher to enable reminders.</p>') : ''}
@@ -171,11 +171,11 @@ function register(app) {
           <a href="/preaching/${p.id}/edit" class="link">Edit</a>
           ${isAdmin && preachingHasContact(p)
             ? `<form method="post" action="/preaching/${p.id}/remind" class="inline"
-                    onsubmit="return confirm('Send an SMS / email reminder to this preacher?')">
+                    data-confirm="Send an SMS / email reminder to this preacher?">
                  <button type="submit" class="link">Remind</button>
                </form>` : ''}
           ${isAdmin ? `<form method="post" action="/preaching/${p.id}/delete" class="inline"
-                onsubmit="return confirm('Archive this appointment? It will be hidden but not permanently deleted.')">
+                data-confirm="Archive this appointment? It will be hidden but not permanently deleted.">
             <button type="submit" class="link">Archive</button>
           </form>` : ''}
         </td>` : ''}

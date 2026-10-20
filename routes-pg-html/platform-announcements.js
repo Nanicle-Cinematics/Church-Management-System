@@ -38,7 +38,7 @@ function register(app) {
         `${esc(when(a.startsAt))}<small>to ${esc(when(a.endsAt))}</small>`,
         `<div class="platform-actions">
           ${label !== 'ended' ? `<form method="post" action="/platform/announcements/${a.id}/end" class="inline platform-inline-form"><button type="submit" class="ghost">End now</button></form>` : ''}
-          <form method="post" action="/platform/announcements/${a.id}/delete" class="inline platform-inline-form" onsubmit="return confirm('Delete this announcement?')"><button type="submit" class="link danger">Delete</button></form>
+          <form method="post" action="/platform/announcements/${a.id}/delete" class="inline platform-inline-form" data-confirm="Delete this announcement?"><button type="submit" class="link danger">Delete</button></form>
         </div>`,
       ];
     });
