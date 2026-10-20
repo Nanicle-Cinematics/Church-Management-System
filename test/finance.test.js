@@ -228,7 +228,9 @@ test('RBAC: a VIEWER (no finance role) can read but not record income/expenses; 
   const viewer = await addUser(churchId, 'VIEWER', 'NONE');
   const cashier = await addUser(churchId, 'VIEWER', 'CASHIER');
 
-  assert.strictEqual((await viewer.get('/api/finance/accounts')).status, 200);
+  assert.strictEqual((await viewer.get('/api/members')).status, 200, 'a Viewer reads the church records');
+  assert.strictEqual((await viewer.get('/api/finance/accounts')).status, 403, 'but Finance, API included, needs a finance role');
+  assert.strictEqual((await cashier.get('/api/finance/accounts')).status, 200);
   assert.strictEqual((await viewer.post('/api/finance/income', { transactionDate: '2026-06-10', amount: 10, category: 'Tithe' })).status, 403);
   assert.strictEqual((await viewer.post('/api/finance/funds', { name: 'Blocked' })).status, 403);
 
