@@ -1072,6 +1072,8 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const canWrite = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(res.locals.user.financeRole);
+    // Undoing a posted entry is a fund manager's job; a Cashier records, but does not reverse.
+    const canReverse = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
     const rows = await db.incomeRecord.findMany({
       where: { deletedAt: null }, orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }], take: 100,
       include: { member: { select: { firstName: true, lastName: true } }, fund: { select: { name: true } }, project: { select: { name: true } } },
@@ -1107,7 +1109,7 @@ function register(app) {
           `${esc(incomeCategoryLabel(r.category))}${r.subcategory ? '<br><span class="muted-text">' + esc(r.subcategory) + '</span>' : ''}`,
           r.memberId ? `<a href="/members/${r.memberId}">${esc(r.member.firstName + ' ' + r.member.lastName)}</a>` : esc(r.receivedFrom || 'Anonymous'),
           fmtMoney(r.amount), esc(r.paymentMethod || 'Cash'), esc((r.fund && r.fund.name) || 'General fund'), esc((r.project && r.project.name) || '—'), esc(r.receiptNumber || '—'),
-          canWrite ? `<form method="post" action="/finance/income/${r.id}/delete" data-confirm="Reverse and archive this income record?"><button class="link" type="submit">Reverse</button></form>` : '',
+          canReverse ? `<form method="post" action="/finance/income/${r.id}/delete" data-confirm="Reverse and archive this income record?"><button class="link" type="submit">Reverse</button></form>` : '',
         ])) : '<p class="muted-text">No generic income recorded yet.</p>'}`;
     res.page({ title: 'Finance · Generic Income', active: '/finance', noHeader: true, body: `${pageHero('Generic Income', '')}${body}` });
   }));
@@ -1154,7 +1156,7 @@ function register(app) {
     res.redirect(`/finance/receipts/${encodeURIComponent(receiptNo)}/print?new=1`);
   }));
 
-  app.post('/finance/income/:id/delete', requireFinanceWrite, asyncHandler(async (req, res) => {
+  app.post('/finance/income/:id/delete', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const churchId = res.locals.churchId;
     const id = Number(req.params.id);
@@ -1175,6 +1177,8 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const canWrite = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(res.locals.user.financeRole);
+    // Undoing a posted entry is a fund manager's job; a Cashier records, but does not reverse.
+    const canReverse = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
     const rows = await db.dayBornCollection.findMany({
       where: { deletedAt: null }, orderBy: [{ collectionDate: 'desc' }, { id: 'desc' }], take: 120,
       include: { fund: { select: { name: true } } },
@@ -1217,7 +1221,7 @@ function register(app) {
           rows.map((r) => [
             esc(r.collectionDate.toISOString().slice(0, 10)), esc(dayBornLabel(r.dayBorn)), fmtMoney(r.amount), r.headCount || 0,
             esc(r.paymentMethod || 'Cash'), esc((r.fund && r.fund.name) || 'General fund'), esc(r.receiptNumber || '—'),
-            canWrite ? `<form method="post" action="/finance/day-borns/${r.id}/delete" data-confirm="Reverse and archive this collection?"><button class="link" type="submit">Reverse</button></form>` : '',
+            canReverse ? `<form method="post" action="/finance/day-borns/${r.id}/delete" data-confirm="Reverse and archive this collection?"><button class="link" type="submit">Reverse</button></form>` : '',
           ])) : '<p class="muted-text">No standalone day-born collections recorded yet.</p>'}
       </section>`;
     res.page({ title: 'Finance · Day-Borns', active: '/finance', noHeader: true, body: `${pageHero('Day-Born Collections', '')}${body}` });
@@ -1273,7 +1277,7 @@ function register(app) {
     res.redirect('/finance/day-borns');
   }));
 
-  app.post('/finance/day-borns/:id/delete', requireFinanceWrite, asyncHandler(async (req, res) => {
+  app.post('/finance/day-borns/:id/delete', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const churchId = res.locals.churchId;
     const id = Number(req.params.id);
@@ -1576,6 +1580,8 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const canWrite = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(res.locals.user.financeRole);
+    // Undoing a posted entry is a fund manager's job; a Cashier records, but does not reverse.
+    const canReverse = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
     const id = Number(req.params.id);
     const service = await db.service.findFirst({ where: { id, deletedAt: null }, include: { serviceType: { select: { typeName: true } } } });
     if (!service) return res.status(404).send('Not found');
@@ -1601,7 +1607,7 @@ function register(app) {
           <div class="actions"><button type="submit">Save breakdown</button></div>
         </form>` : ''}
       </section>
-      ${canWrite ? `<form method="post" action="/finance/services/${id}/delete" data-confirm="Archive this service and reverse its journal entry?">
+      ${canReverse ? `<form method="post" action="/finance/services/${id}/delete" data-confirm="Archive this service and reverse its journal entry?">
         <button class="danger" type="submit">Archive service</button>
       </form>` : ''}`;
     res.page({ title: `Service · ${service.serviceType.typeName}`, active: '/finance', noHeader: true, body: `${pageHero(`Service · ${esc(service.serviceType.typeName)}`, '')}${body}` });
@@ -1626,7 +1632,7 @@ function register(app) {
     res.redirect(`/finance/services/${id}`);
   }));
 
-  app.post('/finance/services/:id/delete', requireFinanceWrite, asyncHandler(async (req, res) => {
+  app.post('/finance/services/:id/delete', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const churchId = res.locals.churchId;
     const id = Number(req.params.id);
@@ -1730,6 +1736,8 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const canWrite = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(res.locals.user.financeRole);
+    // Undoing a posted entry is a fund manager's job; a Cashier records, but does not reverse.
+    const canReverse = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
     const id = Number(req.params.id);
     const harvest = await db.harvest.findFirst({ where: { id, deletedAt: null }, include: { organization: { select: { name: true } } } });
     if (!harvest) return res.status(404).send('Not found');
@@ -1781,7 +1789,7 @@ function register(app) {
         </form>` : ''}
       </section>
       ${pledgesSection}
-      ${canWrite ? `<form method="post" action="/finance/harvests/${id}/delete" data-confirm="Archive this harvest and reverse its journal entry?">
+      ${canReverse ? `<form method="post" action="/finance/harvests/${id}/delete" data-confirm="Archive this harvest and reverse its journal entry?">
         <button class="danger" type="submit">Archive harvest</button>
       </form>` : ''}`;
     res.page({ title: `Harvest · ${harvest.harvestName}`, active: '/finance', noHeader: true, body: `${pageHero(`Harvest · ${esc(harvest.harvestName)}`, '')}${body}` });
@@ -1804,7 +1812,7 @@ function register(app) {
     res.redirect(`/finance/harvests/${id}`);
   }));
 
-  app.post('/finance/harvests/:id/delete', requireFinanceWrite, asyncHandler(async (req, res) => {
+  app.post('/finance/harvests/:id/delete', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const churchId = res.locals.churchId;
     const id = Number(req.params.id);

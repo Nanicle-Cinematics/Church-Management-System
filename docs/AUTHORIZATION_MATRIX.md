@@ -45,9 +45,18 @@ not affected.
 | View finance pages and reports | Yes | Yes | Yes | Yes | Yes | No |
 | Record income, tithes, day-borns, services, harvests, pledges, expenses, cash counts, deposits | Yes | Yes | Yes | Yes | No | No |
 | Approve / reject expenses (tiered by amount, never your own) | Tier 3 | Tier 2 | Tier 1 | No | No | No |
-| Verify cash counts and deposits (never your own), void, reverse journals, manage funds, projects, budgets, lock periods | Yes | Yes | Yes | No | No | No |
+| Verify cash counts and deposits (never your own), void, reverse journals, reverse or archive income, day-born collections, services and harvests, manage funds, projects, budgets, lock periods | Yes | Yes | Yes | No | No | No |
 | Change expense approval limits | **Admin only** | No | No | No | No | No |
 | Reopen a locked period | **Admin only** | No | No | No | No | No |
+
+The finance role works on its own: it applies whatever the user's role is, so a
+Viewer who is also a Cashier can record money and a Viewer who is also a Treasurer
+can approve it. (The Users form says so next to both fields.) A Cashier records
+money but cannot undo a posted entry by any route; that needs a fund manager.
+
+The chart of accounts API (`/api/finance/accounts`) needs finance access like the
+rest of Finance. An event's check-in token, the secret in its QR code, is returned
+by the events API only to Admins and Editors, who can open the QR page.
 
 Allowances (Finance › Allowances): anyone who can view finance pages sees the
 worker list and each month's run; Admins, Finance Admins and Treasurers add,
