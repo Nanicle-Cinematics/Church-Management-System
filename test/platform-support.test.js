@@ -160,3 +160,36 @@ test('unlock, resend verification, and change how someone signs in', async () =>
   assert.match((await op.page(page)).text, /That user is not in this church/);
   assert.ok(await db.securityAuditLog.findFirst({ where: { churchId, event: 'support.login_changed' } }));
 });
+
+// Support can change how someone signs in, or make them a reset link, without
+// the church's say-so, so the person it is about must always be told.
+const NOTICE = 'Church Manager support made a change to your account';
+
+test('changing how someone signs in tells them at their OLD address, never at the new one', async () => {
+  const { churchId, owner } = await setup();
+  const op = await signedInOperator();
+  const page = `/platform/churches/${churchId}`;
+  const newEmail = unique('hijack-target');
+
+  await op.form(`${page}/users/${owner.id}/sign-in`, { email: newEmail, phone: '' }, page);
+  assert.strictEqual((await db.user.findUnique({ where: { id: owner.id } })).email, newEmail, 'the change was made');
+  assert.ok(await db.emailLog.findFirst({ where: { churchId, subject: NOTICE, recipient: owner.email } }), 'the old address was told');
+  assert.strictEqual(await db.emailLog.count({ where: { churchId, subject: NOTICE, recipient: newEmail } }), 0, 'the new address was not');
+  assert.match((await op.page(page)).text, /They have been told|could not be told/);
+  assert.ok(await db.securityAuditLog.findFirst({ where: { churchId, event: 'support.login_changed' } }), 'and it is in the church\'s own log');
+});
+
+test('a reset link shown to the operator tells the user; one sent to the user does not need to', async () => {
+  const { churchId, owner } = await setup();
+  const op = await signedInOperator();
+  const page = `/platform/churches/${churchId}`;
+  const notices = () => db.emailLog.count({ where: { churchId, subject: NOTICE, recipient: owner.email } });
+
+  await op.form(`${page}/users/${owner.id}/reset`, { via: 'email' }, page);
+  assert.strictEqual(await notices(), 0, 'the link itself went to the user, so there is nothing more to tell');
+  await op.form(`${page}/users/${owner.id}/reset`, { via: 'show' }, page);
+  assert.strictEqual(await notices(), 1, 'a link only the operator can see tells the user it was made');
+  await op.form(`${page}/users/${owner.id}/unlock`, {}, page);
+  assert.strictEqual(await notices(), 1, 'unlocking is harmless and says nothing');
+  assert.strictEqual(await db.securityAuditLog.count({ where: { churchId, event: 'support.password_reset_link' } }), 2);
+});

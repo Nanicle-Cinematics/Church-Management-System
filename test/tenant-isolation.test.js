@@ -141,3 +141,59 @@ test('an admin cannot check in or RSVP another church\'s member, so their name n
   await c.form(`${eventPage}/check`, { memberId: String(A.member.id) }, eventPage);
   assert.strictEqual(await db.attendance.count({ where: { churchId: A.id, memberId: A.member.id } }), 1);
 });
+
+// ---- a write may only ever name its own church --------------------------------
+// Found by attacking the layer directly (the review of cross-church access).
+// No route passes request data into a write, so none of these was reachable,
+// but each would have silently broken isolation the day one did.
+
+test('a write cannot hand a row to another church, however it names the church', async () => {
+  const mine = await A.db.member.create({ data: { firstName: 'Stay', lastName: 'Put' } });
+  for (const [label, run] of [
+    ['update churchId', () => A.db.member.update({ where: { id: mine.id }, data: { churchId: B.id } })],
+    ['update churchId {set}', () => A.db.member.update({ where: { id: mine.id }, data: { churchId: { set: B.id } } })],
+    ['updateMany churchId', () => A.db.member.updateMany({ where: { id: mine.id }, data: { churchId: B.id } })],
+    ['update church connect', () => A.db.member.update({ where: { id: mine.id }, data: { church: { connect: { id: B.id } } } })],
+    ['upsert update churchId', () => A.db.member.upsert({ where: { id: mine.id }, create: { firstName: 'x', lastName: 'y' }, update: { churchId: B.id } })],
+    ['create churchId', () => A.db.member.create({ data: { firstName: 'Plant', lastName: 'Create', churchId: B.id } })],
+    ['createMany churchId', () => A.db.member.createMany({ data: [{ firstName: 'Plant', lastName: 'Many', churchId: B.id }] })],
+    ['createManyAndReturn churchId', () => A.db.member.createManyAndReturn({ data: [{ firstName: 'Plant', lastName: 'Return', churchId: B.id }] })],
+    ['nested create churchId', () => A.db.event.create({ data: { title: 'x', startsAt: new Date(), attendance: { create: { memberId: mine.id, churchId: B.id } } } })],
+  ]) {
+    await assert.rejects(run, TenantRefError, label);
+  }
+  assert.strictEqual((await db.member.findUnique({ where: { id: mine.id } })).churchId, A.id, 'the row never left its church');
+  assert.strictEqual(await db.member.count({ where: { churchId: B.id, lastName: { in: ['Create', 'Many', 'Return'] } } }), 0, 'nothing was planted in the other church');
+  assert.strictEqual(await db.attendance.count({ where: { churchId: B.id, memberId: mine.id } }), 0);
+  // naming its own church is harmless
+  const own = await A.db.member.update({ where: { id: mine.id }, data: { churchId: A.id, firstName: 'Still' } });
+  assert.strictEqual(own.firstName, 'Still');
+});
+
+test('the newer operations are scoped like the older ones', async () => {
+  const before = await db.member.findUnique({ where: { id: B.member.id } });
+  const changed = await A.db.member.updateManyAndReturn({ where: { id: B.member.id }, data: { firstName: 'HACKED' } });
+  assert.deepStrictEqual(changed, [], "updateManyAndReturn does not reach another church's row");
+  assert.strictEqual((await db.member.findUnique({ where: { id: B.member.id } })).firstName, before.firstName);
+  const made = await A.db.member.createManyAndReturn({ data: [{ firstName: 'Made', lastName: 'InA' }] });
+  assert.strictEqual(made[0].churchId, A.id);
+});
+
+test('a scoped client needs a church: none given must fail, not return every church', () => {
+  for (const bad of [undefined, null, '', 0, {}, 123]) assert.throws(() => tenantDb(bad), /needs a church id/, String(bad));
+});
+
+test('reads and writes by id never cross churches, with any filter trick', async () => {
+  const id = B.member.id;
+  assert.strictEqual(await A.db.member.findUnique({ where: { id } }), null);
+  assert.strictEqual(await A.db.member.findFirst({ where: { id, churchId: B.id } }), null, 'a churchId in where is overridden, not honoured');
+  assert.deepStrictEqual(await A.db.member.findMany({ where: { OR: [{ churchId: B.id }, { id }] } }).then((r) => r.filter((m) => m.churchId !== A.id)), []);
+  assert.strictEqual((await A.db.member.findMany({ where: { NOT: { churchId: A.id } } })).length, 0);
+  assert.strictEqual(await A.db.member.count({ where: { id } }), 0);
+  assert.strictEqual((await A.db.member.aggregate({ _count: true, where: { id } }))._count, 0);
+  await assert.rejects(() => A.db.member.update({ where: { id }, data: { firstName: 'X' } }));
+  await assert.rejects(() => A.db.member.delete({ where: { id } }));
+  assert.strictEqual((await A.db.member.updateMany({ where: { id }, data: { firstName: 'X' } })).count, 0);
+  assert.strictEqual((await A.db.member.deleteMany({ where: { id } })).count, 0);
+  assert.ok(await db.member.findUnique({ where: { id } }), 'the row is untouched');
+});
