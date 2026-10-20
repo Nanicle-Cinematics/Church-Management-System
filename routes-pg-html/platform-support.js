@@ -38,6 +38,30 @@ async function record(req, res, user, event, subject) {
   await logPlatformEvent(req, { operator: res.locals.operator, event, subject, churchId: user.churchId });
 }
 
+// Support can change how someone signs in, or make them a reset link, without
+// the church's say-so (a locked-out admin cannot turn on support access). So the
+// person it is about is always told, at the contact they had BEFORE the change:
+// a change they did not ask for is then noticed. Failing to tell must not stop
+// the help, so it reports back instead of throwing.
+async function notifyUser(user, text) {
+  try {
+    if (user.email) {
+      await sendEmailEach(tenantDb(user.churchId), [{ addr: user.email }], 'Church Manager support made a change to your account', text,
+        { churchName: 'Church Manager', withFooter: false });
+      return true;
+    }
+    const phone = normalizePhoneGH(user.phone);
+    if (phone) {
+      const r = await sendSmsBatch([phone], `Church Manager: ${text}`, { churchId: user.churchId, platform: true });
+      return Boolean(r && r.ok);
+    }
+  } catch (e) {
+    console.error('[platform-support] could not notify the user:', e.message);
+  }
+  return false;
+}
+const told = (notified) => (notified ? ' They have been told.' : ' They could not be told (no working email or phone).');
+
 function register(app) {
   // "View as church": only while the church has turned on support access.
   app.post('/platform/churches/:id/view', requireOperator, asyncHandler(async (req, res) => {
@@ -61,9 +85,11 @@ function register(app) {
     const phone = normalizePhoneGH(user.phone);
     if (via === 'sms' && !phone) { flash(req, 'This user has no phone number.'); return res.redirect(back(user.churchId)); }
     if (!['email', 'sms', 'show'].includes(via)) { flash(req, 'Choose how to send the link.'); return res.redirect(back(user.churchId)); }
+    const who = loginLabel(user);
+    // Written before the link exists, so an action can never go unlogged.
+    await record(req, res, user, 'support.password_reset_link', `reset link for ${who} (${via === 'show' ? 'shown to the operator' : `by ${via}`})`);
     const { token } = await createPasswordResetTokenForUser(user.id);
     const link = `${base}/reset-password/${token}`;
-    const who = loginLabel(user);
     if (via === 'email') {
       await sendEmailEach(tenantDb(user.churchId), [{ addr: user.email }], 'Reset your Church Manager password',
         `Church Manager support sent you this link to set a new password. It works once, within one hour:\n\n${link}\n\nIf you did not ask for help, you can ignore this email.`,
@@ -73,15 +99,15 @@ function register(app) {
       const r = await sendSmsBatch([phone], `Church Manager: set a new password (works once, within 1 hour): ${link}`, { churchId: user.churchId, platform: true });
       flash(req, r.ok ? `Reset link texted to ${user.phone}.` : `The text was not sent: ${r.error || r.message || 'no reason given'}`, r.ok ? 'success' : 'error');
     } else {
-      flash(req, `Reset link for ${who} (works once, within an hour; pass it on privately): ${link}`, 'success');
+      const notified = await notifyUser(user, 'Church Manager support made a password reset link for your account (it works once, within one hour). If you did not ask support for help, tell your church admin right away and change your password.');
+      flash(req, `Reset link for ${who} (works once, within an hour; pass it on privately): ${link}.${told(notified)}`, 'success');
     }
-    await record(req, res, user, 'support.password_reset_link', `reset link for ${who} (${via === 'show' ? 'shown to the operator' : `by ${via}`})`);
     res.redirect(back(user.churchId));
   });
 
   route('unlock', async (req, res, user) => {
-    await rawDb.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });
     await record(req, res, user, 'support.account_unlocked', `unlocked ${loginLabel(user)}`);
+    await rawDb.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });
     flash(req, `${loginLabel(user)} can sign in again.`, 'success');
     res.redirect(back(user.churchId));
   });
@@ -90,10 +116,10 @@ function register(app) {
     const base = emailLinkBase(req);
     if (!user.email || user.emailVerifiedAt) { flash(req, 'Nothing to verify: no email, or already verified.'); return res.redirect(back(user.churchId)); }
     if (!base) { flash(req, 'PUBLIC_URL is not set, so no verification link can be made.'); return res.redirect(back(user.churchId)); }
+    await record(req, res, user, 'support.verification_resent', `verification email to ${user.email}`);
     const { token } = await createEmailVerificationToken(user.id);
     await sendEmailEach(tenantDb(user.churchId), [{ addr: user.email }], 'Verify your Church Manager email',
       `Verify your email within 24 hours:\n\n${base}/verify-email/${token}`, { churchName: 'Church Manager', withFooter: false });
-    await record(req, res, user, 'support.verification_resent', `verification email to ${user.email}`);
     flash(req, `Verification link sent to ${user.email}.`, 'success');
     res.redirect(back(user.churchId));
   });
@@ -105,11 +131,12 @@ function register(app) {
     if (taken) { flash(req, taken); return res.redirect(back(user.churchId)); }
     const data = { email: logins.email, phone: logins.phone };
     if (logins.email && logins.email !== user.email) data.emailVerifiedAt = new Date();
-    const updated = await rawDb.user.update({ where: { id: user.id }, data });
     const before = [user.email, user.phone].filter(Boolean).join(' / ') || '—';
-    const after = [updated.email, updated.phone].filter(Boolean).join(' / ');
+    const after = [logins.email, logins.phone].filter(Boolean).join(' / ');
     await record(req, res, user, 'support.login_changed', `${user.username}: ${before} -> ${after}`);
-    flash(req, `${user.displayName || user.username} now signs in with ${after}.`, 'success');
+    await rawDb.user.update({ where: { id: user.id }, data });
+    const notified = await notifyUser(user, `Church Manager support changed how you sign in: it is now ${after}. If you did not ask support for help, tell your church admin right away.`);
+    flash(req, `${user.displayName || user.username} now signs in with ${after}.${told(notified)}`, 'success');
     res.redirect(back(user.churchId));
   });
 }
