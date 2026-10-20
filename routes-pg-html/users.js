@@ -83,11 +83,11 @@ function register(app) {
           <option value="EDITOR">editor (add and edit)</option>
           <option value="VIEWER" selected>viewer (read-only)</option>
         </select>
-        <span class="hint">Admins manage everything, including users and settings. Editors add and edit records but cannot delete, export or send messages. Viewers read only. Money is controlled by the Finance role below.</span></label>
+        <span class="hint">Admins manage everything, including users and settings. Editors add and edit records but cannot delete, export or send messages. Viewers read only, except for money: the Finance role below works on its own, so a Viewer with a finance role can still record or approve money.</span></label>
         <label>Finance role<select name="financeRole">
           ${Object.entries(FINANCE_ROLE_LABELS).map(([v, l]) => `<option value="${v}"${v === 'NONE' ? ' selected' : ''}>${esc(l)}</option>`).join('')}
         </select>
-        <span class="hint">Finance roles control access to the Finance module. With None, an Editor or Viewer cannot open Finance, Communications or Reports, and Events, the Preaching Plan and Inventory are read-only.</span></label>
+        <span class="hint">Finance roles control access to the Finance module, whatever the Role above says. A Cashier records money; a Steward / Treasurer or Finance admin also approves expenses, verifies cash counts and reverses entries; an Auditor reads only. With None, an Editor or Viewer cannot open Finance, Communications or Reports, and Events, the Preaching Plan and Inventory are read-only.</span></label>
         <div class="actions form-actions">
           <a class="btn ghost" href="/users">Cancel</a>
           <button type="submit">Create user</button>

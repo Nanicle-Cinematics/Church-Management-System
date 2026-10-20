@@ -62,6 +62,12 @@ function endsAtError(v) {
   return null;
 }
 
+// The check-in token is the secret in the QR code and the RSVP link: whoever
+// holds it can check people in and RSVP for them. Admins and Editors can open
+// the QR page, so they get it back; a read-only account does not.
+const canHoldToken = (user) => Boolean(user) && ['ADMIN', 'EDITOR'].includes(user.role);
+const withoutTokenFor = (user, ev) => (canHoldToken(user) ? ev : { ...ev, checkinToken: undefined });
+
 function register(app) {
   app.get('/api/events', requireAuth, asyncHandler(async (req, res) => {
     const q = (req.query.q || '').trim();
@@ -70,7 +76,7 @@ function register(app) {
       orderBy: { startsAt: 'desc' },
       include: { _count: { select: { attendance: true } } },
     });
-    res.json(rows.map((e) => ({ ...e, _count: undefined, attendees: e._count.attendance })));
+    res.json(rows.map((e) => withoutTokenFor(res.locals.user, { ...e, _count: undefined, attendees: e._count.attendance })));
   }));
 
   app.post('/api/events', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
@@ -105,7 +111,7 @@ function register(app) {
     for (const r of rsvps) rsvpCounts[r.response] = (rsvpCounts[r.response] || 0) + 1;
 
     res.json({
-      ...ev,
+      ...withoutTokenFor(res.locals.user, ev),
       attendees: attendees.map((a) => ({ ...a.member, checkedInAt: a.checkedInAt })),
       rsvps: rsvps.map((r) => ({ ...r.member, response: r.response })),
       rsvpCounts,
