@@ -1,8 +1,12 @@
 name: tests
 
+# A push to any branch used to run this AND the pull-request run, testing the
+# same code twice (about half of all CI minutes). Now a branch is tested when it
+# has a pull request, and main is tested after every merge (the deploy waits for
+# that run). To test a branch without a pull request, use Actions > Run workflow.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
