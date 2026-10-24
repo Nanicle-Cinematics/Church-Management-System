@@ -108,6 +108,7 @@ test.after(async () => {
   server.close();
   await db.almanacEntry.deleteMany({ where: { OR: [{ title: { contains: TAG } }, { serviceLabel: TAG }] } });
   const where = { churchId: { in: churchIds } };
+  await db.preachingPlan.deleteMany({ where });
   await db.churchColour.deleteMany({ where });
   await db.activityLog.deleteMany({ where });
   await db.securityAuditLog.deleteMany({ where });
@@ -353,4 +354,22 @@ test('loading a spreadsheet: new and changed services are counted, unreadable ro
   assert.match(template.type, /text\/csv/);
   assert.match(template.text, /^Month,Date,Name,Colour,Theme,Old Testament,Psalms/);
   assert.ok((await db.platformAuditLog.findFirst({ where: { event: 'platform.almanac_loaded', operatorId: operatorIds[operatorIds.length - 1] } })));
+});
+
+test('This Sunday: everyone sees the next Sunday\'s service and who is preaching, on the dashboard', async () => {
+  const a = await newChurch('alm-sunday');
+  const viewer = await staff(a.churchId, 'VIEWER');
+  const today = L.toDay(new Date());
+  const sunday = L.addDays(today, (7 - today.getUTCDay()) % 7);
+  const mine = await db.almanacEntry.create({ data: { serviceDate: sunday, serviceLabel: `${TAG}-sun`, title: `Sunday Card ${TAG}`, colour: 'RED', theme: 'Fire', gospel: 'John 20:19-23', hymns: ['7', '8'] } });
+  assert.doesNotMatch((await viewer.page('/')).text, /Preaching:<\/b>/, 'no preacher appointed yet');
+  await db.preachingPlan.create({ data: { churchId: a.churchId, preachDate: sunday, preacherName: 'Rev. Test Preacher' } });
+  for (const [who, c] of [['admin', a.admin], ['viewer', viewer]]) {
+    const t = (await c.page('/')).text;
+    assert.ok(t.includes('This Sunday') && t.includes(`Sunday Card ${TAG}`) && t.includes('John 20:19-23'), `${who} sees the service`);
+    assert.match(t, /Preaching:<\/b> Rev\. Test Preacher/, `${who} sees the preacher`);
+  }
+  const other = await newChurch('alm-sunday-b');
+  assert.doesNotMatch((await other.admin.page('/')).text, /Rev\. Test Preacher/, 'another church never sees this church\'s plan');
+  await db.almanacEntry.delete({ where: { id: mine.id } });
 });
