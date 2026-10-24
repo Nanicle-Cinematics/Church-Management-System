@@ -22,6 +22,8 @@ Two independent settings decide access: the user **role** and the **finance role
 No church account, whatever its role, can open the platform console. See
 **Platform operators** below.
 
+**Preachers** (`/preachers`): everyone signed in can read the list of preachers by code (names only; phone and email are shown to those who can edit). Adding and editing follows the Preaching Plan (**Admin**, or **Editor** with finance access); taking a preacher off the plan or putting them back is an **Admin** action.
+
 **Almanac** (`/almanac`): everyone in a church can read the half-year's services (colour, theme, readings, hymns), whatever their role and finance role. The Almanac itself is one shared copy for every church, loaded by a platform operator in the console (`/platform/almanac`); a church cannot change it. Applying the liturgical colour to the app, for the week or the month, is an **Admin** action (`POST /almanac/colour`, also clear and "not now"); the colour then reaches every user of that church and no other church.
 
 Editors add and edit everyday records (members and their photos, attendance, events with check-ins and RSVPs, Bible classes, organizations and their members, inventory, the preaching plan, announcements). Deleting or archiving, exporting member data, sending broadcasts or preacher reminders, email settings, users and church settings stay with admins. Money is governed by the finance role, not by this one.

@@ -54,6 +54,7 @@ function build() {
 .almanac-entry header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 8px; }
 .almanac-entry h3 { margin: 0; font-size: 16px; }
 .almanac-entry .when { color: var(--pc-text-2); font-size: 14px; }
+.almanac-entry .preaching { margin: 8px 0 0; }
 .almanac-entry .theme { margin: 0 0 8px; font-weight: 600; }
 .almanac-entry dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 20px; margin: 0; }
 .almanac-entry dt { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--pc-text-2); margin-bottom: 2px; }

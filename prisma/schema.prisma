@@ -365,6 +365,7 @@ model Church {
   passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
   preachingPlans          PreachingPlan[]
+  preachers               Preacher[]
   inventoryItems          InventoryItem[]
   inventoryCategories     InventoryCategory[]
   broadcasts              Broadcast[]
@@ -486,6 +487,7 @@ model Member {
   specialOfferings    SpecialOffering[]
   pledges             Pledge[]
   preachingPlans      PreachingPlan[]
+  preachers           Preacher[]
   broadcastRecipients BroadcastRecipient[]
   allowances          Allowance[]
 
@@ -963,6 +965,9 @@ model PreachingPlan {
   preacherName   String?   @map("preacher_name")
   preacherPhone  String?   @map("preacher_phone")
   preacherEmail  String?   @map("preacher_email")
+  /// the roster preacher picked by code (S, M1, M2, 1, 2 ...); name and contact are copied into the fields above/memberId so reminders work as before
+  preacherId     Int?      @map("preacher_id")
+  preacher       Preacher? @relation(fields: [preacherId], references: [id])
   topic          String?
   scripture      String?
   notes          String?
@@ -974,6 +979,32 @@ model PreachingPlan {
   @@index([churchId])
   @@index([preachDate])
   @@map("preaching_plan")
+}
+
+/// Who may be appointed to preach, by the code the Methodist preaching plan uses:
+/// S superintendent minister, M1 circuit minister, M2 society minister, and
+/// numbers for circuit lay preachers. A church keeps its own list.
+model Preacher {
+  id        Int             @id @default(autoincrement()) @map("preacher_id")
+  churchId  String          @map("church_id")
+  church    Church          @relation(fields: [churchId], references: [id])
+  /// S | M1 | M2 | a number such as 7
+  code      String
+  name      String
+  phone     String?
+  email     String?
+  /// when the preacher is also a member, their member contact is used for reminders
+  memberId  Int?            @map("member_id")
+  member    Member?         @relation(fields: [memberId], references: [id])
+  /// false once they leave the plan; kept so past appointments still show who preached
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @default(now()) @updatedAt @map("updated_at")
+  plans     PreachingPlan[]
+
+  @@unique([churchId, code])
+  @@index([churchId])
+  @@map("preachers")
 }
 
 model InventoryItem {
@@ -1857,27 +1888,27 @@ model PlatformAnnouncement {
 /// loaded by the platform operator (Platform > Almanac) and only read by churches
 /// (listed in GLOBAL_MODELS, lib/tenant.js).
 model AlmanacEntry {
-  id           Int      @id @default(autoincrement()) @map("almanac_id")
-  serviceDate  DateTime @map("service_date") @db.Date
+  id              Int      @id @default(autoincrement()) @map("almanac_id")
+  serviceDate     DateTime @map("service_date") @db.Date
   /// "" for the ordinary Sunday service; "Good Friday", "Christmas Eve" ... when a date has more than one
-  serviceLabel String   @default("") @map("service_label")
+  serviceLabel    String   @default("") @map("service_label")
   /// "Third Sunday in Lent"
-  title        String
+  title           String
   /// WHITE | GREEN | VIOLET | RED (lib/liturgical-palette.js); text, so a colour can be added without a migration
-  colour       String
-  theme        String?
-  oldTestament String?  @map("old_testament")
-  psalm        String?
+  colour          String
+  theme           String?
+  oldTestament    String?  @map("old_testament")
+  psalm           String?
   /// the New Testament / Epistle reading
-  epistle      String?
-  gospel       String?
+  epistle         String?
+  gospel          String?
   /// the hymn numbers (MHB and Canticles) in the order sung; "351/171" is a choice of two
-  hymns        String[]
+  hymns           String[]
   /// a teaching service has no readings set: the Lectionary prints "TEACHING SERVICE"
-  teachingService Boolean @default(false) @map("teaching_service")
-  notes        String?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+  teachingService Boolean  @default(false) @map("teaching_service")
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@unique([serviceDate, serviceLabel])
   @@index([serviceDate])
