@@ -3,8 +3,10 @@ name: deploy
 # Deploys only after the "tests" workflow has PASSED on main. It used to run on
 # every push to main in parallel with the tests, so a red build still shipped.
 #
-# This repo is public and this job holds the production deploy token, so it
-# must only ever deploy code pushed to THIS repository. `branches: [main]` is
+# This job holds the production deploy token, so it must only ever deploy code
+# pushed to THIS repository. The repo was public when this was written and is
+# private now, but the check stays as a second line of defence: it costs
+# nothing, and a repo can be made public again or gain collaborators. `branches: [main]` is
 # matched against the branch NAME, which a pull request from a fork can also
 # call "main"; without the checks below, such a PR with passing tests would
 # make this job build the fork's code with FLY_API_TOKEN.
