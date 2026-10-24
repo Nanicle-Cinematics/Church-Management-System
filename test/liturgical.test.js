@@ -162,3 +162,17 @@ test('a preacher\'s reminder carries the Almanac: a line for a text message, the
   assert.match(L.reminderText({ title: 'X', colour: 'GREEN', hymns: [], teachingService: true }), /Teaching service\./);
   assert.strictEqual(L.reminderText(null), '', 'no Almanac, no extra line');
 });
+
+test('coverage: Sundays with no service and services without readings or hymns are reported; an export loads back unchanged', () => {
+  const at = (d, extra = {}) => ({ serviceDate: new Date(`${d}T00:00:00Z`), serviceLabel: '', title: `S ${d}`, colour: 'GREEN', theme: null, oldTestament: 'Ruth 1', psalm: null, epistle: null, gospel: null, hymns: ['1', '2'], teachingService: false, notes: null, ...extra });
+  const entries = [at('2026-11-01'), at('2026-11-15', { oldTestament: null, hymns: [] }), at('2026-11-22', { oldTestament: null, teachingService: true })];
+  const cov = A.coverage(entries, new Date('2026-11-01T00:00:00Z'), new Date('2026-11-30T00:00:00Z'));
+  assert.deepStrictEqual(cov.missingSundays, ['2026-11-08', '2026-11-29']);
+  assert.deepStrictEqual(cov.incomplete.map((x) => [x.entry.title, x.missing]), [['S 2026-11-15', ['readings', 'hymns']]], 'a teaching service is not missing readings');
+
+  const withDetail = [at('2026-11-01', { title: 'All Saints', colour: 'WHITE', theme: 'Hope', psalm: 'Psalm 24', epistle: '1 John 3:1-3', gospel: 'Matt 5:1-12', hymns: ['56', '351/171'], notes: 'Communion' }), at('2026-11-22', { oldTestament: null, teachingService: true, hymns: [] })];
+  const csv = [A.TEMPLATE_HEADER, ...A.toRows(withDetail)].map((r) => r.map(csvEscape).join(',')).join('\r\n');
+  const back = A.readAlmanac(Buffer.from(csv), 'export.csv', { year: 2026 });
+  assert.deepStrictEqual(back.problems, []);
+  assert.deepStrictEqual(back.entries.map((e) => [e.title, e.colour, e.psalm, e.hymns, e.teachingService, e.notes]), [['All Saints', 'WHITE', 'Psalm 24', ['56', '351/171'], false, 'Communion'], ['S 2026-11-22', 'GREEN', null, [], true, null]]);
+});

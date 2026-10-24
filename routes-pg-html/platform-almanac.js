@@ -78,6 +78,14 @@ function register(app) {
         <form method="post" action="/platform/almanac/${e.id}/delete" class="inline platform-inline-form" data-confirm="Delete this service from the Almanac? It disappears for every church."><button type="submit" class="ghost">Delete</button></form>
       </div>`,
     ]);
+    const cov = A.coverage(entries, range.start, range.end);
+    const fmt = (iso) => shortDate(new Date(`${iso}T00:00:00Z`));
+    const check = !entries.length ? '' : (cov.missingSundays.length || cov.incomplete.length)
+      ? `<section class="card"><div class="card-head"><h2>To check</h2></div>
+          ${cov.missingSundays.length ? `<p><b>${cov.missingSundays.length} Sunday${cov.missingSundays.length === 1 ? '' : 's'} with no service:</b> ${cov.missingSundays.map(fmt).map(esc).join(', ')}.</p>` : ''}
+          ${cov.incomplete.length ? `<p><b>Without readings or hymns:</b></p><ul>${cov.incomplete.slice(0, 40).map((x) => `<li><a href="/platform/almanac/${x.entry.id}/edit">${esc(fmt(day(x.entry.serviceDate)))} ${esc(x.entry.title)}</a>: no ${x.missing.join(' or ')}</li>`).join('')}</ul>${cov.incomplete.length > 40 ? `<p class="muted-text">…and ${cov.incomplete.length - 40} more.</p>` : ''}` : ''}
+        </section>`
+      : '<section class="card"><p class="muted-text">Every Sunday of this half-year has a service, each with readings and hymns.</p></section>';
     const body = `
       ${pageHero('Almanac', 'The services of each half-year, shared by every church: colour, theme, readings and hymns.')}
       <section class="card">
@@ -96,12 +104,21 @@ function register(app) {
           <div class="actions"><button type="submit">Add to the Almanac</button></div>
         </form>
       </section>
+      ${check}
       ${listCard({
         title: esc(L.halfYearLabel(half)), count: entries.length, countLabel: entries.length === 1 ? 'service' : 'services',
-        note: '', inner: `<p class="muted-text"><a href="/platform/almanac?half=${halfKey(shiftHalf(half, -1))}">← Earlier</a> · <a href="/platform/almanac?half=${halfKey(shiftHalf(half, 1))}">Later →</a></p>${
+        note: '', inner: `<p class="muted-text"><a href="/platform/almanac?half=${halfKey(shiftHalf(half, -1))}">← Earlier</a> · <a href="/platform/almanac?half=${halfKey(shiftHalf(half, 1))}">Later →</a>${entries.length ? ` · <a href="/platform/almanac/export.csv?half=${halfKey(half)}">Download as a spreadsheet</a>` : ''}</p>${
           rows.length ? table(['Date', 'Service', 'Colour', 'Readings', 'Hymns', ''], rows, { keyCols: 2 }) : '<p class="muted-text">Nothing loaded for this half-year yet.</p>'}`,
       })}`;
     page(res, { title: 'Almanac', active: '/platform/almanac', body });
+  }));
+
+  // The half-year as a spreadsheet in the template's layout: correct it and load it again.
+  app.get('/platform/almanac/export.csv', requireOperator, asyncHandler(async (req, res) => {
+    const half = parseHalf(req.query.half);
+    const range = L.halfYearRange(half);
+    const entries = await rawDb.almanacEntry.findMany({ where: { serviceDate: { gte: range.start, lte: range.end } }, orderBy: [{ serviceDate: 'asc' }, { serviceLabel: 'asc' }] });
+    sendCsv(res, `almanac-${halfKey(half)}.csv`, A.TEMPLATE_HEADER, A.toRows(entries));
   }));
 
   app.get('/platform/almanac/template.csv', requireOperator, (req, res) => {

@@ -268,6 +268,14 @@ test('the platform console loads, edits and removes services; churches cannot', 
   assert.strictEqual(home.status, 200);
   assert.match(home.text, /Load a spreadsheet/);
 
+  // the half-year can be downloaded as a spreadsheet, and the page says what is missing
+  const exported = await op.page(`/platform/almanac/export.csv?half=${halfOf(new Date())}`);
+  assert.strictEqual(exported.status, 200);
+  assert.match(exported.type, /csv/);
+  assert.ok(exported.text.startsWith('Month,Date,Name,Colour,Theme,Old Testament,Psalms') && exported.text.includes(`Test Sunday ${TAG}`));
+  assert.match((await op.page(`/platform/almanac?half=${halfOf(new Date())}`)).text, /Sundays? with no service|Every Sunday/);
+  assert.ok([302, 403].includes((await church.admin.page('/platform/almanac/export.csv')).status), 'a church cannot download through the console');
+
   // add one
   const fields = { serviceDate: D1, serviceLabel: '', title: `Added ${TAG}`, colour: 'VIOLET', theme: 'Repent', oldTestament: 'Joel 2:12-19', psalm: '', epistle: '', gospel: 'Luke 15:1-10', hymns: '3, 9/10, 12', notes: '' };
   const added = await op.form('/platform/almanac', fields, '/platform/almanac');
