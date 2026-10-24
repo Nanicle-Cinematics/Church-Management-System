@@ -21,9 +21,10 @@ function requireAdmin(req, res, next) {
   return res.status(403).send('Forbidden');
 }
 
-// Where a form may send the admin back to: never an address from the request.
-const RETURN_TO = new Set(['/', '/almanac']);
-const back = (req) => (RETURN_TO.has(String(req.body && req.body.return_to)) ? req.body.return_to : '/almanac');
+// Where a form may send the admin back to: a page of this app only (the colour prompt is on
+// every page), never another site.
+const LOCAL_PATH = /^\/(?![/\\])[^\s\\]{0,300}$/;
+const back = (req) => (LOCAL_PATH.test(String(req.body && req.body.return_to)) ? req.body.return_to : '/almanac');
 
 /** "2026-2" is July to December 2026; anything else is the current half-year. */
 function parseHalf(q, now) {
