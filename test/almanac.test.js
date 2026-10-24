@@ -213,7 +213,15 @@ test('the prompt cannot be put off: it returns on every visit and sign-in until 
   await again.form('/login', { email: user.email, password: PASSWORD }, '/login');
   assert.match((await again.page('/')).text, ask, 'and after signing in again');
 
-  await a.admin.form('/almanac/colour', { colour: 'GREEN', scope: 'WEEK', return_to: '/' }, '/');
+  // on every page, not only the dashboard; never on the Almanac page (its own controls), never for other roles
+  for (const path of ['/members', '/preaching', '/help']) assert.match((await a.admin.page(path)).text, ask, `on ${path}`);
+  assert.doesNotMatch((await a.admin.page('/almanac')).text, ask);
+  const viewer = await staff(a.churchId, 'VIEWER');
+  assert.doesNotMatch((await viewer.page('/members')).text, ask, 'only an admin is asked');
+  // choosing from another page brings the admin back to that page
+  const chosen = await a.admin.form('/almanac/colour', { colour: 'GREEN', scope: 'WEEK', return_to: '/members?x=1' }, '/members');
+  assert.strictEqual(chosen.location, '/members?x=1');
+  assert.doesNotMatch((await a.admin.page('/members')).text, ask, 'chosen: not asked again, on any page');
   assert.doesNotMatch((await a.admin.page('/')).text, ask, 'chosen: not asked again');
   assert.doesNotMatch((await again.page('/')).text, ask, 'on any device');
 
