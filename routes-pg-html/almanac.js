@@ -14,6 +14,7 @@ const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const L = require('../lib/liturgical');
 const { chip, entryCard, colourOptions, shortDate } = require('../lib/almanac-ui');
+const { planPreacherText } = require('../lib/preachers');
 
 function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
@@ -43,11 +44,20 @@ function register(app) {
     const now = new Date();
     const half = parseHalf(req.query.half, now);
     const range = L.halfYearRange(half);
-    const [entries, assignment, thisWeek] = await Promise.all([
+    const [entries, assignment, thisWeek, plans] = await Promise.all([
       db.almanacEntry.findMany({ where: { serviceDate: { gte: range.start, lte: range.end } }, orderBy: [{ serviceDate: 'asc' }, { serviceLabel: 'asc' }] }),
       L.activeAssignment(db, now),
       L.entryForWeek(db, now),
+      db.preachingPlan.findMany({
+        where: { deletedAt: null, preachDate: { gte: range.start, lte: range.end } }, orderBy: { id: 'asc' },
+        include: { preacher: { select: { code: true, name: true } }, member: { select: { firstName: true, lastName: true } } },
+      }),
     ]);
+    const preaching = new Map();
+    for (const p of plans) {
+      const text = planPreacherText(p);
+      if (text) preaching.set(L.ymd(p.preachDate), [...(preaching.get(L.ymd(p.preachDate)) || []), text]);
+    }
     const isAdmin = user.role === 'ADMIN';
     const setter = assignment && assignment.setBy ? await db.user.findFirst({ where: { id: assignment.setBy }, select: { displayName: true, username: true } }) : null;
 
@@ -69,7 +79,7 @@ function register(app) {
     const prev = halfKey(shiftHalf(half, -1));
     const next = halfKey(shiftHalf(half, 1));
     const list = entries.length
-      ? `<ul class="almanac-list">${entries.map((e) => entryCard(e, { now: Boolean(thisWeek && e.id === thisWeek.id) })).join('')}</ul>`
+      ? `<ul class="almanac-list">${entries.map((e) => entryCard(e, { now: Boolean(thisWeek && e.id === thisWeek.id), preachers: preaching.get(L.ymd(e.serviceDate)) || [] })).join('')}</ul>`
       : `<div class="card"><p class="muted-text">The Almanac for ${esc(L.halfYearLabel(half))} has not been loaded yet. It is added by Church Manager support; check back soon.</p></div>`;
 
     const body = `

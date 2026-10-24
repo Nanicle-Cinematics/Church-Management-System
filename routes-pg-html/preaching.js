@@ -18,6 +18,8 @@ const { pageHero, statsRow } = require('../lib/views');
 const { logActivity } = require('../lib/tenant-activity');
 const { sendPreachingReminder, remindRateLimit } = require('../routes-pg/preaching');
 const { icon } = require('../lib/icons');
+const P = require('../lib/preachers');
+const { chip, entryCard } = require('../lib/almanac-ui');
 
 function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
@@ -45,11 +47,20 @@ async function checkMemberId(db, bodyMemberId) {
   return member ? { ok: true, memberId: member.id } : { ok: false, memberId: null };
 }
 
+// A preacher picked by code decides who is preaching: their name and contact (or member
+// record) replace whatever was typed for a member or guest, so reminders reach them.
+async function withRosterPreacher(db, v) {
+  if (!v.preacherId) return { ok: true, fields: { ...v, preacherId: null } };
+  const p = await db.preacher.findFirst({ where: { id: v.preacherId, active: true } });
+  return p ? { ok: true, fields: { ...v, ...P.planFields(p) } } : { ok: false };
+}
+
 function parsePlanBody(b) {
   const preachDate = b.preachDate ? new Date(b.preachDate) : null;
   return {
     preachDate,
     serviceLabel: (b.serviceLabel || '').trim() || null,
+    preacherId: b.preacherId ? Number(b.preacherId) : null,
     memberId: b.memberId ? Number(b.memberId) : null,
     preacherName: (b.preacherName || '').trim() || null,
     preacherPhone: (b.preacherPhone || '').trim() || null,
@@ -72,12 +83,20 @@ function register(app) {
         `<option value="${m.id}" ${m.id === selectedId ? 'selected' : ''}>${esc(m.firstName + ' ' + m.lastName)}</option>`).join('');
   }
 
+  async function preacherOptions(db, selectedId) {
+    const list = (await db.preacher.findMany({ where: { OR: [{ active: true }, { id: selectedId || -1 }] } })).sort(P.byCode);
+    return '<option value="">— not on the roster —</option>' +
+      list.map((p) => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${esc(`${p.code} · ${p.name}`)}${p.active ? '' : ' (off the plan)'}</option>`).join('');
+  }
+
   async function preachingForm(db, plan = {}, action) {
     const options = await preachingMemberOptions(db, plan.memberId);
+    const rosterOptions = await preacherOptions(db, plan.preacherId);
     return `
       <form class="form" method="post" action="${action}">
         <label>Date<input type="date" name="preachDate" required value="${esc(iso(plan.preachDate))}"></label>
         <label>Service / occasion<input name="serviceLabel" placeholder="e.g. Sunday 9:00 AM service" value="${esc(plan.serviceLabel || '')}"></label>
+        <label>Preacher (by code)<select name="preacherId">${rosterOptions}</select><span class="hint"><a href="/preachers">The preachers list</a>: S, M1, M2 and the lay preachers. A preacher chosen here replaces the member or guest below.</span></label>
         <label>Preacher (member)<select name="memberId">${options}</select></label>
         <div class="wide-cell"><span class="hint">If the preacher is a guest (not a member), leave the dropdown on
           <em>guest</em> and fill in their name and contact below so reminders can still reach them.</span></div>
@@ -95,6 +114,7 @@ function register(app) {
   }
 
   function preacherLabel(p) {
+    if (p.preacher) return `<b>${esc(p.preacher.code)}</b> · ${esc(p.preacher.name)}`;
     if (p.memberId && p.member) return `<a href="/members/${p.memberId}">${esc(p.member.firstName + ' ' + p.member.lastName)}</a>`;
     if (p.preacherName) return `${esc(p.preacherName)} <span class="muted-text">(guest)</span>`;
     return '<span class="muted-text">— unassigned —</span>';
@@ -114,18 +134,22 @@ function register(app) {
       db.preachingPlan.findMany({
         where: { deletedAt: null, preachDate: { gte: today } },
         orderBy: { preachDate: 'asc' },
-        include: { member: { select: { id: true, firstName: true, lastName: true, mobilePhone: true, email: true } } },
+        include: { preacher: { select: { code: true, name: true } }, member: { select: { id: true, firstName: true, lastName: true, mobilePhone: true, email: true } } },
       }),
       db.preachingPlan.findMany({
         where: { deletedAt: null, preachDate: { lt: today } },
         orderBy: { preachDate: 'desc' },
         take: 20,
-        include: { member: { select: { id: true, firstName: true, lastName: true } } },
+        include: { preacher: { select: { code: true, name: true } }, member: { select: { id: true, firstName: true, lastName: true } } },
       }),
     ]);
+    // What the Almanac sets for each of these dates, if it has been loaded.
+    const dates = [...new Set([...upcoming, ...past].map((p) => iso(p.preachDate)))].map((d) => new Date(`${d}T00:00:00Z`));
+    const almanac = new Map((dates.length ? await db.almanacEntry.findMany({ where: { serviceDate: { in: dates } }, orderBy: { serviceLabel: 'desc' } }) : []).map((e) => [iso(e.serviceDate), e]));
+    const forDay = (p) => almanac.get(iso(p.preachDate));
 
     const next = upcoming[0];
-    const assigned = upcoming.filter((p) => !!(p.memberId || p.preacherName)).length;
+    const assigned = upcoming.filter((p) => !!(p.preacherId || p.memberId || p.preacherName)).length;
     const contactReady = upcoming.filter(preachingHasContact).length;
 
     const reminderFlash = {
@@ -141,6 +165,7 @@ function register(app) {
            <p style="font-size:1.05rem"><strong>${preacherLabel(next)}</strong>
              ${next.serviceLabel ? ` · ${esc(next.serviceLabel)}` : ''}</p>
            ${next.topic ? `<p>Topic: ${esc(next.topic)}${next.scripture ? ` · ${esc(next.scripture)}` : ''}</p>` : ''}
+           ${forDay(next) ? `<ul class="almanac-list">${entryCard(forDay(next))}</ul>` : ''}
            ${next.reminderSentAt ? `<p class="muted-text">Reminder last sent ${esc(iso(next.reminderSentAt).replace('T', ' '))}.</p>` : ''}
            ${isAdmin ? (preachingHasContact(next)
              ? `<form method="post" action="/preaching/${next.id}/remind" data-confirm="Send an SMS / email reminder to this preacher?">
@@ -167,6 +192,7 @@ function register(app) {
         <td>${preacherLabel(p)}</td>
         <td>${esc(p.serviceLabel || '—')}</td>
         <td>${p.topic ? esc(p.topic) : '—'}</td>
+        <td>${forDay(p) ? `${chip(forDay(p).colour)} <small>${esc(forDay(p).title)}</small>` : '<span class="muted-text">—</span>'}</td>
         ${canEdit ? `<td style="white-space:nowrap">
           <a href="/preaching/${p.id}/edit" class="link">Edit</a>
           ${isAdmin && preachingHasContact(p)
@@ -181,7 +207,7 @@ function register(app) {
         </td>` : ''}
       </tr>`).join('');
 
-    const head = `<thead><tr><th>Date</th><th>Preacher</th><th>Service</th><th>Topic</th>${canEdit ? '<th></th>' : ''}</tr></thead>`;
+    const head = `<thead><tr><th>Date</th><th>Preacher</th><th>Service</th><th>Topic</th><th>Almanac</th>${canEdit ? '<th></th>' : ''}</tr></thead>`;
     const upcomingTable = upcoming.length
       ? `<section class="card" style="margin-bottom:1rem"><div class="card-head"><h2>Upcoming</h2><span class="meta">${upcoming.length} scheduled</span></div><table>${head}<tbody>${renderRows(upcoming)}</tbody></table></section>`
       : '';
@@ -196,6 +222,7 @@ function register(app) {
       noHeader: true,
       flash: reminderFlash,
       body: `${pageHero('Preaching Plan', 'Upcoming preaching assignments, guest contacts and reminder readiness.')}
+        <p><a href="/preachers">Preachers (S, M1, M2 and lay preachers)</a> · <a href="/almanac">Almanac</a></p>
         ${statsRow([
           { cls: 'gold', icon: icon('preaching'), value: upcoming.length.toLocaleString(), label: 'Upcoming' },
           { cls: 'green', icon: icon('attendance'), value: assigned.toLocaleString(), label: 'Assigned' },
@@ -228,9 +255,11 @@ function register(app) {
   app.post('/preaching', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const v = parsePlanBody(req.body || {});
     if (!v.preachDate || Number.isNaN(v.preachDate.getTime())) return res.redirect('/preaching');
-    const memberCheck = await checkMemberId(res.locals.db, v.memberId);
+    const roster = await withRosterPreacher(res.locals.db, v);
+    if (!roster.ok) return res.redirect('/preaching');
+    const memberCheck = await checkMemberId(res.locals.db, roster.fields.memberId);
     if (!memberCheck.ok) return res.redirect('/preaching');
-    const plan = await res.locals.db.preachingPlan.create({ data: { ...v, memberId: memberCheck.memberId } });
+    const plan = await res.locals.db.preachingPlan.create({ data: { ...roster.fields, memberId: memberCheck.memberId } });
     await logActivity(res.locals.db, 'preaching_scheduled',
       `Scheduled preaching for ${fmtPreachDate(iso(plan.preachDate))}`, '/preaching', res.locals.user.id);
     res.redirect('/preaching');
@@ -251,12 +280,14 @@ function register(app) {
     const id = Number(req.params.id);
     const v = parsePlanBody(req.body || {});
     if (!v.preachDate || Number.isNaN(v.preachDate.getTime())) return res.redirect(`/preaching/${id}/edit`);
-    const memberCheck = await checkMemberId(res.locals.db, v.memberId);
+    const roster = await withRosterPreacher(res.locals.db, v);
+    if (!roster.ok) return res.redirect(`/preaching/${id}/edit`);
+    const memberCheck = await checkMemberId(res.locals.db, roster.fields.memberId);
     if (!memberCheck.ok) return res.redirect(`/preaching/${id}/edit`);
     try {
       const updated = await res.locals.db.preachingPlan.update({
         where: { id },
-        data: { ...v, memberId: memberCheck.memberId, updatedAt: new Date() },
+        data: { ...roster.fields, memberId: memberCheck.memberId, updatedAt: new Date() },
       });
       await logActivity(res.locals.db, 'preaching_updated',
         `Preaching appointment updated: ${updated.topic || iso(updated.preachDate)}`, '/preaching', res.locals.user.id);

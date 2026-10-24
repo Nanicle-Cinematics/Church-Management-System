@@ -76,7 +76,7 @@ function helpPage(user) {
       'Services, meetings and programmes, with check-ins (including by QR code) and RSVPs.',
       [finance ? null : 'Without finance access, Events are read-only, though Editors can still check people in and record RSVPs.']],
     ['help-groups', 'Bible Classes & Organizations', 'Small groups and ministries, each with its leader and members.', null],
-    ['help-preaching', 'Preaching Plan', 'Who preaches when, with the next assignment at the top.', null],
+    ['help-preaching', 'Preaching Plan', 'Who preaches when, with the next assignment at the top.', ['Preachers are appointed by code: S superintendent minister, M1 circuit minister, M2 society minister, and a number for each circuit lay preacher. Keep the list under Preachers.', 'Each appointment shows what the Almanac sets for that day.']],
     ['help-almanac', 'Almanac',
       'The services of the half-year: each Sunday and the Easter and Christmas services, with their liturgical colour, theme, scripture readings and hymns.',
       [isAdmin ? 'Administrators are offered each week’s colour from the Almanac and apply it for the week or the month: the whole app then wears it for everyone in your church.' : 'Your church administrator chooses the colour of the app; everyone sees it.']],
