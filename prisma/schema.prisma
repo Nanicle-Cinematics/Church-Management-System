@@ -344,6 +344,7 @@ model Church {
   updatedAt              DateTime  @updatedAt @map("updated_at")
 
   members                 Member[]
+  colours                 ChurchColour[]
   ministries              Ministry[]
   organizations           Organization[]
   orgMemberships          OrganizationMembership[]
@@ -1848,4 +1849,58 @@ model PlatformAnnouncement {
   createdAt DateTime  @default(now()) @map("created_at")
 
   @@map("platform_announcements")
+}
+
+/// The Almanac: one row per service the Methodist Church publishes for a half-year
+/// (a Sunday, Easter, Christmas ...): its liturgical colour, theme, scripture
+/// readings (Old Testament, Psalm, Epistle, Gospel) and hymns. Shared by every church, so it has no churchId; it is
+/// loaded by the platform operator (Platform > Almanac) and only read by churches
+/// (listed in GLOBAL_MODELS, lib/tenant.js).
+model AlmanacEntry {
+  id           Int      @id @default(autoincrement()) @map("almanac_id")
+  serviceDate  DateTime @map("service_date") @db.Date
+  /// "" for the ordinary Sunday service; "Good Friday", "Christmas Eve" ... when a date has more than one
+  serviceLabel String   @default("") @map("service_label")
+  /// "Third Sunday in Lent"
+  title        String
+  /// WHITE | GREEN | VIOLET | RED (lib/liturgical-palette.js); text, so a colour can be added without a migration
+  colour       String
+  theme        String?
+  oldTestament String?  @map("old_testament")
+  psalm        String?
+  /// the New Testament / Epistle reading
+  epistle      String?
+  gospel       String?
+  /// the hymn numbers (MHB and Canticles) in the order sung; "351/171" is a choice of two
+  hymns        String[]
+  /// a teaching service has no readings set: the Lectionary prints "TEACHING SERVICE"
+  teachingService Boolean @default(false) @map("teaching_service")
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([serviceDate, serviceLabel])
+  @@index([serviceDate])
+  @@map("almanac_entries")
+}
+
+/// A liturgical colour a church's admin applied to the app for a week or a month
+/// (lib/liturgical.js). Everyone in the church sees it. Between startsOn and endsOn
+/// (inclusive) the newest row wins; outside them the app wears its normal colours.
+model ChurchColour {
+  id        Int      @id @default(autoincrement()) @map("colour_id")
+  churchId  String   @map("church_id")
+  church    Church   @relation(fields: [churchId], references: [id])
+  colour    String
+  startsOn  DateTime @map("starts_on") @db.Date
+  endsOn    DateTime @map("ends_on") @db.Date
+  /// WEEK | MONTH
+  scope     String
+  /// the Almanac entry it was suggested from, if any (a plain reference: that table is shared)
+  almanacId Int?     @map("almanac_id")
+  setBy     Int?     @map("set_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([churchId, startsOn, endsOn])
+  @@map("church_colours")
 }
