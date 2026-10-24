@@ -404,6 +404,11 @@ async function dashboardReal() {
       ],
       count: async () => 9,
     },
+    almanacEntry: { findMany: async () => [{
+      id: 1, serviceDate: new Date(Date.UTC(2026, 10, 1)), serviceLabel: '', title: 'All Saints Sunday', colour: 'WHITE', theme: 'Hope in the saints',
+      oldTestament: 'Revelation 7:9-17', psalm: 'Psalm 34:1-10', epistle: '1 John 3:1-3', gospel: 'Matthew 5:1-12', hymns: ['56', '112', '203', '340/341'], teachingService: false, notes: null,
+    }] },
+    preachingPlan: { findMany: async () => [{ preacher: { code: 'M1', name: 'Rev. Kofi Mensah' }, member: null, preacherName: null }] },
     attendance: { count: async ({ where }) => (where.checkedInAt.lt ? weekly[weekCall++ % 13] : 742) },
     activityLog: { findMany: async () => [
       { description: 'Sunday offering posted: GH₵ 1,842.50 (1st Service)', link: '/finance/income', occurredAt: ago(0.1), kind: 'income_recorded' },
