@@ -20,6 +20,7 @@ const { sendSmsBatch, sendEmailEach, normalizePhoneGH } = require('../lib/delive
 const { fmtPreachDate } = require('../lib/format');
 const { logActivity } = require('../lib/tenant-activity');
 const { createRateLimiter } = require('../lib/rate-limit');
+const { entryForDate, reminderText } = require('../lib/liturgical');
 
 // Reminders go to a phone/email the admin typed in, via the platform's shared
 // SMS/email accounts, so cap how many one church can trigger.
@@ -65,7 +66,12 @@ async function sendPreachingReminder(db, plan, userId, churchName) {
   const when = fmtPreachDate(iso(plan.preachDate));
   const where = plan.serviceLabel ? ` (${plan.serviceLabel})` : '';
   const topic = plan.topic ? ` Topic: ${plan.topic}.` : '';
-  const msg = `Hello ${c.first || 'Preacher'}, a reminder that you are scheduled to preach on ${when}${where}.${topic} — ${churchName}`;
+  // What the Almanac sets for that day: a line for the text message, the full detail for email.
+  let entry = null;
+  try { entry = await entryForDate(db, plan.preachDate); } catch (_) { /* the reminder goes without it */ }
+  const msgFor = (almanac) => `Hello ${c.first || 'Preacher'}, a reminder that you are scheduled to preach on ${when}${where}.${topic}${almanac ? ` ${almanac}` : ''} — ${churchName}`;
+  const msg = msgFor(reminderText(entry, { short: true }));
+  const emailMsg = msgFor(reminderText(entry));
 
   const phone = normalizePhoneGH(c.phone);
   let sms = null, email = null;
@@ -74,7 +80,7 @@ async function sendPreachingReminder(db, plan, userId, churchName) {
     catch (e) { sms = { ok: false, error: e.message }; }
   }
   if (c.email) {
-    try { email = await sendEmailEach(db, [{ addr: c.email, token: c.token }], `Preaching reminder — ${when}`, msg, { withFooter: false, churchName }); }
+    try { email = await sendEmailEach(db, [{ addr: c.email, token: c.token }], `Preaching reminder — ${when}`, emailMsg, { withFooter: false, churchName }); }
     catch (e) { email = { ok: false, error: e.message }; }
   }
   const dryRun = (sms && sms.dryRun) || (email && email.dryRun);
