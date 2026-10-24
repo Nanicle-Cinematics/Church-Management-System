@@ -117,11 +117,6 @@ function register(app) {
     res.redirect(back(req));
   }));
 
-  // "Not now" on the dashboard prompt: hidden for the rest of the day in this browser.
-  app.post('/almanac/colour/later', requireAdmin, (req, res) => {
-    req.session.almanacLaterDay = L.ymd(new Date());
-    res.redirect(back(req));
-  });
 }
 
 module.exports = { register };
