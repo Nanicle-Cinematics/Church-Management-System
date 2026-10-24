@@ -154,3 +154,11 @@ test('markup: a title cannot inject HTML, the colour is always named, and the pr
   assert.doesNotMatch(prompt, /Not now|\/later/, 'the prompt cannot be put off');
   assert.ok(!/\son[a-z]+=|<script/i.test(prompt + card), 'no inline script or handlers (the page policy forbids them)');
 });
+
+test('a preacher\'s reminder carries the Almanac: a line for a text message, the full detail for email', () => {
+  const e = { title: 'Epiphany of the Lord', colour: 'WHITE', theme: 'Arise, shine', oldTestament: 'Isaiah 60:1-6', psalm: 'Psalm 72', epistle: 'Ephesians 3:1-12', gospel: '', hymns: ['13', '308', '351/171'], teachingService: false };
+  assert.strictEqual(L.reminderText(e, { short: true }), 'Almanac: Epiphany of the Lord (White). Theme: Arise, shine.');
+  assert.strictEqual(L.reminderText(e), 'Almanac: Epiphany of the Lord (White). Theme: Arise, shine. Readings: Old Testament Isaiah 60:1-6; Psalm Psalm 72; Epistle Ephesians 3:1-12. Hymns: 13, 308, 351/171.');
+  assert.match(L.reminderText({ title: 'X', colour: 'GREEN', hymns: [], teachingService: true }), /Teaching service\./);
+  assert.strictEqual(L.reminderText(null), '', 'no Almanac, no extra line');
+});

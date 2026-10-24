@@ -146,6 +146,11 @@ test('appointing by code: the plan keeps who and how to reach them, follows late
   await a.admin.form(`/preachers/${mine.id}`, { code: '4', name: 'Mr. Kwame Asare', phone: '0244999888' }, `/preachers/${mine.id}/edit`);
   assert.strictEqual((await db.preachingPlan.findUnique({ where: { id: plan.id } })).preacherPhone, '0244999888');
 
+  // the reminder finds what the Almanac sets for that day
+  const found = await L.entryForDate(db, DAY);
+  assert.strictEqual(found && found.id, entry.id);
+  assert.strictEqual(await L.entryForDate(db, '2099-01-03'), null);
+
   // the plan page names the preacher by code, and shows what the Almanac sets for that day
   const page = await a.admin.page('/preaching');
   assert.ok(page.text.includes('Mr. Kwame Asare') && page.text.includes(`Sunday ${TAG}`) && page.text.includes('Violet'));
