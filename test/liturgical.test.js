@@ -151,6 +151,6 @@ test('markup: a title cannot inject HTML, the colour is always named, and the pr
   assert.match(prompt, /action="\/almanac\/colour"/);
   assert.match(prompt, /name="scope" value="WEEK"/);
   assert.match(prompt, /name="scope" value="MONTH"/);
-  assert.match(prompt, /formaction="\/almanac\/colour\/later"/);
+  assert.doesNotMatch(prompt, /Not now|\/later/, 'the prompt cannot be put off');
   assert.ok(!/\son[a-z]+=|<script/i.test(prompt + card), 'no inline script or handlers (the page policy forbids them)');
 });

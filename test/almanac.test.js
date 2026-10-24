@@ -159,12 +159,12 @@ test('an admin is prompted with this week\'s colour; applying it reaches everyon
   assert.strictEqual(await db.churchColour.count({ where: { churchId: b.churchId } }), 0);
 });
 
-test('only an admin can apply, clear or postpone the colour; nothing changes for anyone else', async () => {
+test('only an admin can apply or clear the colour; nothing changes for anyone else', async () => {
   const a = await newChurch('alm-perm');
   const viewer = await staff(a.churchId, 'VIEWER');
   const editor = await staff(a.churchId, 'EDITOR');
   for (const [name, who] of [['viewer', viewer], ['editor', editor]]) {
-    for (const [p, fields] of [['/almanac/colour', { colour: 'RED', scope: 'WEEK' }], ['/almanac/colour/clear', {}], ['/almanac/colour/later', {}]]) {
+    for (const [p, fields] of [['/almanac/colour', { colour: 'RED', scope: 'WEEK' }], ['/almanac/colour/clear', {}]]) {
       const r = await who.form(p, fields, '/almanac');
       assert.strictEqual(r.status, 403, `${name} ${p}`);
       assert.doesNotMatch(r.text, /Security check failed/, `${name} ${p} was refused for the role, not for a missing token`);
@@ -202,15 +202,25 @@ test('week or month, the newest wins, bad input is refused, and clearing goes ba
   assert.ok(await db.activityLog.findFirst({ where: { churchId: a.churchId, kind: 'almanac_colour_cleared' } }), 'and it is in the activity log');
 });
 
-test('"Not now" hides the prompt for the day in that browser only', async () => {
-  const a = await newChurch('alm-later');
-  assert.match((await a.admin.page('/')).text, /This week.s colour is/);
-  await a.admin.form('/almanac/colour/later', { return_to: '/' }, '/');
-  assert.doesNotMatch((await a.admin.page('/')).text, /This week.s colour is/, 'postponed in this browser');
-  const elsewhere = client();
+test('the prompt cannot be put off: it returns on every visit and sign-in until a colour is chosen, then not again until the period is over', async () => {
+  const a = await newChurch('alm-always');
+  const ask = /This week.s colour is/;
+  assert.doesNotMatch((await a.admin.page('/')).text, /Not now/);
+  assert.match((await a.admin.page('/')).text, ask);
+  assert.match((await a.admin.page('/')).text, ask, 'again on the next visit');
   const user = await db.user.findFirst({ where: { churchId: a.churchId } });
-  await elsewhere.form('/login', { email: user.email, password: PASSWORD }, '/login');
-  assert.match((await elsewhere.page('/')).text, /This week.s colour is/, 'the same admin on another device is still asked');
+  const again = client();
+  await again.form('/login', { email: user.email, password: PASSWORD }, '/login');
+  assert.match((await again.page('/')).text, ask, 'and after signing in again');
+
+  await a.admin.form('/almanac/colour', { colour: 'GREEN', scope: 'WEEK', return_to: '/' }, '/');
+  assert.doesNotMatch((await a.admin.page('/')).text, ask, 'chosen: not asked again');
+  assert.doesNotMatch((await again.page('/')).text, ask, 'on any device');
+
+  // the week is over: the colour lapses and the admin is asked for the next one
+  await db.churchColour.updateMany({ where: { churchId: a.churchId }, data: { startsOn: new Date(Date.now() - 9 * 86400000), endsOn: new Date(Date.now() - 2 * 86400000) } });
+  L.forgetColour(a.churchId);
+  assert.match((await a.admin.page('/')).text, ask, 'asked again once the period has ended');
 });
 
 test('the Almanac page: everyone in a church can read it; half-years, this week and empty ones', async () => {
