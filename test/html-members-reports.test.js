@@ -73,7 +73,7 @@ function extractCsrf(html) {
 }
 async function signedInClient(tag) {
   const client = htmlClient();
-  const signup = await client.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'password123' });
+  const signup = await client.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'Tr0ubadour-7!' });
   assert.strictEqual(signup.status, 201);
   createdChurchIds.push(signup.body.church.id);
   // The /reports pages are a Pro feature. These tests cover what the pages
@@ -99,6 +99,69 @@ for (const [path, title] of [['/members', 'Members'], ['/reports', 'Reports']]) 
     assert.ok(extractCsrf(res.text), 'expected a CSRF token embedded in the rendered page');
   });
 }
+
+test('members: profile panel is church-scoped, and the directory filters take several values', async () => {
+  const { client } = await signedInClient('html-mem-panel');
+  const csrf = extractCsrf((await client.getHtml('/members/new')).text);
+  const created = await client.postForm('/members', {
+    firstName: 'Esi', lastName: 'Quaye', mobilePhone: '0244000077', gender: 'F', membershipStatus: 'MEMBER', preferredChannel: 'EITHER', dayBorn: 'Sunday', _csrf: csrf,
+  });
+  assert.strictEqual(created.status, 302);
+  const memberId = created.location.match(/\/members\/(\d+)/)[1];
+
+  const panel = await client.getHtml(`/members/${memberId}/panel`);
+  assert.strictEqual(panel.status, 200);
+  assert.match(panel.text, /Esi Quaye/);
+  assert.match(panel.text, /Open full profile/);
+  assert.doesNotMatch(panel.text, /<html/i, 'the panel is a fragment, not a full page');
+
+  // Another church cannot read it, and a bad id is simply not found.
+  const { client: other } = await signedInClient('html-mem-panel-other');
+  assert.strictEqual((await other.getHtml(`/members/${memberId}/panel`)).status, 404);
+  assert.strictEqual((await client.getHtml('/members/not-a-number/panel')).status, 404);
+  assert.strictEqual((await htmlClient().getHtml(`/members/${memberId}/panel`)).status, 401);
+
+  // Repeated query values are ORed within a filter.
+  assert.match((await client.getHtml('/members?status=VISITOR&status=MEMBER')).text, /Esi Quaye/);
+  assert.doesNotMatch((await client.getHtml('/members?status=VISITOR')).text, /Esi Quaye/);
+  assert.match((await client.getHtml('/members?day_born=Monday&day_born=Sunday')).text, /Esi Quaye/);
+  assert.doesNotMatch((await client.getHtml('/members?day_born=Monday')).text, /Esi Quaye/);
+  // Other churches' members never leak into the directory.
+  assert.doesNotMatch((await other.getHtml('/members')).text, /Esi Quaye/);
+});
+
+test('members: CSV export and selected-member SMS stay inside the church', async () => {
+  const add = async (client, firstName, lastName, membershipStatus) => {
+    const csrf = extractCsrf((await client.getHtml('/members/new')).text);
+    const r = await client.postForm('/members', { firstName, lastName, mobilePhone: '0244000123', gender: 'M', membershipStatus, preferredChannel: 'EITHER', _csrf: csrf });
+    assert.strictEqual(r.status, 302);
+    return r.location.match(/\/members\/(\d+)/)[1];
+  };
+  const { client } = await signedInClient('html-mem-bulk');
+  const a1 = await add(client, 'Yaw', 'Darko', 'MEMBER');
+  const a2 = await add(client, 'Ama', 'Serwaa', 'VISITOR');
+  const { client: other } = await signedInClient('html-mem-bulk-other');
+  const b1 = await add(other, 'Kwesi', 'Outsider', 'MEMBER');
+
+  // Everyone matching the filters...
+  const all = await client.getHtml('/members/export.csv?status=MEMBER');
+  assert.strictEqual(all.status, 200);
+  assert.match(all.text, /^Member ID,First name,Last name,Status/);
+  assert.match(all.text, /Yaw,Darko,Member/);
+  assert.doesNotMatch(all.text, /Serwaa/, 'the status filter applies to the export');
+  assert.doesNotMatch(all.text, /Outsider/);
+  // ...or exactly the selection, where another church's id finds nothing.
+  const picked = await client.getHtml(`/members/export.csv?ids=${a2},${b1}`);
+  assert.match(picked.text, /Ama,Serwaa,Visitor/);
+  assert.doesNotMatch(picked.text, /Darko|Outsider/);
+  assert.strictEqual((await htmlClient().getHtml('/members/export.csv')).status, 403);
+
+  const compose = await client.getHtml(`/communications/broadcast?member_ids=${a1},${a2},${b1}`);
+  assert.strictEqual(compose.status, 200);
+  assert.match(compose.text, /Audience preview · 2 members/);
+  assert.match(compose.text, new RegExp(`name="member_ids" value="${a1},${a2}"`), 'only this church\'s members are carried into the send');
+  assert.doesNotMatch(compose.text, /Outsider/);
+});
 
 test('members: create without CSRF is rejected, with CSRF succeeds, edit and archive', async () => {
   const { client } = await signedInClient('html-mem-create');

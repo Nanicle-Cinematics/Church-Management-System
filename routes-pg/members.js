@@ -23,12 +23,17 @@
 const asyncHandler = require('../lib/async-handler');
 const { pickEnum, cleanDate, memberFieldError, createMemberWithId, GENDERS, MARITAL_STATUSES: MARITAL_ENUM, PREFERRED_CHANNELS } = require('../lib/member-input');
 
-const MEMBERSHIP_STATUSES = ['VISITOR', 'REGULAR', 'MEMBER', 'INACTIVE', 'TRANSFERRED', 'DECEASED', 'OTHER'];
+const MEMBERSHIP_STATUSES = ['VISITOR', 'REGULAR', 'MEMBER', 'DISTANT', 'INACTIVE', 'TRANSFERRED', 'DECEASED', 'OTHER'];
 const MEMBERS_PER_PAGE = 25;
-const MEMBER_ID_PREFIX = 'MBR';
 
 function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
+  return res.status(403).json({ error: 'forbidden' });
+}
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
   return res.status(403).json({ error: 'forbidden' });
 }
 
@@ -54,21 +59,6 @@ function memberErrors(b) {
   if (b.email && !isEmailish(b.email)) return 'Enter a valid email address, or leave it blank.';
   if (b.mobilePhone && !isPhoneish(b.mobilePhone)) return 'Enter a valid mobile number (at least 7 digits).';
   return memberFieldError(b);
-}
-
-async function nextMemberId(db) {
-  // Tenant-scoped automatically — the scoped client only sees this
-  // church's members, so numbering restarts at MBR-001 per church.
-  const rows = await db.member.findMany({
-    where: { externalId: { startsWith: `${MEMBER_ID_PREFIX}-` } },
-    select: { externalId: true },
-  });
-  let max = 0;
-  for (const r of rows) {
-    const m = /-(\d+)$/.exec(r.externalId || '');
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return `${MEMBER_ID_PREFIX}-${String(max + 1).padStart(3, '0')}`;
 }
 
 function parseMemberBody(b) {
@@ -161,7 +151,7 @@ function register(app) {
     res.json({ total, page, pages: Math.max(1, Math.ceil(total / MEMBERS_PER_PAGE)), members: rows.map(publicMember) });
   }));
 
-  app.post('/api/members', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/members', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const b = req.body || {};
     const err = memberErrors(b);
@@ -205,7 +195,7 @@ function register(app) {
     });
   }));
 
-  app.put('/api/members/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.put('/api/members/:id', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const id = Number(req.params.id);
     const b = req.body || {};

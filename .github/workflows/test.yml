@@ -1,8 +1,12 @@
 name: tests
 
+# A push to any branch used to run this AND the pull-request run, testing the
+# same code twice (about half of all CI minutes). Now a branch is tested when it
+# has a pull request, and main is tested after every merge (the deploy waits for
+# that run). To test a branch without a pull request, use Actions > Run workflow.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -41,5 +45,21 @@ jobs:
       - run: npx prisma db push
       - run: node scripts/ensure-session-table.js
       - run: npm run check:raw-sql-tenant-scoping
-      - run: npm test
+      # The app runs in production as a data-only role, never the owner. Create
+      # the same role here (the owner, above, made the schema) and run the whole
+      # suite as it, so anything that needs to create, alter or drop a table
+      # at runtime fails here instead of in production.
+      - name: Create the data-only role the app runs as
+        run: |
+          psql "postgresql://church:church_test@localhost:5432/church_test" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE church_app WITH LOGIN PASSWORD 'church_app_test';
+          GRANT CONNECT ON DATABASE church_test TO church_app;
+          GRANT USAGE ON SCHEMA public TO church_app;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO church_app;
+          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO church_app;
+          SQL
+      - name: Run the tests as the data-only role
+        run: npm test
+        env:
+          DATABASE_URL: postgresql://church_app:church_app_test@localhost:5432/church_test
       - run: npm audit --omit=dev --audit-level=high

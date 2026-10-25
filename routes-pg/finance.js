@@ -208,7 +208,7 @@ async function syncExpenseVoucher(db, expense, userId) {
 
 function register(app) {
   // --- Chart of accounts (read-only here — seeded per-church at signup) ---
-  app.get('/api/finance/accounts', requireAuth, asyncHandler(async (req, res) => {
+  app.get('/api/finance/accounts', requireAuth, requireFinanceReportAccess, asyncHandler(async (req, res) => {
     const rows = await res.locals.db.account.findMany({ where: { active: true }, orderBy: { code: 'asc' } });
     res.json(rows);
   }));
@@ -311,7 +311,7 @@ function register(app) {
     res.status(201).json(updatedIncome);
   }));
 
-  app.delete('/api/finance/income/:id', requireFinanceWrite, asyncHandler(async (req, res) => {
+  app.delete('/api/finance/income/:id', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const churchId = res.locals.churchId;
     const id = Number(req.params.id);
@@ -375,7 +375,7 @@ function register(app) {
     res.status(201).json(updated);
   }));
 
-  app.delete('/api/finance/day-borns/:id', requireFinanceWrite, asyncHandler(async (req, res) => {
+  app.delete('/api/finance/day-borns/:id', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const churchId = res.locals.churchId;
     const id = Number(req.params.id);
@@ -532,7 +532,7 @@ function register(app) {
     res.json({ ok: true });
   }));
 
-  app.delete('/api/finance/services/:id', requireFinanceWrite, asyncHandler(async (req, res) => {
+  app.delete('/api/finance/services/:id', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const churchId = res.locals.churchId;
     const id = Number(req.params.id);
@@ -615,7 +615,7 @@ function register(app) {
     res.json({ ok: true });
   }));
 
-  app.delete('/api/finance/harvests/:id', requireFinanceWrite, asyncHandler(async (req, res) => {
+  app.delete('/api/finance/harvests/:id', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const churchId = res.locals.churchId;
     const id = Number(req.params.id);

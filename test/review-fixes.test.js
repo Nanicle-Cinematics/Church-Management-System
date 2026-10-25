@@ -72,7 +72,7 @@ function uniqueEmail(tag) {
 
 async function newChurch(tag) {
   const email = uniqueEmail(tag);
-  const { church, user } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' });
+  const { church, user } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' });
   createdChurchIds.push(church.id);
   return { churchId: church.id, user, email };
 }
@@ -115,7 +115,7 @@ function client() {
 
 async function signedInClient(tag) {
   const c = client();
-  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'password123' });
+  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'Tr0ubadour-7!' });
   assert.strictEqual(signup.status, 201);
   createdChurchIds.push(signup.body.church.id);
   return { c, churchId: signup.body.church.id };
@@ -223,7 +223,7 @@ test('member photo upload requires a CSRF token', async () => {
 
 test('API refuses form-encoded bodies (cross-site forms cannot reach /api)', async () => {
   const { c } = await signedInClient('api-form');
-  const res = await c.postUrlencoded('/api/users', { username: 'x', email: 'x@example.test', password: 'password123' });
+  const res = await c.postUrlencoded('/api/users', { username: 'x', email: 'x@example.test', password: 'Tr0ubadour-7!' });
   assert.strictEqual(res.status, 415);
 });
 
@@ -258,7 +258,7 @@ test('pledge payments recorded at the same time are both counted', async () => {
 
 test('login: a missing / non-string password is a plain failure, not a crash', async () => {
   const { email, user } = await newChurch('login-types');
-  for (const password of [undefined, null, 12345678, ['password123'], {}]) {
+  for (const password of [undefined, null, 12345678, ['Tr0ubadour-7!'], {}]) {
     // Each failure counts toward the 5-attempt lockout, so reset between tries.
     await db.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });
     const r = await authenticate(email, password);
@@ -269,34 +269,17 @@ test('login: a missing / non-string password is a plain failure, not a crash', a
 test('login: parallel wrong guesses still reach the lockout', async () => {
   const { email } = await newChurch('login-parallel');
   await Promise.all(Array.from({ length: 6 }, () => authenticate(email, 'wrong-password')));
-  const r = await authenticate(email, 'password123');
+  const r = await authenticate(email, 'Tr0ubadour-7!');
   assert.strictEqual(r.status, 'locked');
-});
-
-// ---- Platform operator addresses -------------------------------------------
-
-test('a platform-operator email cannot be registered once any church exists', async () => {
-  await newChurch('some-existing-church');
-  const reserved = uniqueEmail('operator');
-  const previous = process.env.PLATFORM_ADMIN_EMAILS;
-  process.env.PLATFORM_ADMIN_EMAILS = reserved;
-  try {
-    await assert.rejects(
-      () => signupChurch({ churchName: 'Squatter', name: 'Squatter', email: reserved, password: 'password123' }),
-      /reserved/,
-    );
-  } finally {
-    if (previous === undefined) delete process.env.PLATFORM_ADMIN_EMAILS; else process.env.PLATFORM_ADMIN_EMAILS = previous;
-  }
 });
 
 test('deleting a user frees their email for re-invitation', async () => {
   const { c } = await signedInClient('user-reinvite');
   const email = uniqueEmail('teammate');
-  const created = await c.postJson('/api/users', { username: 'mate', email, password: 'password123', role: 'EDITOR' });
+  const created = await c.postJson('/api/users', { username: 'mate', email, password: 'Tr0ubadour-7!', role: 'EDITOR' });
   assert.strictEqual(created.status, 201);
   assert.strictEqual((await c.del(`/api/users/${created.body.id}`)).status, 204);
-  const again = await c.postJson('/api/users', { username: 'mate2', email, password: 'password123', role: 'EDITOR' });
+  const again = await c.postJson('/api/users', { username: 'mate2', email, password: 'Tr0ubadour-7!', role: 'EDITOR' });
   assert.strictEqual(again.status, 201, 'the freed email can be used again');
 });
 

@@ -75,7 +75,7 @@ async function signupChurch(tag) {
   const res = await fetch(`${base}/signup`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' }),
+    body: JSON.stringify({ churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' }),
   });
   const set = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
   const cookie = set.find((c) => c.startsWith('connect.sid='))?.split(';')[0];

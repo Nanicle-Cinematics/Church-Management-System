@@ -21,6 +21,7 @@
 const asyncHandler = require('../lib/async-handler');
 const { esc, fmtMoney, todayISO, isMoneyPositive, isMoneyNonNeg, isValidDate } = require('../lib/format');
 const { pageHero, statsRow, table } = require('../lib/views');
+const { scriptTag } = require('../lib/style-tags');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const ledger = require('../lib/ledger-pg');
@@ -64,8 +65,8 @@ async function createNumbered(tx, churchId, delegate, field, prefix, year, data)
 
 // Live totals in the browser use the same pesewa arithmetic as the server;
 // the server recomputes everything on save and is what is stored.
-const COUNT_SCRIPT = `<script>(function(){var f=document.querySelector('form[data-cash-count]');if(!f)return;var exp=f.querySelector('input[name=expectedAmount]');function money(p){return 'GH\\u20B5 '+(p/100).toLocaleString('en-GH',{minimumFractionDigits:2,maximumFractionDigits:2});}function sync(){var total=0,bad=false;[].forEach.call(f.querySelectorAll('input[data-value]'),function(i){var v=i.value.trim(),cell=f.querySelector('[data-line="'+i.name+'"]');if(v===''||v==='0'){if(cell)cell.textContent='—';return;}var q=Number(v);if(!Number.isInteger(q)||q<0){bad=true;if(cell)cell.textContent='?';return;}var p=Math.round(Number(i.dataset.value)*100)*q;total+=p;if(cell)cell.textContent=money(p);});f.querySelector('[data-total]').textContent=bad?'Check quantities':money(total);var d=f.querySelector('[data-diff]');if(!exp.value.trim()){d.textContent='—';d.className='';return;}var diff=total-Math.round(Number(exp.value)*100);d.textContent=diff===0?'Balanced':(diff<0?'Short ':'Over ')+money(Math.abs(diff));d.className=diff===0?'positive':'negative';}f.addEventListener('input',sync);sync();})();</script>`;
-const DEPOSIT_SCRIPT = `<script>(function(){var f=document.querySelector('form[data-deposit]');if(!f)return;var amt=f.querySelector('input[name=amount]'),note=f.querySelector('[data-ticked]'),all=f.querySelector('input[data-tick-all]');function sync(){var p=0,n=0;[].forEach.call(f.querySelectorAll('input[name=item]:checked'),function(c){p+=Math.round(Number(c.dataset.amount)*100);n++;});if(n){amt.value=(p/100).toFixed(2);amt.readOnly=true;amt.required=false;note.textContent='Total of '+n+' ticked collection'+(n===1?'':'s')+'.';}else{if(amt.readOnly){amt.value='';}amt.readOnly=false;amt.required=true;note.textContent='';}}if(all)all.addEventListener('change',function(){[].forEach.call(f.querySelectorAll('input[name=item]'),function(c){c.checked=all.checked;});sync();});f.addEventListener('change',sync);sync();})();</script>`;
+const COUNT_SCRIPT = `${scriptTag('cash-count')}`;
+const DEPOSIT_SCRIPT = `${scriptTag('cash-deposit')}`;
 
 function register(app) {
   // ---------------------------------------------------------------------------
@@ -129,7 +130,7 @@ function register(app) {
       ];
     });
 
-    const filter = `<form method="get" class="filter-bar" style="margin-bottom:1rem"><label>Status <select name="status" onchange="this.form.submit()">
+    const filter = `<form method="get" class="filter-bar" style="margin-bottom:1rem"><label>Status <select name="status" data-autosubmit>
         <option value="">All</option>${COUNT_STATUSES.map((st) => `<option value="${st}" ${st === status ? 'selected' : ''}>${st.charAt(0) + st.slice(1).toLowerCase()}</option>`).join('')}
       </select></label><noscript><button type="submit">Filter</button></noscript></form>`;
     const body = `
@@ -207,12 +208,12 @@ function register(app) {
       actions.push(`<form method="post" action="/finance/cash-counts/${sheet.id}/verify" style="display:inline"><button type="submit">Verify</button></form>`);
     }
     if (sheet.status !== 'VOIDED' && isFundManager(user)) {
-      actions.push(`<form method="post" action="/finance/cash-counts/${sheet.id}/void" style="display:inline" onsubmit="var r=prompt('Reason for voiding this cash count?');if(!r)return false;this.reason.value=r;">
+      actions.push(`<form method="post" action="/finance/cash-counts/${sheet.id}/void" style="display:inline" data-prompt="Reason for voiding this cash count?" data-prompt-field="reason">
         <input type="hidden" name="reason"><button class="btn ghost" type="submit">Void</button></form>`);
     }
     const body = `
       <div class="screen-only receipt-actions">
-        <a class="btn" href="javascript:window.print()">🖨 Print / save as PDF</a>
+        <a class="btn" href="#" data-print>🖨 Print / save as PDF</a>
         ${actions.join(' ')}
         <a class="btn-link" href="/finance/cash-counts">← Back to cash counts</a>
       </div>
@@ -243,7 +244,7 @@ function register(app) {
   app.post('/finance/cash-counts/:id(\\d+)/verify', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const id = Number(req.params.id);
-    const back = `/finance/cash-counts/${id}`;
+    const back = (req.body && req.body.return_to) === '/finance' ? '/finance' : `/finance/cash-counts/${id}`;
     const sheet = await db.cashCountSheet.findFirst({ where: { id } });
     if (!sheet) return res.status(404).send('Not found');
     if (sheet.status !== 'COUNTED') { flash(req, 'Only a counted sheet can be verified.'); return res.redirect(back); }
@@ -252,7 +253,7 @@ function register(app) {
       where: { id, status: 'COUNTED' }, data: { status: 'VERIFIED', verifiedBy: res.locals.user.id, verifiedAt: new Date() },
     });
     if (!claim.count) { flash(req, 'This sheet was just updated by someone else.'); return res.redirect(back); }
-    await logActivity(db, 'cash_count_verified', `Cash count ${sheet.sheetNo} verified (${fmtMoney(sheet.countedAmount)})`, back, res.locals.user.id);
+    await logActivity(db, 'cash_count_verified', `Cash count ${sheet.sheetNo} verified (${fmtMoney(sheet.countedAmount)})`, `/finance/cash-counts/${id}`, res.locals.user.id);
     flash(req, 'Cash count verified.', 'success');
     res.redirect(back);
   }));
@@ -325,11 +326,11 @@ function register(app) {
       </details>${DEPOSIT_SCRIPT}`;
     }
 
-    const voidForm = (d) => `<form method="post" action="/finance/deposits/${d.id}/void" style="display:inline" onsubmit="var r=prompt('${d.status === 'VERIFIED' ? 'Reason for voiding this deposit? Its ledger entry will be reversed.' : 'Reason for voiding this deposit?'}');if(!r)return false;this.reason.value=r;"><input type="hidden" name="reason"><button class="link" type="submit">Void</button></form>`;
+    const voidForm = (d) => `<form method="post" action="/finance/deposits/${d.id}/void" style="display:inline" data-prompt="${d.status === 'VERIFIED' ? 'Reason for voiding this deposit? Its ledger entry will be reversed.' : 'Reason for voiding this deposit?'}" data-prompt-field="reason"><input type="hidden" name="reason"><button class="link" type="submit">Void</button></form>`;
     const rows = list.map((d) => {
       const actions = [];
       if (d.status === 'PENDING' && canWrite) {
-        actions.push(`<form method="post" action="/finance/deposits/${d.id}/slip" style="display:inline" onsubmit="var s=prompt('Slip number from the bank?');if(!s)return false;this.slipNo.value=s;"><input type="hidden" name="slipNo"><button class="link" type="submit">Add slip</button></form>`);
+        actions.push(`<form method="post" action="/finance/deposits/${d.id}/slip" style="display:inline" data-prompt="Slip number from the bank?" data-prompt-field="slipNo"><input type="hidden" name="slipNo"><button class="link" type="submit">Add slip</button></form>`);
       }
       if (d.status === 'DEPOSITED' && canVerify && d.recordedBy !== user.id) {
         actions.push(`<form method="post" action="/finance/deposits/${d.id}/verify" style="display:inline"><button class="link" type="submit">Verify</button></form>`);
@@ -346,7 +347,7 @@ function register(app) {
         fmtMoney(d.amount), pill(d.status), actions.join(' · '),
       ];
     });
-    const filter = `<form method="get" class="filter-bar" style="margin-bottom:1rem"><label>Status <select name="status" onchange="this.form.submit()">
+    const filter = `<form method="get" class="filter-bar" style="margin-bottom:1rem"><label>Status <select name="status" data-autosubmit>
         <option value="">All</option>${DEPOSIT_STATUSES.map((st) => `<option value="${st}" ${st === status ? 'selected' : ''}>${st.charAt(0) + st.slice(1).toLowerCase()}</option>`).join('')}
       </select></label><noscript><button type="submit">Filter</button></noscript></form>`;
     const body = `

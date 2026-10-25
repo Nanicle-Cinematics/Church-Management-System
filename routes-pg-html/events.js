@@ -18,9 +18,13 @@ const asyncHandler = require('../lib/async-handler');
 const { esc } = require('../lib/format');
 const { pageHero, statsRow, filterCard, listCard, ICON_EYE, ICON_PENCIL } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
+const { isLimited, requireEditorWithFullAccess } = require('../lib/access');
 const { logActivity } = require('../lib/tenant-activity');
 const { authPage } = require('../lib/tenant-shell');
 const { resolveChurchByCheckinToken } = require('../lib/tenant');
+
+// Public check-in and RSVP pages belong to one church: show its name.
+const churchPage = (resolved, title, body) => authPage(title, body, undefined, { churchName: resolved.event.church.name });
 const { icon } = require('../lib/icons');
 const { getSessionSecret } = require('../lib/session-secret');
 const { createRateLimiter } = require('../lib/rate-limit');
@@ -49,6 +53,37 @@ function pickSigValid(token, memberId, sig) {
   const given = Buffer.from(String(sig || ''));
   return given.length === expected.length && crypto.timingSafeEqual(given, expected);
 }
+// A QR code is shown to a whole room, then photographed and forwarded, so the
+// link only works around its event: from 12 hours before it starts (check-in)
+// until a day after it ends. RSVP links go out in advance, so they have no
+// opening time, only the same closing one.
+const HOUR = 3600000;
+function publicLinkOpen(ev, kind) {
+  const start = new Date(ev.startsAt).getTime();
+  const end = new Date(ev.endsAt || ev.startsAt).getTime();
+  const now = Date.now();
+  return now <= end + 24 * HOUR && (kind === 'rsvp' || now >= start - 12 * HOUR);
+}
+// Resolves the link's church and event, or answers 404 itself and returns null.
+async function openPublicLink(req, res, kind) {
+  const resolved = await resolveChurchByCheckinToken(req.params.token);
+  const label = kind === 'rsvp' ? 'RSVP' : 'Check-in';
+  if (!resolved) {
+    res.status(404).send(authPage(`${label} link not recognized`, kind === 'rsvp'
+      ? '<p>This RSVP link is not valid.</p>'
+      : '<p>This check-in QR is no longer valid. Please ask an usher for help.</p>'));
+    return null;
+  }
+  if (!publicLinkOpen(resolved.event, kind)) {
+    res.status(404).send(authPage(`${label} is closed`, `<p>This ${label.toLowerCase()} link only works around the time of the event. Please ask an usher for help.</p>`));
+    return null;
+  }
+  return resolved;
+}
+// Anyone holding the link can search, so a result shows a first name and last
+// initial, never a full name, member ID or class.
+const publicName = (m) => `${m.firstName} ${String(m.lastName || '').charAt(0)}${m.lastName ? '.' : ''}`.trim();
+
 function memberSearchWhere(q) {
   const words = q.split(/\s+/).filter(Boolean);
   const fullNameMatch = words.length >= 2
@@ -58,7 +93,6 @@ function memberSearchWhere(q) {
     { externalId: q.toUpperCase() },
     { firstName: { contains: q, mode: 'insensitive' } },
     { lastName: { contains: q, mode: 'insensitive' } },
-    { mobilePhone: { contains: q } },
     ...fullNameMatch,
   ];
 }
@@ -72,6 +106,12 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).send('Forbidden');
 }
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).send('Forbidden');
+}
 
 function iso(d) {
   if (!d) return '';
@@ -83,6 +123,17 @@ function fmtDt(d) { return iso(d).replace('T', ' '); }
 // Attendance/RSVP routes only carry ids, but an audit line naming "member #47"
 // is close to useless — resolve through the tenant-scoped client (so a foreign
 // id can never be named) and fall back to the id if it does not resolve.
+// Both ids come from the form: confirm they are this church's before linking
+// them (the scoped db limits what is read, not what a new row points at).
+async function eventAndMemberInChurch(db, eventId, memberId) {
+  if (!Number.isInteger(eventId) || !Number.isInteger(memberId)) return false;
+  const [event, member] = await Promise.all([
+    db.event.findUnique({ where: { id: eventId }, select: { id: true } }),
+    db.member.findUnique({ where: { id: memberId }, select: { id: true } }),
+  ]);
+  return Boolean(event && member);
+}
+
 async function memberLabel(db, memberId) {
   const m = await db.member.findUnique({ where: { id: memberId } });
   return m ? `${m.firstName} ${m.lastName}` : `member #${memberId}`;
@@ -128,6 +179,9 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    // Editors without finance access read events but may still check people in.
+    const canCheckIn = isAdmin || res.locals.user.role === 'EDITOR';
+    const canEdit = canCheckIn && !isLimited(res.locals.user);
     const q = (req.query.q || '').trim();
 
     const [rows, totalEvents, upcoming, checkins] = await Promise.all([
@@ -146,7 +200,7 @@ function register(app) {
       { cls: 'gold', icon: icon('events'), value: totalEvents.toLocaleString(), label: 'Total Events' },
       { cls: 'green', icon: icon('clock'), value: upcoming.toLocaleString(), label: 'Upcoming' },
       { cls: 'blue', icon: icon('attendance'), value: checkins.toLocaleString(), label: 'Check-ins Recorded' },
-    ], isAdmin ? `<a class="btn primary" href="/events/new">＋ New Event</a>` : '');
+    ], canEdit ? `<a class="btn primary" href="/events/new">＋ New Event</a>` : '');
     const filters = filterCard({ q, placeholder: 'Search events by title…' });
 
     const rowHtml = rows.map((r) => {
@@ -161,7 +215,7 @@ function register(app) {
         <td data-label="Attendees"><span class="count-badge">${r._count.attendance}</span></td>
         <td data-label="Actions"><div class="row-actions">
           <a class="icon-btn view" href="/events/${r.id}" title="View" aria-label="View">${ICON_EYE}</a>
-          ${isAdmin ? `<a class="icon-btn edit" href="/events/${r.id}/edit" title="Edit" aria-label="Edit">${ICON_PENCIL}</a>` : ''}
+          ${canEdit ? `<a class="icon-btn edit" href="/events/${r.id}/edit" title="Edit" aria-label="Edit">${ICON_PENCIL}</a>` : ''}
         </div></td>
       </tr>`;
     }).join('');
@@ -175,7 +229,7 @@ function register(app) {
           <div class="empty-ico" aria-hidden="true">📅</div>
           <h3>${q ? `No events match "${esc(q)}"` : 'No events scheduled yet'}</h3>
           <p>${q ? 'Try a different search term, or schedule a new event.' : 'Add your first event and it will appear here.'}</p>
-          ${isAdmin ? '<a class="btn primary" href="/events/new">＋ New Event</a>' : ''}
+          ${canEdit ? '<a class="btn primary" href="/events/new">＋ New Event</a>' : ''}
           ${q ? '<div style="margin-top:0.6rem"><a class="link" href="/events">Clear search →</a></div>' : ''}
         </div>`,
     });
@@ -183,11 +237,11 @@ function register(app) {
     res.page({ title: 'Events', active: '/events', noHeader: true, body: `${hero}${stats}${filters}${list}` });
   }));
 
-  app.get('/events/new', requireAdmin, (req, res) => {
+  app.get('/events/new', requireEditorWithFullAccess, (req, res) => {
     res.page({ title: 'New event', active: '/events', noHeader: true, body: `${pageHero('New event', '')}${eventForm(null, '/events')}` });
   });
 
-  app.get('/events/:id/edit', requireAdmin, asyncHandler(async (req, res) => {
+  app.get('/events/:id/edit', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const ev = await res.locals.db.event.findUnique({ where: { id } });
     if (!ev) return res.status(404).send('Not found');
@@ -197,7 +251,7 @@ function register(app) {
     });
   }));
 
-  app.post('/events/:id/edit', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events/:id/edit', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const v = parseEventBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
@@ -219,7 +273,7 @@ function register(app) {
     res.redirect(`/events/${id}`);
   }));
 
-  app.post('/events', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const v = parseEventBody(req.body || {});
     if (!v.title || !v.startsAt || Number.isNaN(v.startsAt.getTime())) {
       flash(req, 'Title and start time are required.');
@@ -238,6 +292,9 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    // Editors without finance access read events but may still check people in.
+    const canCheckIn = isAdmin || res.locals.user.role === 'EDITOR';
+    const canEdit = canCheckIn && !isLimited(res.locals.user);
     const id = Number(req.params.id);
     const ev = await db.event.findUnique({ where: { id } });
     if (!ev) return res.status(404).send('Not found');
@@ -257,7 +314,7 @@ function register(app) {
       }),
     ]);
 
-    const removeForm = (mid) => isAdmin
+    const removeForm = (mid) => canCheckIn
       ? `<form method="post" action="/events/${id}/uncheck">
            <input type="hidden" name="memberId" value="${mid}">
            <button class="link" type="submit">remove</button>
@@ -267,7 +324,7 @@ function register(app) {
       : '<p>No one checked in yet.</p>';
 
     const otherOpts = others.map((o) => `<option value="${o.id}">${esc(o.firstName + ' ' + o.lastName)}</option>`).join('');
-    const checkInPanel = isAdmin
+    const checkInPanel = canCheckIn
       ? `<h2>Check in</h2>
          <form method="post" action="/events/${id}/check">
            <select name="memberId" required><option value="">— pick a member —</option>${otherOpts}</select>
@@ -276,7 +333,7 @@ function register(app) {
          <p><a class="btn" href="/events/${id}/qr">📱 QR check-in page</a>
             <a class="btn ghost" href="/checkin/${esc(ev.checkinToken || '')}" target="_blank" rel="noopener">Preview self-check-in</a></p>` : '';
 
-    const rsvpLink = isAdmin
+    const rsvpLink = canCheckIn
       ? `<p class="muted-text" style="margin-top:0.4rem">Public RSVP link:
          <a href="/rsvp/${esc(ev.checkinToken || '')}" target="_blank" rel="noopener">/rsvp/${esc(ev.checkinToken || '')}</a></p>`
       : '';
@@ -287,12 +344,12 @@ function register(app) {
       ? `<ul class="check-list">${rsvps.map((r) => `<li>
           <a href="/members/${r.member.id}">${esc(r.member.firstName + ' ' + r.member.lastName)}</a>
           <span class="pill ${RSVP_PILL_CLASS[r.response]}">${RSVP_LABELS[r.response]}</span>
-          ${isAdmin ? `<form method="post" action="/events/${id}/rsvp/remove">
+          ${canCheckIn ? `<form method="post" action="/events/${id}/rsvp/remove">
             <input type="hidden" name="memberId" value="${r.member.id}">
             <button class="link" type="submit">remove</button></form>` : ''}
         </li>`).join('')}</ul>`
       : '<p class="muted-text">No responses yet.</p>';
-    const rsvpAdmin = isAdmin
+    const rsvpAdmin = canCheckIn
       ? `<form method="post" action="/events/${id}/rsvp" class="filter-bar" style="margin-top:0.6rem">
            <select name="memberId" required style="flex:1;min-width:180px"><option value="">— pick a member —</option>${otherOpts}</select>
            <select name="response">${RSVP_RESPONSES.map((v) => `<option value="${v}">${RSVP_LABELS[v]}</option>`).join('')}</select>
@@ -310,7 +367,7 @@ function register(app) {
           <div><h2>Attendance counts</h2><div class="meta">Head-count for the service · editable</div></div>
           ${hasCounts ? `<span class="pill pill-ok">⚬ Recorded</span>` : ''}
         </div>
-        ${isAdmin ? `<form method="post" action="/events/${id}/counts" class="counts-form" data-no-confirm="1">
+        ${canEdit ? `<form method="post" action="/events/${id}/counts" class="counts-form" data-no-confirm="1">
           <label class="counts-field"><span>Men</span><input type="number" name="attendanceMen" min="0" step="1" value="${esc(men)}"></label>
           <label class="counts-field"><span>Women</span><input type="number" name="attendanceWomen" min="0" step="1" value="${esc(women)}"></label>
           <label class="counts-field"><span>Children</span><input type="number" name="attendanceChildren" min="0" step="1" value="${esc(children)}"></label>
@@ -334,7 +391,7 @@ function register(app) {
           <div class="evt-type">${esc(ev.eventType)}</div>
           <div class="event-detail-meta">${esc(fmtDt(ev.startsAt))}${ev.location ? ` · ${esc(ev.location)}` : ''}</div>
         </div>
-        ${isAdmin ? `<a class="btn primary" href="/events/${id}/edit">✎ Edit event</a>` : ''}
+        ${canEdit ? `<a class="btn primary" href="/events/${id}/edit">✎ Edit event</a>` : ''}
       </div>
       ${countsCard}
       <div class="card" style="margin-bottom:1rem">
@@ -357,7 +414,7 @@ function register(app) {
     res.page({ title: ev.title, active: '/events', noHeader: true, body: `${pageHero(ev.title, '')}${body}` });
   }));
 
-  app.post('/events/:id/counts', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events/:id/counts', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const ev = await res.locals.db.event.findUnique({ where: { id } });
     if (!ev) return res.status(404).send('Not found');
@@ -377,11 +434,12 @@ function register(app) {
     res.redirect(`/events/${id}`);
   }));
 
-  app.post('/events/:id/rsvp', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events/:id/rsvp', requireEditor, asyncHandler(async (req, res) => {
     const eventId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     const response = RSVP_RESPONSES.includes(req.body.response) ? req.body.response : 'GOING';
     if (memberId) {
+      if (!(await eventAndMemberInChurch(res.locals.db, eventId, memberId))) { flash(req, 'Member not found.'); return res.redirect(`/events/${eventId}`); }
       await res.locals.db.eventRsvp.upsert({
         where: { eventId_memberId: { eventId, memberId } },
         update: { response, respondedAt: new Date() },
@@ -393,7 +451,7 @@ function register(app) {
     res.redirect(`/events/${eventId}`);
   }));
 
-  app.post('/events/:id/rsvp/remove', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events/:id/rsvp/remove', requireEditor, asyncHandler(async (req, res) => {
     const eventId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     try {
@@ -406,10 +464,11 @@ function register(app) {
     res.redirect(`/events/${eventId}`);
   }));
 
-  app.post('/events/:id/check', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events/:id/check', requireEditor, asyncHandler(async (req, res) => {
     const eventId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     if (memberId) {
+      if (!(await eventAndMemberInChurch(res.locals.db, eventId, memberId))) { flash(req, 'Member not found.'); return res.redirect(`/events/${eventId}`); }
       await res.locals.db.attendance.upsert({ where: { eventId_memberId: { eventId, memberId } }, update: {}, create: { eventId, memberId } });
       await logActivity(res.locals.db, 'attendance_recorded',
         `${await memberLabel(res.locals.db, memberId)} checked in`, `/events/${eventId}`, res.locals.user.id);
@@ -417,7 +476,7 @@ function register(app) {
     res.redirect(`/events/${eventId}`);
   }));
 
-  app.post('/events/:id/uncheck', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/events/:id/uncheck', requireEditor, asyncHandler(async (req, res) => {
     const eventId = Number(req.params.id);
     const memberId = Number(req.body.memberId);
     try {
@@ -431,7 +490,7 @@ function register(app) {
   }));
 
   // ---------- QR check-in (admin display) ----------
-  app.get('/events/:id/qr', requireAdmin, asyncHandler(async (req, res) => {
+  app.get('/events/:id/qr', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const id = Number(req.params.id);
     let ev = await db.event.findUnique({ where: { id } });
@@ -463,7 +522,7 @@ function register(app) {
           <p class="qr-url muted-text">${esc(url)}</p>
         </div>
         <div class="qr-actions screen-only">
-          <button onclick="window.print()">🖨 Print this QR sign</button>
+          <button data-print>🖨 Print this QR sign</button>
         </div>
       </div>`;
     res.page({ title: `Check-in QR · ${ev.title}`, active: '/events', body });
@@ -471,13 +530,11 @@ function register(app) {
 
   // ---------- Public self-service check-in (no session) ----------
   app.get('/checkin/:token', publicRateLimit, asyncHandler(async (req, res) => {
-    const resolved = await resolveChurchByCheckinToken(req.params.token);
-    if (!resolved) {
-      return res.status(404).send(authPage('Check-in link not recognized', '<p>This check-in QR is no longer valid. Please ask an usher for help.</p>'));
-    }
+    const resolved = await openPublicLink(req, res, 'checkin');
+    if (!resolved) return;
     const { event: ev } = resolved;
     const when = new Date(ev.startsAt).toLocaleString('en-GB', { weekday: 'long', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-    res.send(authPage(`Check in · ${ev.title}`, `
+    res.send(churchPage(resolved, `Check in · ${ev.title}`, `
       <p class="muted-text">${esc(when)}${ev.location ? ' · ' + esc(ev.location) : ''}</p>
       <form method="post" action="/checkin/${esc(req.params.token)}" class="form auth-form">
         <label class="wide">Your name or Member ID
@@ -488,17 +545,15 @@ function register(app) {
   }));
 
   app.post('/checkin/:token', publicRateLimit, asyncHandler(async (req, res) => {
-    const resolved = await resolveChurchByCheckinToken(req.params.token);
-    if (!resolved) {
-      return res.status(404).send(authPage('Check-in link not recognized', '<p>This check-in QR is no longer valid.</p>'));
-    }
+    const resolved = await openPublicLink(req, res, 'checkin');
+    if (!resolved) return;
     const { event: ev, db } = resolved;
 
     const confirmedCheckin = async (m) => {
       await db.attendance.upsert({ where: { eventId_memberId: { eventId: ev.id, memberId: m.id } }, update: {}, create: { eventId: ev.id, memberId: m.id } });
       await logActivity(db, 'attendance_recorded', `${m.firstName} ${m.lastName} self-checked in to ${ev.title}`, `/events/${ev.id}`, null);
-      return res.send(authPage(`✓ Checked in, ${m.firstName}`, `
-        <p style="font-size:1.1rem">Welcome, <strong>${esc(m.firstName)} ${esc(m.lastName)}</strong>.</p>
+      return res.send(churchPage(resolved, `✓ Checked in, ${m.firstName}`, `
+        <p style="font-size:1.1rem">Welcome, <strong>${esc(publicName(m))}</strong>.</p>
         <p>You're checked in to <strong>${esc(ev.title)}</strong>. Have a blessed time. 🙏</p>
         <p style="margin-top:1.25rem"><a href="/checkin/${esc(req.params.token)}">Check in another person</a></p>`));
     };
@@ -517,13 +572,13 @@ function register(app) {
     if (q.length < MIN_PUBLIC_QUERY) return res.redirect(`/checkin/${req.params.token}`);
     const matches = await db.member.findMany({
       where: { deletedAt: null, OR: memberSearchWhere(q) },
-      include: { bibleClass: { select: { name: true } }, attendance: { where: { eventId: ev.id }, select: { eventId: true } } },
+      select: { id: true, firstName: true, lastName: true, attendance: { where: { eventId: ev.id }, select: { eventId: true } } },
       orderBy: { lastName: 'asc' },
       take: 12,
     });
 
     if (matches.length === 0) {
-      return res.send(authPage('No match found', `
+      return res.send(churchPage(resolved, 'No match found', `
         <p>No member found for <strong>"${esc(q)}"</strong>. Please ask an usher for help, or try a different spelling / your Member ID (e.g. MBR-007).</p>
         <p><a href="/checkin/${esc(req.params.token)}">← Try again</a></p>`));
     }
@@ -538,14 +593,13 @@ function register(app) {
         <input type="hidden" name="sig" value="${pickSig(req.params.token, m.id)}">
         <button type="submit" ${m.attendance.length ? 'disabled' : ''}>
           <div class="who">
-            <div class="name">${esc(m.firstName)} ${esc(m.lastName)}</div>
-            <div class="meta">${esc(m.externalId) || ''}${m.bibleClass ? ' · ' + esc(m.bibleClass.name) : ''}</div>
+            <div class="name">${esc(publicName(m))}</div>
           </div>
           <span class="pick-tag">${m.attendance.length ? '✓ already checked in' : 'Tap to check in'}</span>
         </button>
       </form>`).join('');
 
-    res.send(authPage(matches.length === 1 ? 'Already checked in' : 'Pick your name', `
+    res.send(churchPage(resolved, matches.length === 1 ? 'Already checked in' : 'Pick your name', `
       <p class="muted-text">${matches.length} match${matches.length === 1 ? '' : 'es'} for "${esc(q)}":</p>
       ${list}
       <p style="margin-top:1rem"><a href="/checkin/${esc(req.params.token)}">← Search again</a></p>`));
@@ -554,13 +608,11 @@ function register(app) {
   // ---------- Public self-service RSVP (no session) ----------
   // Same search-then-pick flow as check-in: the page never lists the roster.
   app.get('/rsvp/:token', publicRateLimit, asyncHandler(async (req, res) => {
-    const resolved = await resolveChurchByCheckinToken(req.params.token);
-    if (!resolved) {
-      return res.status(404).send(authPage('RSVP link not recognized', '<p>This RSVP link is not valid.</p>'));
-    }
+    const resolved = await openPublicLink(req, res, 'rsvp');
+    if (!resolved) return;
     const { event: ev } = resolved;
     const done = req.query.ok === '1';
-    res.send(authPage(`RSVP · ${ev.title}`, `
+    res.send(churchPage(resolved, `RSVP · ${ev.title}`, `
       <p class="muted">${esc(ev.eventType)} · ${esc(fmtDt(ev.startsAt))}${ev.location ? ` · ${esc(ev.location)}` : ''}</p>
       ${done ? '<div class="flash flash-success">Thank you — your response has been recorded.</div>' : ''}
       <form class="form auth-form" method="post" action="/rsvp/${esc(req.params.token)}">
@@ -572,8 +624,8 @@ function register(app) {
   }));
 
   app.post('/rsvp/:token', publicRateLimit, asyncHandler(async (req, res) => {
-    const resolved = await resolveChurchByCheckinToken(req.params.token);
-    if (!resolved) return res.status(404).send('Not found');
+    const resolved = await openPublicLink(req, res, 'rsvp');
+    if (!resolved) return;
     const { event: ev, db } = resolved;
     const response = RSVP_RESPONSES.includes(req.body.response) ? req.body.response : 'GOING';
     const statusFilter = { in: ['MEMBER', 'REGULAR', 'VISITOR'] };
@@ -601,10 +653,10 @@ function register(app) {
     if (q.length < MIN_PUBLIC_QUERY) return res.redirect(`/rsvp/${req.params.token}`);
     const matches = await db.member.findMany({
       where: { deletedAt: null, membershipStatus: statusFilter, OR: memberSearchWhere(q) },
-      orderBy: { lastName: 'asc' }, take: 12, select: { id: true, firstName: true, lastName: true, externalId: true },
+      orderBy: { lastName: 'asc' }, take: 12, select: { id: true, firstName: true, lastName: true },
     });
     if (matches.length === 0) {
-      return res.send(authPage('No match found', `
+      return res.send(churchPage(resolved, 'No match found', `
         <p>No member found for <strong>"${esc(q)}"</strong>. Try a different spelling or your Member ID.</p>
         <p><a href="/rsvp/${esc(req.params.token)}">← Try again</a></p>`));
     }
@@ -613,10 +665,9 @@ function register(app) {
         <input type="hidden" name="memberId" value="${m.id}">
         <input type="hidden" name="sig" value="${pickSig(req.params.token, m.id)}">
         <input type="hidden" name="response" value="${esc(response)}">
-        <button type="submit"><div class="who"><div class="name">${esc(m.firstName)} ${esc(m.lastName)}</div>
-          <div class="meta">${esc(m.externalId) || ''}</div></div><span class="pick-tag">Tap to send RSVP</span></button>
+        <button type="submit"><div class="who"><div class="name">${esc(publicName(m))}</div></div><span class="pick-tag">Tap to send RSVP</span></button>
       </form>`).join('');
-    res.send(authPage('Pick your name', `
+    res.send(churchPage(resolved, 'Pick your name', `
       <p class="muted-text">${matches.length} match${matches.length === 1 ? '' : 'es'} for "${esc(q)}":</p>
       ${list}
       <p style="margin-top:1rem"><a href="/rsvp/${esc(req.params.token)}">← Search again</a></p>`));

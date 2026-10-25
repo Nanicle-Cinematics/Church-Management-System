@@ -9,6 +9,12 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).json({ error: 'forbidden' });
 }
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).json({ error: 'forbidden' });
+}
 
 function requireAuth(req, res, next) {
   if (!res.locals.user) return res.status(401).json({ error: 'not logged in' });
@@ -56,7 +62,7 @@ function register(app) {
     })));
   }));
 
-  app.post('/api/bible-classes', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/bible-classes', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const b = req.body || {};
     if (!b.name || !String(b.name).trim()) return res.status(400).json({ error: 'name is required' });
@@ -81,7 +87,7 @@ function register(app) {
   }));
 
   // Matches the original's scope: this endpoint only ever updates leader/org.
-  app.put('/api/bible-classes/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.put('/api/bible-classes/:id', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const b = req.body || {};
     const leaderCheck = await checkLeaderId(db, b.leaderId);

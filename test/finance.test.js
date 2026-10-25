@@ -77,17 +77,17 @@ function uniqueEmail(tag) {
 async function newSignedInChurch(tag) {
   const client = cookieClient();
   const email = uniqueEmail(tag);
-  const res = await client.post('/signup', { churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' });
+  const res = await client.post('/signup', { churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' });
   createdChurchIds.push(res.body.church.id);
   return { client, churchId: res.body.church.id };
 }
 
 async function addUser(churchId, role, financeRole) {
   const email = uniqueEmail(`u-${role}-${financeRole}`.toLowerCase());
-  const passwordHash = await bcrypt.hash('password123', 10);
+  const passwordHash = await bcrypt.hash('Tr0ubadour-7!', 10);
   await db.user.create({ data: { churchId, username: `u-${Date.now()}`, email, passwordHash, role, financeRole } });
   const client = cookieClient();
-  const login = await client.post('/login', { email, password: 'password123' });
+  const login = await client.post('/login', { email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(login.status, 200);
   return client;
 }
@@ -228,7 +228,9 @@ test('RBAC: a VIEWER (no finance role) can read but not record income/expenses; 
   const viewer = await addUser(churchId, 'VIEWER', 'NONE');
   const cashier = await addUser(churchId, 'VIEWER', 'CASHIER');
 
-  assert.strictEqual((await viewer.get('/api/finance/accounts')).status, 200);
+  assert.strictEqual((await viewer.get('/api/members')).status, 200, 'a Viewer reads the church records');
+  assert.strictEqual((await viewer.get('/api/finance/accounts')).status, 403, 'but Finance, API included, needs a finance role');
+  assert.strictEqual((await cashier.get('/api/finance/accounts')).status, 200);
   assert.strictEqual((await viewer.post('/api/finance/income', { transactionDate: '2026-06-10', amount: 10, category: 'Tithe' })).status, 403);
   assert.strictEqual((await viewer.post('/api/finance/funds', { name: 'Blocked' })).status, 403);
 

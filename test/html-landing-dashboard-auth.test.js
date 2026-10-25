@@ -84,7 +84,7 @@ function extractCsrf(html) {
 async function signedInClient(tag) {
   const client = htmlClient();
   const email = uniqueEmail(tag);
-  const signup = await client.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email, password: 'password123' });
+  const signup = await client.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(signup.status, 201);
   createdChurchIds.push(signup.body.church.id);
   return { client, churchId: signup.body.church.id, email };
@@ -94,7 +94,7 @@ test('GET / unauthenticated shows the landing page, not a redirect', async () =>
   const client = htmlClient();
   const res = await client.getHtml('/');
   assert.strictEqual(res.status, 200);
-  assert.match(res.text, /Lead the ministry/);
+  assert.match(res.text, /The church office, /);
 });
 
 test('GET / authenticated shows the dashboard, aggregating live data', async () => {
@@ -110,6 +110,15 @@ test('GET / authenticated shows the dashboard, aggregating live data', async () 
 
   const after = await client.getHtml('/');
   assert.match(after.text, /Dashboard Smoke Event/);
+});
+
+test('an Admin without two-factor is reminded on the dashboard, and not once it is on', async () => {
+  const { client, churchId } = await signedInClient('html-dash-2fa');
+  const before = await client.getHtml('/');
+  assert.match(before.text, /Turn on two-factor authentication/);
+  await db.user.updateMany({ where: { churchId }, data: { totpEnabled: true, totpSecret: 'JBSWY3DPEHPK3PXP' } });
+  const after = await client.getHtml('/');
+  assert.doesNotMatch(after.text, /Turn on two-factor authentication/);
 });
 
 test('forgot-password: real link works end to end, non-matching email shows no link, token is single-use', async () => {
@@ -149,7 +158,7 @@ test('forgot-password: real link works end to end, non-matching email shows no l
   const reusedReset = await forgotClient.getHtml(resetPath);
   assert.match(reusedReset.text, /invalid or has expired/);
 
-  const oldLogin = await forgotClient.postJson('/login', { email, password: 'password123' });
+  const oldLogin = await forgotClient.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(oldLogin.status, 401);
   const newLogin = await forgotClient.postJson('/login', { email, password: 'brandnewpass123' });
   assert.strictEqual(newLogin.status, 200);

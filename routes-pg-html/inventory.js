@@ -5,6 +5,7 @@
 // Role model: admin-only writes, matching routes-pg/inventory.js.
 
 const asyncHandler = require('../lib/async-handler');
+const { isLimited, requireEditorWithFullAccess } = require('../lib/access');
 const { esc } = require('../lib/format');
 const { pageHero, statsRow, filterCard } = require('../lib/views');
 const { logActivity } = require('../lib/tenant-activity');
@@ -21,7 +22,8 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).send('Forbidden');
 }
-
+// Admins and Editors with finance access add and edit (requireEditorWithFullAccess,
+// lib/access.js); deleting and anything that sends messages stays with admins.
 // Prisma DateTime -> the plain YYYY-MM-DD string lib/format.js/<input type=date> expect.
 function iso(d) {
   if (!d) return '';
@@ -38,6 +40,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    const canEdit = (isAdmin || res.locals.user.role === 'EDITOR') && !isLimited(res.locals.user);
     const q = (req.query.q || '').trim();
 
     const [categories, items] = await Promise.all([
@@ -59,7 +62,7 @@ function register(app) {
       return a.localeCompare(b);
     });
 
-    const newForm = isAdmin
+    const newForm = canEdit
       ? `<details class="form-toggle" id="add-item" style="margin-bottom:1rem">
            <summary><strong>＋ Add an item</strong></summary>
            <form class="form" method="post" action="/inventory" style="margin-top:0.75rem">
@@ -77,7 +80,7 @@ function register(app) {
            </form>
          </details>`
       : '';
-    const newCategoryForm = isAdmin
+    const newCategoryForm = canEdit
       ? `<details class="form-toggle" id="add-category" style="margin-bottom:1rem">
            <summary><strong>＋ Create inventory category</strong></summary>
            <form class="form" method="post" action="/inventory/categories" style="margin-top:0.75rem">
@@ -95,19 +98,19 @@ function register(app) {
               <td>${esc(String(it.quantity))}</td>
               <td>${it.acquiredOn ? esc(iso(it.acquiredOn)) : '—'}</td>
               <td>${it.notes ? esc(it.notes) : '—'}</td>
-              ${isAdmin ? `<td style="white-space:nowrap">
+              ${canEdit ? `<td style="white-space:nowrap">
                 <a href="/inventory/${it.id}/edit" class="link">Edit</a>
-                <form method="post" action="/inventory/${it.id}/delete" class="inline"
-                      onsubmit="return confirm('Archive this item? It will be hidden but not permanently deleted.')">
+                ${isAdmin ? `<form method="post" action="/inventory/${it.id}/delete" class="inline"
+                      data-confirm="Archive this item? It will be hidden but not permanently deleted.">
                   <button type="submit" class="link">Archive</button>
-                </form>
+                </form>` : ''}
               </td>` : ''}
             </tr>`).join('');
           return `<section class="card" style="margin-bottom:1rem">
             <div class="card-head"><h2>${esc(c)}</h2>
               <span class="meta">${grouped[c].length} item${grouped[c].length === 1 ? '' : 's'}</span></div>
             <table>
-              <thead><tr><th>Name</th><th>Qty</th><th>Purchase / Donation Date</th><th>Notes</th>${isAdmin ? '<th></th>' : ''}</tr></thead>
+              <thead><tr><th>Name</th><th>Qty</th><th>Purchase / Donation Date</th><th>Notes</th>${canEdit ? '<th></th>' : ''}</tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </section>`;
@@ -129,7 +132,7 @@ function register(app) {
       { cls: 'gold', icon: icon('inventory'), value: totals.items.toLocaleString(), label: 'Items' },
       { cls: 'green', icon: icon('folder'), value: totals.cats.toLocaleString(), label: 'Categories' },
       { cls: 'blue', icon: icon('hash'), value: totals.qty.toLocaleString(), label: 'Total Quantity' },
-    ], isAdmin
+    ], canEdit
       ? `<a class="btn primary" href="#add-item">＋ Add Item</a>
          <a class="btn ghost" href="#add-category">＋ Category</a>`
       : '');
@@ -142,7 +145,7 @@ function register(app) {
     });
   }));
 
-  app.post('/inventory/categories', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/inventory/categories', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const name = (req.body.name || '').trim();
     if (!name) return res.redirect('/inventory');
     await res.locals.db.inventoryCategory.upsert({
@@ -154,7 +157,7 @@ function register(app) {
     res.redirect('/inventory');
   }));
 
-  app.post('/inventory', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/inventory', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const b = req.body || {};
     const name = (b.name || '').trim();
     if (!name) return res.redirect('/inventory');
@@ -171,7 +174,7 @@ function register(app) {
     res.redirect('/inventory');
   }));
 
-  app.get('/inventory/:id/edit', requireAdmin, asyncHandler(async (req, res) => {
+  app.get('/inventory/:id/edit', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const [categories, it] = await Promise.all([
       mergedCategories(db),
@@ -200,7 +203,7 @@ function register(app) {
     });
   }));
 
-  app.post('/inventory/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/inventory/:id', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const b = req.body || {};
     const name = (b.name || '').trim();

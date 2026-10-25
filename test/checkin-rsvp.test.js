@@ -11,6 +11,10 @@ process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const createdChurchIds = [];
 
+// The public links only work around their event (routes-pg-html/events.js), so
+// test events start now. The create form reads a local wall-clock time.
+const nowLocal = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+
 let server, base;
 test.before(async () => {
   const app = createTenantApp({ pool });
@@ -77,7 +81,7 @@ function uniqueEmail(tag) {
 }
 async function signedInChurch(tag) {
   const c = client();
-  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'password123' });
+  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'Tr0ubadour-7!' });
   assert.strictEqual(signup.status, 201);
   createdChurchIds.push(signup.body.church.id);
   return { client: c, churchId: signup.body.church.id };
@@ -87,7 +91,7 @@ test('QR page: generates a checkin token lazily and renders an SVG QR', async ()
   const { client: c } = await signedInChurch('qr-gen');
   const listPage = await c.getHtml('/events');
   const csrf = listPage.text.match(/name="_csrf" value="([^"]*)"/)[1];
-  const created = await c.postForm('/events', { title: 'Sunday Service', eventType: 'SERVICE', startsAt: '2026-08-02T09:00', _csrf: csrf });
+  const created = await c.postForm('/events', { title: 'Sunday Service', eventType: 'SERVICE', startsAt: nowLocal(), _csrf: csrf });
   assert.strictEqual(created.status, 302);
   const eventId = created.location.match(/\/events\/(\d+)/)[1];
 
@@ -105,7 +109,7 @@ test('public check-in: single search match auto-confirms, records attendance, no
   const member = await db.member.create({ data: { churchId, externalId: 'MBR-101', firstName: 'Kwame', lastName: 'Asante', membershipStatus: 'MEMBER' } });
   const listPage = await c.getHtml('/events');
   const csrf = listPage.text.match(/name="_csrf" value="([^"]*)"/)[1];
-  const created = await c.postForm('/events', { title: 'Bible Study', eventType: 'BIBLE_STUDY', startsAt: '2026-08-03T18:00', _csrf: csrf });
+  const created = await c.postForm('/events', { title: 'Bible Study', eventType: 'BIBLE_STUDY', startsAt: nowLocal(), _csrf: csrf });
   const eventId = created.location.match(/\/events\/(\d+)/)[1];
   const ev = await db.event.findUnique({ where: { id: Number(eventId) } });
 
@@ -133,7 +137,7 @@ test('public RSVP: search-then-pick records the response and never lists the ros
   const member = await db.member.create({ data: { churchId, externalId: 'MBR-201', firstName: 'Abena', lastName: 'Osei', membershipStatus: 'MEMBER' } });
   const listPage = await c.getHtml('/events');
   const csrf = listPage.text.match(/name="_csrf" value="([^"]*)"/)[1];
-  const created = await c.postForm('/events', { title: 'Youth Camp', eventType: 'YOUTH', startsAt: '2026-08-10T09:00', _csrf: csrf });
+  const created = await c.postForm('/events', { title: 'Youth Camp', eventType: 'YOUTH', startsAt: nowLocal(), _csrf: csrf });
   const eventId = created.location.match(/\/events\/(\d+)/)[1];
   const ev = await db.event.findUnique({ where: { id: Number(eventId) } });
 
@@ -154,7 +158,8 @@ test('public RSVP: search-then-pick records the response and never lists the ros
   // Search, then post the signed pick it returns.
   const res = await fetch(base + `/rsvp/${ev.checkinToken}`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ q: 'Abena', response: 'GOING' }).toString() });
   const html = await res.text();
-  assert.match(html, /Abena Osei/);
+  assert.match(html, /Abena O\./);
+  assert.doesNotMatch(html, /Abena Osei|MBR-201/, 'a public result shows a first name and initial, never a full name or member ID');
   const sig = html.match(/name="sig" value="([a-f0-9]+)"/)[1];
   const posted = await anonPostForm(`/rsvp/${ev.checkinToken}`, { memberId: String(member.id), sig, response: 'GOING' });
   assert.strictEqual(posted.status, 302);
@@ -169,7 +174,7 @@ test('public check-in: a guessed memberId without a signed pick checks no one in
   const member = await db.member.create({ data: { churchId, externalId: 'MBR-301', firstName: 'Yaw', lastName: 'Boateng', membershipStatus: 'MEMBER' } });
   const listPage = await c.getHtml('/events');
   const csrf = listPage.text.match(/name="_csrf" value="([^"]*)"/)[1];
-  const created = await c.postForm('/events', { title: 'Sunday', eventType: 'SERVICE', startsAt: '2026-08-12T09:00', _csrf: csrf });
+  const created = await c.postForm('/events', { title: 'Sunday', eventType: 'SERVICE', startsAt: nowLocal(), _csrf: csrf });
   const eventId = created.location.match(/\/events\/(\d+)/)[1];
   const ev = await db.event.findUnique({ where: { id: Number(eventId) } });
 
@@ -182,7 +187,7 @@ test('public links of a suspended church stop working', async () => {
   const { client: c, churchId } = await signedInChurch('checkin-suspended');
   const listPage = await c.getHtml('/events');
   const csrf = listPage.text.match(/name="_csrf" value="([^"]*)"/)[1];
-  const created = await c.postForm('/events', { title: 'Suspended Service', eventType: 'SERVICE', startsAt: '2026-08-14T09:00', _csrf: csrf });
+  const created = await c.postForm('/events', { title: 'Suspended Service', eventType: 'SERVICE', startsAt: nowLocal(), _csrf: csrf });
   const eventId = created.location.match(/\/events\/(\d+)/)[1];
   const ev = await db.event.findUnique({ where: { id: Number(eventId) } });
   assert.strictEqual((await anonGet(`/checkin/${ev.checkinToken}`)).status, 200);
@@ -200,7 +205,7 @@ test('cross-tenant: church A\'s checkin token never surfaces church B\'s members
 
   const listPage = await cA.getHtml('/events');
   const csrf = listPage.text.match(/name="_csrf" value="([^"]*)"/)[1];
-  const created = await cA.postForm('/events', { title: 'Church A Service', eventType: 'SERVICE', startsAt: '2026-08-05T09:00', _csrf: csrf });
+  const created = await cA.postForm('/events', { title: 'Church A Service', eventType: 'SERVICE', startsAt: nowLocal(), _csrf: csrf });
   const eventId = created.location.match(/\/events\/(\d+)/)[1];
   const ev = await db.event.findUnique({ where: { id: Number(eventId) } });
   assert.strictEqual(ev.churchId, churchA);
@@ -213,4 +218,46 @@ test('cross-tenant: church A\'s checkin token never surfaces church B\'s members
 
   const attendanceB = await db.attendance.findMany({ where: { churchId: churchB } });
   assert.strictEqual(attendanceB.length, 0, 'church B must have zero attendance rows from church A\'s check-in link');
+});
+
+test('public check-in: results show a first name and initial only, and a phone number finds no one', async () => {
+  const { churchId } = await signedInChurch('checkin-privacy');
+  await db.member.create({ data: { churchId, externalId: 'MBR-401', firstName: 'Kofi', lastName: 'Mensah', mobilePhone: '0244123456', membershipStatus: 'MEMBER' } });
+  await db.member.create({ data: { churchId, externalId: 'MBR-402', firstName: 'Kofi', lastName: 'Mintah', membershipStatus: 'MEMBER' } });
+  const ev = await db.event.create({ data: { churchId, title: 'Privacy Service', eventType: 'SERVICE', startsAt: new Date(), checkinToken: 'a1'.repeat(16) } });
+
+  const search = (q) => fetch(base + `/checkin/${ev.checkinToken}`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ q }).toString() }).then((r) => r.text());
+  const list = await search('Kofi');
+  assert.match(list, /Kofi M\./);
+  assert.doesNotMatch(list, /Mensah|Mintah|MBR-40/, 'no surname, member ID or class in a public result');
+
+  const byPhone = await search('0244123');
+  assert.match(byPhone, /No member found/, 'a public search must not match phone numbers');
+});
+
+test('public links only work around the event: check-in opens 12h before, both close a day after', async () => {
+  const { churchId } = await signedInChurch('checkin-window');
+  const HOUR = 3600000;
+  const mk = (suffix, startOffsetH, endOffsetH) => db.event.create({ data: {
+    churchId, title: `Window ${suffix}`, eventType: 'SERVICE', startsAt: new Date(Date.now() + startOffsetH * HOUR),
+    endsAt: endOffsetH == null ? null : new Date(Date.now() + endOffsetH * HOUR), checkinToken: suffix.repeat(32),
+  } });
+  const live = await mk('a', -1, 1);
+  const soon = await mk('b', 6, null);
+  const farAhead = await mk('c', 72, null);
+  const justEnded = await mk('d', -10, -2);
+  const longGone = await mk('e', -96, -95);
+
+  for (const [name, ev, checkin, rsvp] of [
+    ['running now', live, 200, 200], ['starts in 6h', soon, 200, 200], ['starts in 3 days', farAhead, 404, 200],
+    ['ended 2h ago', justEnded, 200, 200], ['ended 4 days ago', longGone, 404, 404],
+  ]) {
+    assert.strictEqual((await anonGet(`/checkin/${ev.checkinToken}`)).status, checkin, `${name}: check-in`);
+    assert.strictEqual((await anonGet(`/rsvp/${ev.checkinToken}`)).status, rsvp, `${name}: RSVP`);
+  }
+  const closed = await anonGet(`/checkin/${longGone.checkinToken}`);
+  assert.match(closed.text, /closed/i);
+  // A closed link also refuses the POST, so a stale QR cannot check anyone in.
+  const posted = await anonPostForm(`/checkin/${longGone.checkinToken}`, { q: 'anyone' });
+  assert.strictEqual(posted.status, 404);
 });

@@ -20,7 +20,8 @@ const { esc } = require('../lib/format');
 const { pageHero, statsRow, table } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
-const { normalizePhoneGH, emailDeliveryInfo } = require('../lib/delivery');
+const { normalizePhoneGH, emailDeliveryInfo, smsDeliveryInfo, smsSenderFor, sendSmsBatch, SENDER_ID_RE } = require('../lib/delivery');
+const { allowanceCheck } = require('../lib/sms-usage');
 const { startBroadcast, canReceive } = require('../lib/broadcast-delivery');
 const { checkBroadcastAllowance, allowanceMessage, validateBroadcastText } = require('../lib/send-limits');
 const { icon } = require('../lib/icons');
@@ -29,12 +30,22 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).send('Forbidden');
 }
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).send('Forbidden');
+}
 
 const PREF_LABELS = { EITHER: 'Both', SMS_ONLY: 'SMS only', EMAIL_ONLY: 'Email only', NONE: 'Do not contact' };
 
 function isEmailish(s) { return /^\S+@\S+\.\S+$/.test(String(s || '')); }
 
-async function resolveAudience(db, { allMembers, orgIds, memberId }) {
+async function resolveAudience(db, { allMembers, orgIds, memberId, memberIds }) {
+  // People picked on the Members page: exactly those, whatever their status.
+  if (memberIds && memberIds.length) {
+    return db.member.findMany({ where: { id: { in: memberIds }, deletedAt: null }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] });
+  }
   if (memberId) {
     const m = await db.member.findFirst({ where: { id: memberId, deletedAt: null } });
     return m ? [m] : [];
@@ -49,17 +60,25 @@ async function resolveAudience(db, { allMembers, orgIds, memberId }) {
   });
 }
 
+// Most people the Members page can hand over in one go (?member_ids=1,2,3).
+const MAX_SELECTED_MEMBERS = 500;
+
 function parseOrgChoice(b) {
+  const none = { allMembers: false, orgIds: [], memberId: null, memberIds: [] };
+  const memberIds = [...new Set([].concat(b.member_ids || []).flatMap((v) => String(v).split(',')).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, MAX_SELECTED_MEMBERS);
+  if (memberIds.length) return { ...none, memberIds };
   const memberId = Number(b.member_id) || null;
-  if (memberId) return { allMembers: false, orgIds: [], memberId };
-  if (b.all_members === '1') return { allMembers: true, orgIds: [], memberId: null };
+  if (memberId) return { ...none, memberId };
+  if (b.all_members === '1') return { ...none, allMembers: true };
   let raw = b.org_ids;
-  if (!raw) return { allMembers: false, orgIds: [], memberId: null };
+  if (!raw) return none;
   const ids = (Array.isArray(raw) ? raw : [raw]).map((x) => Number(x)).filter(Boolean);
-  return { allMembers: false, orgIds: ids, memberId: null };
+  return { ...none, orgIds: ids };
 }
+const audienceChosenFor = (c) => c.allMembers || c.orgIds.length > 0 || !!c.memberId || c.memberIds.length > 0;
 
 function audienceLabel(orgs, choice, recipients = []) {
+  if (choice.memberIds && choice.memberIds.length) return `${recipients.length} selected member${recipients.length === 1 ? '' : 's'}`;
   if (choice.memberId) return recipients[0] ? `Single member: ${recipients[0].firstName} ${recipients[0].lastName}` : 'Single member';
   if (choice.allMembers) return 'All members';
   if (!choice.orgIds.length) return 'None';
@@ -78,6 +97,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
 
     const [announcements, announcementCount, broadcastCount, contactable, failedRecipients] = await Promise.all([
       db.announcement.findMany({ orderBy: { postedAt: 'desc' }, take: 50 }),
@@ -94,7 +114,7 @@ function register(app) {
       : [];
     const posterName = (id) => { const u = posters.find((p) => p.id === id); return u ? (u.displayName || u.username) : 'system'; };
 
-    const newForm = isAdmin
+    const newForm = canEdit
       ? `<div class="card" style="margin-bottom:1rem">
            <div class="card-head"><h2>Post an announcement</h2></div>
            <form class="form" method="post" action="/communications" style="box-shadow:none;border:0;padding:0">
@@ -120,7 +140,7 @@ function register(app) {
       : `<div class="empty-state">
           <div class="empty-ico" aria-hidden="true">✉</div>
           <h3>No announcements yet</h3>
-          <p>${isAdmin ? 'Use the form above to post your first announcement.' : 'Once an admin posts an announcement it will appear here.'}</p>
+          <p>${canEdit ? 'Use the form above to post your first announcement.' : 'Once an admin posts an announcement it will appear here.'}</p>
         </div>`;
 
     const broadcastCta = isAdmin
@@ -144,7 +164,7 @@ function register(app) {
     });
   }));
 
-  app.post('/communications', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/communications', requireEditor, asyncHandler(async (req, res) => {
     const { title, body, audience } = req.body || {};
     if (!title || !body) return res.redirect('/communications');
     await res.locals.db.announcement.create({ data: { title, body, audience: audience || 'all', postedBy: res.locals.user.id } });
@@ -159,7 +179,7 @@ function register(app) {
       db.member.findMany({ where: { deletedAt: null }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }], take: 500, select: { id: true, firstName: true, lastName: true, email: true, mobilePhone: true, preferredChannel: true } }),
     ]);
     const choice = parseOrgChoice(req.query);
-    const audienceChosen = choice.allMembers || choice.orgIds.length > 0 || !!choice.memberId;
+    const audienceChosen = audienceChosenFor(choice);
     const recipients = audienceChosen ? await resolveAudience(db, choice) : [];
 
     let bothCount = 0, smsOnlyCount = 0, emailOnlyCount = 0, noneCount = 0, excludedPref = 0;
@@ -175,15 +195,24 @@ function register(app) {
     const reachableSms = bothCount + smsOnlyCount;
     const reachableEmail = bothCount + emailOnlyCount;
 
-    const smsReady = !!process.env.ARKESEL_API_KEY;
+    const smsReady = smsDeliveryInfo().ready;
     const emailSettings = await db.emailSetting.findFirst();
     const emailReady = emailDeliveryInfo(emailSettings, '').ready;
+    // Texts left this month (lib/sms-usage.js): warned when under a tenth.
+    const smsLeft = await allowanceCheck(res.locals.churchId, 0);
+    const allowanceBanner = smsLeft.remaining < Math.max(1, smsLeft.allowance * 0.1)
+      ? `<div class="flash">${smsLeft.remaining ? `<strong>${smsLeft.remaining} texts left this month</strong> (of ${smsLeft.allowance}). A broadcast to more people than that will not be sent by SMS.` : `<strong>This month's SMS allowance is used up</strong> (${smsLeft.allowance} texts). SMS broadcasts will not be sent until next month, unless the platform owner raises it.`}</div>`
+      : '';
     const statusBanner = (smsReady && emailReady) ? '' : `<div class="flash">
       ${smsReady ? '' : '<strong>SMS dry-run mode.</strong> No SMS provider secret is configured — messages will be logged but not delivered. '}
       ${emailReady ? '' : '<strong>Email dry-run mode.</strong> No email provider secret is configured for this channel — messages will be logged but not delivered.'}
     </div>`;
 
-    const audienceForm = `
+    const audienceForm = choice.memberIds.length ? `
+      <div class="card" style="margin-bottom:1rem">
+        <h2 style="margin-top:0">Audience</h2>
+        <p style="margin:0">${recipients.length} member${recipients.length === 1 ? '' : 's'} selected on the Members page. <a href="/members">Change the selection</a> or <a href="/communications/broadcast">choose a different audience</a>.</p>
+      </div>` : `
       <form method="get" action="/communications/broadcast" class="card" style="margin-bottom:1rem">
         <h2 style="margin-top:0">Audience</h2>
         <label class="check" style="background:none;padding:0;margin-bottom:0.5rem">
@@ -232,7 +261,9 @@ function register(app) {
       </details>` : ''}
     ` : '';
 
-    const audienceHidden = choice.memberId
+    const audienceHidden = choice.memberIds.length
+      ? `<input type="hidden" name="member_ids" value="${recipients.map((r) => r.id).join(',')}">`
+      : choice.memberId
       ? `<input type="hidden" name="member_id" value="${choice.memberId}">`
       : (choice.allMembers
         ? `<input type="hidden" name="all_members" value="1">`
@@ -255,13 +286,13 @@ function register(app) {
           <strong>Override member preferences (urgent only)</strong> — sends to opted-out members too.
         </label>
         <div class="actions">
-          <button type="submit" onclick="return confirm('Send this broadcast?')">📣 Send broadcast</button>
+          <button type="submit" data-confirm="Send this broadcast?">📣 Send broadcast</button>
         </div>
       </form>` : '';
 
     res.page({
       title: 'Send broadcast', active: '/communications', noHeader: true,
-      body: `${pageHero('Send broadcast', '')}${statusBanner}${audienceForm}${previewSection}${composeForm}
+      body: `${pageHero('Send broadcast', '')}${statusBanner}${allowanceBanner}${audienceForm}${previewSection}${composeForm}
         <p style="margin-top:1.5rem"><a href="/communications/broadcasts">View broadcast history →</a></p>`,
     });
   }));
@@ -275,13 +306,13 @@ function register(app) {
 
     const orgs = await db.organization.findMany({ where: { active: true }, select: { id: true, name: true } });
     const choice = parseOrgChoice(req.body);
-    if (!choice.memberId && !choice.allMembers && choice.orgIds.length === 0) return res.redirect('/communications/broadcast');
+    if (!audienceChosenFor(choice)) return res.redirect('/communications/broadcast');
     const audience = await resolveAudience(db, choice);
     if (!audience.length) return res.redirect('/communications/broadcast');
     const allowance = await checkBroadcastAllowance(db, res.locals.church, audience.length, channel);
     if (!allowance.ok) { flash(req, allowanceMessage(allowance)); return res.redirect('/communications/broadcast'); }
     const audienceLbl = audienceLabel(orgs, choice, audience);
-    const orgIdForRow = (!choice.memberId && !choice.allMembers && choice.orgIds.length === 1) ? choice.orgIds[0] : null;
+    const orgIdForRow = (!choice.memberId && !choice.memberIds.length && !choice.allMembers && choice.orgIds.length === 1) ? choice.orgIds[0] : null;
     const ignorePrefs = req.body.ignore_prefs === '1';
 
     const broadcast = await db.broadcast.create({
@@ -308,7 +339,7 @@ function register(app) {
     const church = await db.church.findUnique({ where: { id: res.locals.churchId } });
     const userId = res.locals.user.id;
     startBroadcast(db, {
-      broadcastId: broadcast.id, audience, channel, subject, body, ignorePrefs, churchName: church.name,
+      broadcastId: broadcast.id, audience, channel, subject, body, ignorePrefs, churchName: church.name, churchId: res.locals.churchId,
     }, (updated) => logActivity(db, 'announcement', `Broadcast to ${audienceLbl}: ${audience.length} recipient(s) [${updated.status.toLowerCase()}]`, `/communications/broadcasts/${broadcast.id}`, userId));
 
     flash(req, `Broadcast queued for ${audience.length} member${audience.length === 1 ? '' : 's'} — it is sending now. This page updates by itself.`, 'success');
@@ -350,7 +381,7 @@ function register(app) {
     });
     // While the background send is running, reload every few seconds so the
     // status and per-recipient log fill in without the admin refreshing.
-    const refresher = b.status === 'SENDING' ? '<script>setTimeout(function(){location.reload();},4000);</script>' : '';
+    const refresher = b.status === 'SENDING' ? '<span data-refresh="4000" hidden></span>' : '';
     const body = `${refresher}
       <div class="card">
         <div class="card-head">
@@ -378,6 +409,39 @@ function register(app) {
     const settings = await res.locals.db.emailSetting.findUnique({ where: { churchId: res.locals.churchId } })
       || { provider: 'SMTP', senderName: '', senderEmail: '', replyToEmail: '', testRecipientEmail: '' };
     const ready = emailDeliveryInfo(settings, '').ready;
+    const church = await res.locals.db.church.findUnique({ where: { id: res.locals.churchId }, select: { smsSenderId: true, smsSenderStatus: true, smsSenderNote: true } });
+    const sms = smsDeliveryInfo();
+    const sendingAs = await smsSenderFor({ id: res.locals.churchId, ...church });
+    const allowance = await allowanceCheck(res.locals.churchId, 0);
+    const senderState = {
+      APPROVED: ['sent', 'approved', `Your texts are sent as <b>${esc(church.smsSenderId)}</b>.`],
+      PENDING: ['pending', 'awaiting approval', `Requested. Until it is approved, texts are sent as <b>${esc(sms.defaultSender)}</b>. Approval by the mobile networks usually takes 3–4 weeks.`],
+      REJECTED: ['failed', 'not approved', `It could not be approved${church.smsSenderNote ? `: ${esc(church.smsSenderNote)}` : ''}. Texts are sent as <b>${esc(sms.defaultSender)}</b>. You can ask for another name.`],
+    }[church.smsSenderStatus] || null;
+    const smsCard = `
+      <div class="card" id="sms">
+        <h2>SMS delivery</h2>
+        <dl class="stats">
+          <dt>Provider</dt><dd>${esc(sms.label)} <span class="pill pill-${sms.ready ? 'sent' : 'dry_run'}">${sms.ready ? 'ready' : 'dry-run only'}</span></dd>
+          <dt>Sent as</dt><dd><b>${esc(sendingAs)}</b></dd>
+          <dt>This month</dt><dd>${allowance.used.toLocaleString('en-GB')} of ${allowance.allowance.toLocaleString('en-GB')} texts <span class="pill pill-${allowance.remaining ? (allowance.remaining < allowance.allowance * 0.1 ? 'pending' : 'sent') : 'failed'}">${allowance.remaining.toLocaleString('en-GB')} left</span></dd>
+          ${church.smsSenderId ? `<dt>Your sender name</dt><dd>${esc(church.smsSenderId)} <span class="pill pill-${senderState[0]}">${senderState[1]}</span></dd>` : ''}
+        </dl>
+        <p class="muted-text">${senderState ? senderState[2] : `Texts are sent as <b>${esc(sms.defaultSender)}</b>. Ask for your church’s own name, and members will see it instead.`}</p>
+        <form class="form" method="post" action="/communications/sms-sender">
+          <label>SMS sender name<input name="senderId" required pattern="[A-Za-z0-9]+( [A-Za-z0-9]+)*" minlength="3" maxlength="11" value="${esc(church.smsSenderStatus === 'REJECTED' ? '' : church.smsSenderId || '')}" placeholder="e.g. DUNWELL">
+            <span class="hint">3 to 11 characters: letters, numbers and spaces between words (spaces count). Each name must be approved by the mobile networks before it is used.</span></label>
+          <div class="actions">
+            <button type="submit">${church.smsSenderId ? 'Ask for this name' : 'Request sender name'}</button>
+          </div>
+        </form>
+        ${church.smsSenderId ? `<form method="post" action="/communications/sms-sender" style="margin-top:0.5rem" data-confirm="Stop using your own sender name? Texts will be sent as ${esc(sms.defaultSender)}.">
+          <input type="hidden" name="remove" value="1"><button class="link" type="submit">Remove sender name</button></form>` : ''}
+        <form class="form" method="post" action="/communications/sms-test" style="margin-top:1rem">
+          <label>Send a test SMS to<input name="phone" required inputmode="tel" placeholder="024 412 7781"></label>
+          <div class="actions"><button type="submit" class="ghost">Send test SMS</button></div>
+        </form>
+      </div>`;
     const body = `
       <div class="card">
         <h2>Delivery profile</h2>
@@ -389,12 +453,7 @@ function register(app) {
         </dl>
         <p class="muted-text">${ready ? 'This provider is configured and ready to send.' : 'No live provider secret is configured for this church\'s selected provider — these settings are stored, but sends will run in dry-run mode until it\'s configured.'}</p>
       </div>
-      <div class="card">
-        <h2>SMS delivery</h2>
-        <dl class="stats">
-          <dt>Provider</dt><dd>Arkesel <span class="pill pill-${process.env.ARKESEL_API_KEY ? 'sent' : 'dry_run'}">${process.env.ARKESEL_API_KEY ? 'ready' : 'dry-run only'}</span></dd>
-        </dl>
-      </div>
+      ${smsCard}
       <div class="card">
         <h2>Configure email</h2>
         <form class="form" method="post" action="/communications/email-settings">
@@ -412,6 +471,49 @@ function register(app) {
         </form>
       </div>`;
     res.page({ title: 'Email Settings', active: '/communications', noHeader: true, body: `${pageHero('Email Settings', '')}${body}` });
+  }));
+
+  // A church's own SMS sender name: requested here, approved by the platform
+  // operator after registering it with the SMS provider (routes-pg-html/platform.js).
+  app.post('/communications/sms-sender', requireAdmin, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    if (req.body && req.body.remove) {
+      await db.church.update({ where: { id: res.locals.churchId }, data: { smsSenderId: null, smsSenderStatus: null, smsSenderNote: null } });
+      await logActivity(db, 'sms_sender_removed', 'SMS sender name removed', '/communications/email-settings', res.locals.user.id);
+      flash(req, 'Sender name removed. Texts are sent with the default name.', 'success');
+      return res.redirect('/communications/email-settings#sms');
+    }
+    // Stray spaces are tidied (ends trimmed, runs collapsed) before the check.
+    const senderId = String((req.body && req.body.senderId) || '').trim().replace(/\s+/g, ' ');
+    if (!SENDER_ID_RE.test(senderId)) {
+      flash(req, 'A sender name is 3 to 11 characters: letters, numbers and spaces between words, with no symbols.');
+      return res.redirect('/communications/email-settings#sms');
+    }
+    const current = await db.church.findUnique({ where: { id: res.locals.churchId }, select: { smsSenderId: true, smsSenderStatus: true } });
+    if (current.smsSenderId === senderId && current.smsSenderStatus !== 'REJECTED') {
+      flash(req, current.smsSenderStatus === 'APPROVED' ? 'That name is already approved and in use.' : 'That name is already waiting for approval.', 'info');
+      return res.redirect('/communications/email-settings#sms');
+    }
+    await db.church.update({ where: { id: res.locals.churchId }, data: { smsSenderId: senderId, smsSenderStatus: 'PENDING', smsSenderNote: null } });
+    await logActivity(db, 'sms_sender_requested', `SMS sender name requested: ${senderId}`, '/communications/email-settings', res.locals.user.id);
+    flash(req, `"${senderId}" requested. Texts keep the default name until it is approved.`, 'success');
+    res.redirect('/communications/email-settings#sms');
+  }));
+
+  // One text, to a number the admin types, so they can see their sender
+  // name arrive, or the gateway's own reason when it doesn't.
+  app.post('/communications/sms-test', requireAdmin, asyncHandler(async (req, res) => {
+    const phone = normalizePhoneGH((req.body && req.body.phone) || '');
+    if (!phone) { flash(req, 'Enter a valid phone number for the test.'); return res.redirect('/communications/email-settings#sms'); }
+    const church = await res.locals.db.church.findUnique({ where: { id: res.locals.churchId }, select: { name: true } });
+    let r;
+    try { r = await sendSmsBatch([phone], `Test message from ${church.name} on Church Manager.`, { churchId: res.locals.churchId }); }
+    catch (e) { r = { ok: false, error: e.message }; }
+    await logActivity(res.locals.db, 'sms_test_sent', `Test SMS to ${phone}: ${r.ok ? 'accepted' : r.dryRun ? 'dry run' : 'failed'}`, '/communications/email-settings', res.locals.user.id);
+    if (r.dryRun) flash(req, `Not sent: ${r.message}`, 'info');
+    else if (r.ok) flash(req, `Sent to ${phone} as "${r.sender}". If it does not arrive within a few minutes, the sender name is usually the reason: it must be approved first.`, 'success');
+    else flash(req, `The SMS provider refused it: ${r.error || 'no reason given'}.`);
+    res.redirect('/communications/email-settings#sms');
   }));
 
   app.post('/communications/email-settings', requireAdmin, asyncHandler(async (req, res) => {

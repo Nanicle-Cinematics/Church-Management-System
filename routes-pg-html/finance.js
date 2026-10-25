@@ -10,9 +10,8 @@
 // admin-only, with a mandatory reason), (Phase 9d) tithes/special
 // offerings/standalone day-born collections with CSV exports (a NEW
 // convention — no CSV export existed anywhere in the new stack before
-// this; see the small csvEscape/sendCsv helpers below, copied from the
-// original's routes/finance.js:318-326 pattern since nothing shared exists
-// to import), (Phase 9e) services/harvests with the shared DayBornSplit
+// this; the csvEscape/sendCsv pair from the original's
+// routes/finance.js:318-326 now lives in lib/csv.js), (Phase 9e) services/harvests with the shared DayBornSplit
 // table, and (Phase 9f) pledges/pledge-payments/printable receipts/giving
 // statements — pledge creation/edit never touch the ledger (only payments
 // do), pledge payments get their OWN independent receipt-number scheme
@@ -26,9 +25,11 @@
 const asyncHandler = require('../lib/async-handler');
 const { esc, fmtMoney, fmtOutstanding, todayISO, isMoneyPositive, isMoneyNonNeg, isValidDate, DAYS_OF_WEEK } = require('../lib/format');
 const { pageHero, statsRow, listCard, table } = require('../lib/views');
+const { scriptTag } = require('../lib/style-tags');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const ledger = require('../lib/ledger-pg');
+const { nextMemberId } = require('../lib/member-input');
 const { createReceipt, pendingReceiptNo } = require('../lib/receipts');
 const { sendSmsBatch, sendEmailEach, normalizePhoneGH } = require('../lib/delivery');
 const { amountInWords } = require('../lib/money');
@@ -236,7 +237,7 @@ async function budgetAccountSelect(db, selected) {
     .map((a) => `<option value="${a.id}" ${Number(selected) === a.id ? 'selected' : ''}>${esc(a.code + ' · ' + a.name)}</option>`).join('')}</optgroup>`;
   return `<select name="accountId" data-account-picker><option value="">— all accounts —</option>${group('INCOME', 'Income accounts')}${group('EXPENSE', 'Expense accounts')}</select>`;
 }
-const BUDGET_ACCOUNT_SCRIPT = `<script>(function(){document.querySelectorAll('form').forEach(function(f){var t=f.querySelector('select[name=lineType]'),a=f.querySelector('select[data-account-picker]');if(!t||!a)return;function sync(){[].forEach.call(a.querySelectorAll('optgroup'),function(g){var on=g.label.toLowerCase().indexOf(t.value.toLowerCase())===0;g.hidden=!on;g.disabled=!on;});var o=a.options[a.selectedIndex];if(o&&o.parentNode.tagName==='OPTGROUP'&&o.parentNode.disabled)a.value='';}t.addEventListener('change',sync);sync();});})();</script>`;
+const BUDGET_ACCOUNT_SCRIPT = `${scriptTag('budget-accounts')}`;
 /** { ok } or { ok:false, message } — an account must be of the same kind as the line (income/expense). */
 async function accountMatchesLine(db, accountId, lineType) {
   if (!accountId) return { ok: true };
@@ -384,14 +385,14 @@ async function memberOutstandingDetail(db, memberId) {
 // Sends a message to a member over the channel(s) their preference allows —
 // direct port of the original's sendMemberMessage(), using Phase 9a's
 // lib/delivery.js instead of the old SQLite-era sendSmsBatch/sendEmailEach.
-async function sendMemberMessage(db, member, churchName, smsText, emailSubject, emailText) {
+async function sendMemberMessage(db, member, churchName, smsText, emailSubject, emailText, churchId = member.churchId) {
   const pref = member.preferredChannel || 'NONE';
   if (pref === 'NONE') return { ok: false, reason: 'do_not_contact' };
   const phone = (pref === 'EITHER' || pref === 'SMS_ONLY') ? normalizePhoneGH(member.mobilePhone) : null;
   const email = (pref === 'EITHER' || pref === 'EMAIL_ONLY') ? (member.email || null) : null;
   if (!phone && !email) return { ok: false, reason: 'no_contact' };
   let sms = null, mail = null;
-  if (phone) { try { sms = await sendSmsBatch([phone], smsText); } catch (e) { sms = { ok: false, error: e.message }; } }
+  if (phone) { try { sms = await sendSmsBatch([phone], smsText, { churchId }); } catch (e) { sms = { ok: false, error: e.message }; } }
   if (email) { try { mail = await sendEmailEach(db, [{ addr: email, token: member.unsubscribeToken }], emailSubject, emailText, { churchName }); } catch (e) { mail = { ok: false, error: e.message }; } }
   const channels = [];
   if (phone) channels.push('SMS');
@@ -475,31 +476,19 @@ async function givingByMember(db, year) {
     .sort((a, b) => b.total - a.total);
 }
 
-// Small CSV helpers — no shared lib/ convention exists yet for this (see
-// module header); copied near-verbatim from the original's
-// routes/finance.js:318-326 sendFinanceCsv/csvEscape pair.
-function csvEscape(v) {
-  let s = v === null || v === undefined ? '' : String(v);
-  // Spreadsheet formula injection: a cell that starts with = + - @ (or a
-  // tab/CR) is executed by Excel/Sheets. Names, descriptions and "received
-  // from" are free text, so prefix an apostrophe. Plain numbers such as -50.00
-  // are left alone.
-  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`;
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-function sendCsv(res, filename, header, rows) {
-  const lines = [header.map(csvEscape).join(',')].concat(rows.map((r) => r.map(csvEscape).join(',')));
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  res.send(lines.join('\r\n'));
-}
+const { sendCsv } = require('../lib/csv');
 
 // The expenses list's Actions cell: buttons in one wrapping row, and the reason
 // an expense can't be approved by this user on its own line underneath (a long
 // note beside stacked buttons wrapped badly).
-function expenseActions(e, { canWrite, canApprove, user, limitSettings }) {
-  const reject = `<form method="post" action="/finance/expenses/${e.id}/reject" style="display:inline" onsubmit="return confirm('Reject this expense?')"><button type="submit" class="btn-link">Reject</button></form>`;
-  const approve = `<form method="post" action="/finance/expenses/${e.id}/approve" style="display:inline" onsubmit="return confirm('Approve and pay this expense?')"><button type="submit" class="btn-link">Approve</button></form>`;
+// Approve/reject/verify can be used from the Finance overview as well as from
+// their own registers; only that one known page is accepted as a destination.
+const backTo = (req, fallback) => ((req.body && req.body.return_to) === '/finance' ? '/finance' : fallback);
+
+function expenseActions(e, { canWrite, canApprove, user, limitSettings, returnTo }) {
+  const back = returnTo ? `<input type="hidden" name="return_to" value="${esc(returnTo)}">` : '';
+  const reject = `<form method="post" action="/finance/expenses/${e.id}/reject" style="display:inline" data-confirm="Reject this expense?">${back}<button type="submit" class="btn-link${returnTo ? ' ghost' : ''}">Reject</button></form>`;
+  const approve = `<form method="post" action="/finance/expenses/${e.id}/approve" style="display:inline" data-confirm="Approve and pay this expense?">${back}<button type="submit" class="btn-link">Approve</button></form>`;
   const buttons = [];
   let note = '';
   if (canWrite) buttons.push(`<a class="btn-link" href="/finance/expenses/${e.id}/edit">Edit</a>`);
@@ -525,6 +514,8 @@ const FINANCE_ACTIVITY_KINDS = [
   'project_created', 'project_edited',
   'budget_created', 'budget_line_added', 'budget_line_edited', 'budget_line_removed', 'budget_status_changed',
   'period_locked', 'period_reopened',
+  // Written by routes-pg-html/allowances.js and lib/allowances.js.
+  'allowance_added', 'allowance_edited', 'allowance_settings_updated', 'allowance_run',
 ];
 
 const FINANCE_REPORTS = [
@@ -582,21 +573,36 @@ function reportSection(title, content, meta = '') {
 }
 
 function register(app) {
+  // Finance overview, Precision layout: key figures, Sunday collections (cash
+  // count sheets, counted -> verified) beside income by type, recent ledger
+  // entries beside expenses waiting for approval, fund balances, and the
+  // directory of finance tools. Approve / reject / verify use the registers'
+  // own routes (with return_to=/finance), so every control they enforce —
+  // second approver, approval tiers, period locks — applies here unchanged.
   app.get('/finance', requireFinanceReportAccess, asyncHandler(async (req, res) => {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const churchId = res.locals.churchId;
-    const canWrite = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(res.locals.user.financeRole);
+    const user = res.locals.user;
+    const canWrite = user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(user.financeRole);
+    const canApprove = user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(user.financeRole);
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
-    const from = `${year}-${String(month).padStart(2, '0')}-01`;
-    const to = `${year}-${String(month).padStart(2, '0')}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
+    const pad = (n) => String(n).padStart(2, '0');
+    const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const from = `${year}-${pad(month)}-01`;
+    const to = `${year}-${pad(month)}-${pad(new Date(year, month, 0).getDate())}`;
+    // The same point last month (1-12 Sep on 12 Oct), for a fair comparison mid-month.
+    const lastFrom = isoDay(new Date(year, month - 2, 1));
+    const lastTo = isoDay(new Date(Math.min(new Date(year, month - 2, now.getDate()).getTime(), new Date(year, month - 1, 0).getTime())));
 
-    const [funds, monthIncome, monthExpenses, pledges, currentPeriod, budget, recentEntries] = await Promise.all([
+    const [funds, monthIncome, monthExpenses, lastIncome, lastExpenses, pledges, currentPeriod, budget, recentEntries, incomeRows, sheets, depositCounts, waiting, waitingCount, limitSettings] = await Promise.all([
       db.fund.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
       ledger.budgetActual(db, churchId, { lineType: 'INCOME', from, to }),
       ledger.budgetActual(db, churchId, { lineType: 'EXPENSE', from, to }),
+      ledger.budgetActual(db, churchId, { lineType: 'INCOME', from: lastFrom, to: lastTo }),
+      ledger.budgetActual(db, churchId, { lineType: 'EXPENSE', from: lastFrom, to: lastTo }),
       db.pledge.aggregate({ where: { status: { in: ['PENDING', 'PARTIAL'] } }, _sum: { pledgedAmount: true, paidAmount: true }, _count: true }),
       db.financialPeriod.findUnique({ where: { churchId_year_month: { churchId, year, month } } }),
       db.financeBudget.findFirst({
@@ -607,9 +613,15 @@ function register(app) {
       db.journalEntry.findMany({
         where: { status: { in: ['POSTED', 'REVERSED'] } },
         orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
-        take: 6,
-        include: { lines: { select: { debit: true, credit: true } } },
+        take: 8,
+        include: { lines: { select: { debit: true, credit: true, account: { select: { accountType: true } } } } },
       }),
+      ledger.incomeByDayAndAccount(db, churchId, { from, to }),
+      db.cashCountSheet.findMany({ where: { status: { not: 'VOIDED' } }, orderBy: [{ serviceDate: 'desc' }, { id: 'desc' }], take: 6 }),
+      db.bankDeposit.groupBy({ by: ['status'], _count: true }),
+      db.expense.findMany({ where: { approvalStatus: 'SUBMITTED' }, orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }], take: 5 }),
+      db.expense.aggregate({ where: { approvalStatus: 'SUBMITTED' }, _count: true, _sum: { amount: true } }),
+      canApprove ? db.financeSetting.findFirst() : null,
     ]);
 
     const fundBalances = await Promise.all(funds.map((fund) => ledger.fundBalance(db, churchId, fund.id)));
@@ -624,25 +636,120 @@ function register(app) {
     }));
     const budgetSpent = expenseActuals.reduce((sum, value) => sum + Number(value || 0), 0);
     const budgetUsage = expenseBudget > 0 ? Math.round((budgetSpent / expenseBudget) * 100) : null;
-    const budgetTone = budgetUsage === null ? 'neutral' : budgetUsage > 100 ? 'danger' : budgetUsage >= 85 ? 'warning' : 'positive';
     const monthNet = monthIncome - monthExpenses;
+    const lastNet = lastIncome - lastExpenses;
+    const monthName = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    const periodLocked = currentPeriod && currentPeriod.status === 'LOCKED';
+    const depositsBy = Object.fromEntries(depositCounts.map((d) => [d.status, d._count]));
+    const whole = (n) => `GH₵ ${Math.round(Number(n) || 0).toLocaleString('en-GH')}`;
 
+    // ---- key figures ----
+    const delta = (cur, prev, invert = false) => {
+      if (!(prev > 0)) return '';
+      const pct = Math.round((cur - prev) / prev * 1000) / 10;
+      const tone = pct === 0 ? 'flat' : (invert ? pct < 0 : pct > 0) ? 'up' : 'down';
+      return `<span class="pd-delta ${tone}">${pct > 0 ? '↑' : pct < 0 ? '↓' : ''} ${Math.abs(pct).toFixed(1)}%</span> `;
+    };
+    const kpi = (href, label, value, foot, ic) => `<a class="pd-kpi" href="${href}"><span class="pd-kpi-ic" aria-hidden="true">${icon(ic)}</span><div class="pd-kpi-l">${esc(label)}</div><div class="pd-kpi-v">${value}</div><div class="pd-kpi-f">${foot}</div></a>`;
+    const kpis = `<section class="pd-kpis" aria-label="This month">
+      ${kpi('/finance/income', `Income, ${now.toLocaleDateString('en-GB', { month: 'long' })}`, esc(whole(monthIncome)), `${delta(monthIncome, lastIncome)}vs last month so far`, 'trend')}
+      ${kpi('/finance/expenses', 'Expenses, this month', esc(whole(monthExpenses)), budgetUsage === null ? `${delta(monthExpenses, lastExpenses, true)}vs last month so far` : `<span class="pd-delta ${budgetUsage > 100 ? 'down' : budgetUsage >= 85 ? 'flat' : 'up'}">${budgetUsage}%</span> of the approved budget`, 'receipt')}
+      ${kpi('/finance/reports/income-expense', 'Net this month', `<span${monthNet < 0 ? ' class="pf-neg"' : ''}>${esc(whole(monthNet))}</span>`, lastNet ? `${whole(lastNet)} at this point last month` : 'Income less expenses', 'ledger')}
+      ${kpi('/finance/funds', 'Fund balances', esc(whole(cashPosition)), `Across ${funds.length} active fund${funds.length === 1 ? '' : 's'}`, 'wallet')}
+    </section>`;
+
+    // ---- Sunday collections ----
+    const stage = (st) => `<span class="pf-stage" title="${st === 'VERIFIED' ? 'Counted and verified' : 'Counted, waiting for a second officer'}"><i class="on"></i><i${st === 'VERIFIED' ? ' class="on"' : ''}></i><small>${st === 'VERIFIED' ? 'Verified' : 'Counted'}</small></span>`;
+    const toVerify = sheets.filter((s) => s.status === 'COUNTED').length;
+    const verifyCell = (s) => {
+      if (s.status !== 'COUNTED') return '<span class="muted-text">Done</span>';
+      if (!canApprove) return '<span class="muted-text">Awaiting</span>';
+      if (s.enteredBy === user.id) return '<span class="muted-text" title="Someone other than the person who entered it must verify">Another officer</span>';
+      return `<form method="post" action="/finance/cash-counts/${s.id}/verify" data-confirm="Verify ${esc(s.sheetNo)} (${esc(fmtMoney(s.countedAmount))})?"><input type="hidden" name="return_to" value="/finance"><button type="submit" class="btn pf-sm">Verify</button></form>`;
+    };
+    const collections = `<section class="pd-card">
+      <div class="pd-ch"><div><h2>Sunday collections</h2><p class="sub">Cash count sheets · counted, then verified by a second officer</p></div>${toVerify ? `<span class="pill pill-pending">${toVerify} to verify</span>` : sheets.length ? '<span class="pill pill-ok">All verified</span>' : ''}</div>
+      ${sheets.length ? `<div class="table-wrap pf-table"><table class="pf-tbl"><thead><tr><th>Service</th><th>Counted by</th><th>Progress</th><th class="pf-num">Amount</th><th class="pf-num"><span class="sr-only">Action</span></th></tr></thead><tbody>
+        ${sheets.map((s) => `<tr><td><a href="/finance/cash-counts/${s.id}"><b>${esc(s.serviceLabel || 'Service')}</b></a><div class="muted-text pf-sub">${esc(s.serviceDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }))} · ${esc(s.sheetNo)}</div></td>
+          <td class="muted-text">${esc(s.countedBy)}</td><td>${stage(s.status)}</td><td class="pf-num"><b>${esc(fmtMoney(s.countedAmount))}</b></td><td class="pf-num">${verifyCell(s)}</td></tr>`).join('')}
+      </tbody></table></div>` : `<div class="pd-clear" style="padding-top:18px">No cash counts yet.${canWrite ? ' <a href="/finance/cash-counts">Record the first one</a>' : ''}</div>`}
+      <div class="pf-foot"><a href="/finance/cash-counts">All cash counts</a><span>Bank deposits: ${depositsBy.PENDING ? `${depositsBy.PENDING} awaiting a slip · ` : ''}${depositsBy.DEPOSITED ? `<b>${depositsBy.DEPOSITED} to verify</b>` : 'none to verify'} · <a href="/finance/deposits">Deposits</a></span></div>
+    </section>`;
+
+    // ---- income by type ----
+    const groups = ledger.INCOME_GROUPS.map((g, i) => ({ ...g, value: incomeRows.filter((r) => ledger.incomeGroupIndex(r.code) === i).reduce((a, r) => a + r.amount, 0) })).filter((g) => g.value > 0);
+    const mixTotal = groups.reduce((a, g) => a + g.value, 0);
+    const donut = (() => {
+      const R = 58, C = 2 * Math.PI * R, gap = groups.length > 1 ? 3 : 0;
+      let acc = 0;
+      const segs = groups.map((g) => {
+        const len = Math.max(0.5, g.value / mixTotal * C - gap);
+        const seg = `<circle class="pf-seg ${g.key}" cx="74" cy="74" r="${R}" fill="none" stroke-width="20" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}"><title>${esc(g.name)}: ${esc(fmtMoney(g.value))}</title></circle>`;
+        acc += g.value / mixTotal * C;
+        return seg;
+      }).join('');
+      return `<svg class="pf-donut" viewBox="0 0 148 148" width="148" height="148" role="img" aria-label="Income by type"><circle class="pf-track" cx="74" cy="74" r="${R}" fill="none" stroke-width="20"/><g transform="rotate(-90 74 74)">${segs}</g></svg>`;
+    })();
+    const mix = `<section class="pd-card flex">
+      <div class="pd-ch"><div><h2>Income by type</h2><p class="sub">${esc(monthName)}${mixTotal ? ` · ${esc(whole(mixTotal))}` : ''}</p></div><a href="/finance/reports/giving">Report</a></div>
+      ${mixTotal ? `<div class="pf-mix">${donut}<ul>${groups.map((g) => `<li><i class="${g.key}"></i>${esc(g.name)}<b>${esc(whole(g.value))}</b><small>${Math.round(g.value / mixTotal * 100)}%</small></li>`).join('')}</ul></div>`
+        : '<div class="pd-clear" style="flex:1">Nothing posted this month yet.</div>'}
+    </section>`;
+
+    // ---- recent ledger entries ----
+    const entryAmount = (entry) => {
+      const by = (type, side) => entry.lines.filter((l) => l.account && l.account.accountType === type).reduce((a, l) => a + Number(l[side] || 0), 0);
+      const income = by('INCOME', 'credit') - by('INCOME', 'debit');
+      const expense = by('EXPENSE', 'debit') - by('EXPENSE', 'credit');
+      if (income) return { sign: 1, value: income };
+      if (expense) return { sign: -1, value: expense };
+      return { sign: 0, value: entry.lines.reduce((a, l) => a + Number(l.debit || 0), 0) };
+    };
+    const sourceLabel = (t) => String(t || 'OTHER').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    const recent = `<section class="pd-card">
+      <div class="pd-ch"><div><h2>Recent transactions</h2><p class="sub">Latest ledger entries, all funds</p></div><a href="/finance/accounting">Ledger</a></div>
+      ${recentEntries.length ? `<div class="table-wrap pf-table"><table class="pf-tbl"><thead><tr><th>Description</th><th>Entry</th><th>Date</th><th class="pf-num">Amount</th></tr></thead><tbody>
+        ${recentEntries.map((e) => { const a = entryAmount(e); return `<tr><td><a href="/finance/journal/${e.id}"><b>${esc(e.memo || sourceLabel(e.sourceType))}</b></a><div class="muted-text pf-sub">${esc(sourceLabel(e.sourceType))}${e.status === 'REVERSED' ? ' · <span class="pill pill-reversed">Reversed</span>' : ''}</div></td>
+          <td class="muted-text">${esc(e.entryNo)}</td><td class="muted-text">${esc(e.entryDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }))}</td>
+          <td class="pf-num ${a.sign > 0 ? 'pf-pos' : ''}"><b>${a.sign > 0 ? '+' : a.sign < 0 ? '−' : ''}${esc(fmtMoney(a.value))}</b></td></tr>`; }).join('')}
+      </tbody></table></div>` : '<div class="pd-clear" style="padding-top:18px">No ledger activity yet. Recorded income and expenses will appear here.</div>'}
+    </section>`;
+
+    // ---- waiting for approval + checks ----
+    const nWaiting = waitingCount._count || 0;
+    const approvals = `<section class="pd-card">
+      <div class="pd-ch"><div><h2>Waiting for approval</h2><p class="sub">${nWaiting ? `${nWaiting} expense${nWaiting === 1 ? '' : 's'} · ${esc(fmtMoney(waitingCount._sum.amount || 0))}` : 'Expenses submitted for payment'}</p></div><a href="/finance/expenses">Expenses</a></div>
+      ${waiting.length ? `<ul class="pf-appr">${waiting.map((e) => `<li><span class="pd-ti tone-warn">${icon('receipt')}</span><div><b>${esc(e.description || e.category)}</b><small>${esc(e.category)}${e.paidTo ? ` · ${esc(e.paidTo)}` : ''} · ${esc(e.spentOn.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }))}</small>
+        ${canApprove ? `<div class="pf-appr-act">${expenseActions(e, { canWrite: false, canApprove, user, limitSettings, returnTo: '/finance' })}</div>` : ''}</div><b class="pf-num">${esc(fmtMoney(e.amount))}</b></li>`).join('')}</ul>`
+        : `<div class="pd-clear">${icon('checkCircle')}<b>All caught up</b>Nothing is waiting for a second approver.</div>`}
+    </section>`;
     const alerts = [];
-    if (!funds.length) alerts.push(['warning', 'No funds configured', 'Create a fund before recording restricted or designated money.', '/finance/funds']);
-    if (!budget) alerts.push(['neutral', 'No approved budget for this period', 'Approve a budget to track spending against plan.', '/finance/budgets']);
-    if (budgetUsage !== null && budgetUsage > 100) alerts.push(['danger', 'Approved expense budget exceeded', `Actual spending is ${budgetUsage}% of budget.`, '/finance/budgets']);
-    else if (budgetUsage !== null && budgetUsage >= 85) alerts.push(['warning', 'Expense budget is nearing its limit', `Actual spending is ${budgetUsage}% of budget.`, '/finance/budgets']);
-    if (outstandingPledges > 0) alerts.push(['neutral', `${fmtMoney(outstandingPledges)} in outstanding pledges`, `${pledges._count} pledge${pledges._count === 1 ? '' : 's'} still require follow-up.`, '/finance/pledges']);
-    if (!currentPeriod || currentPeriod.status === 'OPEN') alerts.push(['neutral', 'Current financial period is open', 'Lock it after reconciliation and month-end review.', '/finance/periods']);
+    if (!funds.length) alerts.push(['warn', 'No funds configured', 'Create a fund before recording restricted or designated money.', '/finance/funds']);
+    if (!budget) alerts.push(['muted', 'No approved budget for this period', 'Approve a budget to track spending against plan.', '/finance/budgets']);
+    if (budgetUsage !== null && budgetUsage > 100) alerts.push(['bad', 'Approved expense budget exceeded', `Spending is ${budgetUsage}% of budget.`, '/finance/budgets']);
+    else if (budgetUsage !== null && budgetUsage >= 85) alerts.push(['warn', 'Expense budget is nearing its limit', `Spending is ${budgetUsage}% of budget.`, '/finance/budgets']);
+    if (outstandingPledges > 0) alerts.push(['accent', `${fmtMoney(outstandingPledges)} in outstanding pledges`, `${pledges._count} pledge${pledges._count === 1 ? '' : 's'} still to follow up.`, '/finance/pledges']);
+    if (!periodLocked) alerts.push(['muted', `${monthName} is open`, 'Lock it after reconciliation and month-end review.', '/finance/periods']);
+    const checks = `<section class="pd-card">
+      <div class="pd-ch"><h2>Financial checks</h2><span class="pd-count">${alerts.length}</span></div>
+      ${alerts.length ? `<ul class="pd-list">${alerts.map(([tone, title, detail, href]) => `<li><a class="pd-row" href="${href}"><span class="pd-ti tone-${tone}">${icon(tone === 'bad' || tone === 'warn' ? 'alert' : tone === 'accent' ? 'star' : 'clock')}</span><span><b>${esc(title)}</b><small>${esc(detail)}</small></span><span class="go">${icon('chevronRight')}</span></a></li>`).join('')}</ul>`
+        : `<div class="pd-clear">${icon('checkCircle')}<b>Everything looks in order</b></div>`}
+    </section>`;
 
-    const groups = [
+    // ---- funds ----
+    const fundCards = funds.length ? `<section class="pf-funds" aria-label="Fund balances">${funds.map((f, i) => `<a class="pf-fund" href="/finance/funds">
+        <span class="pd-ti tone-${['accent', 'ok', 'warn', 'info', 'bad', 'muted'][i % 6]}">${icon(f.restricted ? 'lock' : 'wallet')}</span>
+        <b>${esc(f.name)}</b><strong>${esc(fmtMoney(fundBalances[i]))}</strong><small>${f.restricted ? 'Restricted' : 'Unrestricted'}${f.responsibleOfficer ? ` · ${esc(f.responsibleOfficer)}` : ''}</small></a>`).join('')}</section>` : '';
+
+    // ---- directory of tools ----
+    const toolGroups = [
       ['Money in', [
         ['/finance/income', icon('trend'), 'General income'], ['/finance/tithes', icon('plus'), 'Tithes'],
         ['/finance/special', icon('star'), 'Special offerings'], ['/finance/day-borns', icon('sun'), 'Day-born collections'],
         ['/finance/services', icon('church'), 'Services'], ['/finance/harvests', icon('harvest'), 'Harvests'], ['/finance/pledges', icon('diamond'), 'Pledges'],
       ]],
       ['Money out & controls', [
-        ['/finance/expenses', icon('trendDown'), 'Expenses'], ['/finance/vouchers', icon('receipt'), 'Payment vouchers'],
+        ['/finance/expenses', icon('trendDown'), 'Expenses'], ['/finance/allowances', icon('users'), 'Allowances'], ['/finance/vouchers', icon('receipt'), 'Payment vouchers'],
         ['/finance/funds', icon('wallet'), 'Funds'], ['/finance/projects', icon('folder'), 'Projects'], ['/finance/budgets', icon('ledger'), 'Budgets'],
         ['/finance/periods', icon('clock'), 'Financial periods'],
       ]],
@@ -656,57 +763,33 @@ function register(app) {
         ['/finance/settings', icon('settings'), 'Finance settings'],
       ]],
     ];
-    const recentRows = recentEntries.map((entry) => {
-      const amount = entry.lines.reduce((sum, line) => sum + Number(line.debit || 0), 0);
-      const source = String(entry.sourceType || 'OTHER').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
-      return `<a class="finance-activity" href="/finance/journal/${entry.id}">
-        <span class="finance-activity-icon">${entry.status === 'REVERSED' ? '↶' : '✓'}</span>
-        <span><strong>${esc(entry.memo || source)}</strong><small>${esc(entry.entryDate.toISOString().slice(0, 10))} · ${esc(entry.entryNo)} · ${esc(source)}</small></span>
-        <strong class="finance-activity-amount">${fmtMoney(amount)}</strong>
-      </a>`;
-    }).join('');
+    const tools = `<section class="finance-module-directory">
+        <div class="finance-section-heading"><div><h2>Finance tools</h2></div><p>Registers, controls and reports.</p></div>
+        <div class="finance-module-groups">${toolGroups.map(([label, items]) => `<details>
+          <summary><span>${esc(label)}</span><small>${items.length} tools</small></summary>
+          <div class="finance-module-links">${items.map(([href, glyph, name]) =>
+            `<a href="${href}"><span class="finance-module-icon">${glyph}</span><strong>${esc(name)}</strong><span aria-hidden="true">→</span></a>`).join('')}</div>
+        </details>`).join('')}</div>
+      </section>`;
 
-    const body = `${pageHero('Finance', 'A clear view of your church’s financial position and next actions.')}
-      <div class="finance-command">
-        <section class="finance-kpi-grid" aria-label="Financial overview">
-          <a class="finance-kpi" href="/finance/funds"><span>Fund balances</span><strong>${fmtMoney(cashPosition)}</strong><small>Across ${funds.length} active fund${funds.length === 1 ? '' : 's'}</small></a>
-          <a class="finance-kpi positive" href="/finance/income"><span>Income this month</span><strong>${fmtMoney(monthIncome)}</strong><small>${esc(from)} to ${esc(to)}</small></a>
-          <a class="finance-kpi ${monthNet < 0 ? 'danger' : 'positive'}" href="/finance/expenses"><span>Net movement</span><strong>${fmtMoney(monthNet)}</strong><small>${fmtMoney(monthExpenses)} spent this month</small></a>
-          <a class="finance-kpi ${budgetTone}" href="/finance/budgets"><span>Expense budget used</span><strong>${budgetUsage === null ? 'Not set' : `${budgetUsage}%`}</strong><small>${budgetUsage === null ? 'No approved budget' : `${fmtMoney(budgetSpent)} of ${fmtMoney(expenseBudget)}`}</small></a>
-          <a class="finance-kpi ${outstandingPledges > 0 ? 'warning' : 'positive'}" href="/finance/pledges"><span>Outstanding pledges</span><strong>${fmtMoney(outstandingPledges)}</strong><small>${pledges._count} open pledge${pledges._count === 1 ? '' : 's'}</small></a>
-        </section>
-
-        ${canWrite ? `<section class="finance-quick-actions" aria-label="Quick actions">
-          <div><p class="eyebrow">Quick actions</p><h2>Record today’s activity</h2></div>
-          <div class="finance-action-buttons">
-            <a class="btn" href="/finance/income">+ Record income</a>
-            <a class="btn secondary" href="/finance/expenses">+ Record expense</a>
-            <a class="btn ghost" href="/finance/pledges">Record pledge payment</a>
-          </div>
-        </section>` : ''}
-
-        <div class="finance-dashboard-grid">
-          <section class="card finance-attention">
-            <div class="card-head"><div><p class="eyebrow">Attention</p><h2>Financial checks</h2></div><span class="meta">${alerts.length} item${alerts.length === 1 ? '' : 's'}</span></div>
-            ${alerts.length ? `<div class="finance-alert-list">${alerts.map(([tone, title, detail, href]) =>
-              `<a class="finance-alert ${tone}" href="${href}"><span class="finance-alert-dot"></span><span><strong>${esc(title)}</strong><small>${esc(detail)}</small></span><span aria-hidden="true">→</span></a>`).join('')}</div>`
-              : '<div class="finance-all-clear"><span>✓</span><div><strong>Everything looks in order</strong><small>No immediate finance checks need attention.</small></div></div>'}
-          </section>
-          <section class="card finance-recent">
-            <div class="card-head"><div><p class="eyebrow">Ledger</p><h2>Recent activity</h2></div></div>
-            ${recentRows || '<div class="finance-empty"><strong>No ledger activity yet</strong><span>Recorded income and expenses will appear here.</span></div>'}
-          </section>
-        </div>
-
-        <section class="finance-module-directory">
-          <div class="finance-section-heading"><div><p class="eyebrow">Workspace</p><h2>Finance tools</h2></div><p>Open the detailed registers, controls, and reports.</p></div>
-          <div class="finance-module-groups">${groups.map(([label, items], index) => `<details ${index === 0 ? 'open' : ''}>
-            <summary><span>${esc(label)}</span><small>${items.length} tools</small></summary>
-            <div class="finance-module-links">${items.map(([href, glyph, name]) =>
-              `<a href="${href}"><span class="finance-module-icon">${glyph}</span><strong>${esc(name)}</strong><span aria-hidden="true">→</span></a>`).join('')}</div>
-          </details>`).join('')}</div>
-        </section>
-      </div>`;
+    const tabs = `<nav class="pm-tabs" aria-label="Finance sections">
+        <a href="/finance" aria-current="page">Overview</a>
+        <a href="/finance/accounting">Transactions</a>
+        <a href="/finance/cash-counts">Collections${toVerify ? `<span>${toVerify}</span>` : ''}</a>
+        <a href="/finance/funds">Funds<span>${funds.length}</span></a>
+        <a href="/finance/expenses">Approvals${nWaiting ? `<span>${nWaiting}</span>` : ''}</a>
+        <a href="/finance/reports">Reports</a>
+        <a href="/finance/allowances">Allowances</a>
+      </nav>`;
+    const head = `<header class="pm-head">
+        <div><h1>Finance</h1><p class="subtitle">${esc(monthName)} · ${periodLocked ? 'period locked' : 'period open'}${budget ? ' · budget approved' : ''}</p></div>
+        ${canWrite ? `<div class="pm-actions"><a class="btn ghost" href="/finance/expenses">${icon('receipt')} Record expense</a><a class="btn" href="/finance/income">${icon('plus')} Record income</a></div>` : ''}
+      </header>`;
+    const body = `<div class="pd pf">${head}${tabs}${kpis}
+      <div class="pd-grid pd-21">${collections}${mix}</div>
+      <div class="pd-grid pd-21 pf-start">${recent}<div class="pd-stack">${approvals}${checks}</div></div>
+      ${fundCards}
+      ${tools}</div>`;
     res.page({ title: 'Finance', active: '/finance', noHeader: true, body });
   }));
 
@@ -801,7 +884,7 @@ function register(app) {
     </form>`;
     const actions = `<div class="finance-report-actions">
       <a class="btn ghost" href="/finance/reports/${type}.csv?${query}">Export CSV</a>
-      <button class="btn" type="button" onclick="window.print()">Print / save PDF</button>
+      <button class="btn" type="button" data-print>Print / save PDF</button>
     </div>`;
     const summary = statsRow([
       { cls: 'green', icon: icon('trend'), value: fmtMoney(income), label: `Income · ${compare(income, priorIncome)}` },
@@ -989,6 +1072,8 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const canWrite = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(res.locals.user.financeRole);
+    // Undoing a posted entry is a fund manager's job; a Cashier records, but does not reverse.
+    const canReverse = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
     const rows = await db.incomeRecord.findMany({
       where: { deletedAt: null }, orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }], take: 100,
       include: { member: { select: { firstName: true, lastName: true } }, fund: { select: { name: true } }, project: { select: { name: true } } },
@@ -1024,7 +1109,7 @@ function register(app) {
           `${esc(incomeCategoryLabel(r.category))}${r.subcategory ? '<br><span class="muted-text">' + esc(r.subcategory) + '</span>' : ''}`,
           r.memberId ? `<a href="/members/${r.memberId}">${esc(r.member.firstName + ' ' + r.member.lastName)}</a>` : esc(r.receivedFrom || 'Anonymous'),
           fmtMoney(r.amount), esc(r.paymentMethod || 'Cash'), esc((r.fund && r.fund.name) || 'General fund'), esc((r.project && r.project.name) || '—'), esc(r.receiptNumber || '—'),
-          canWrite ? `<form method="post" action="/finance/income/${r.id}/delete" onsubmit="return confirm('Reverse and archive this income record?')"><button class="link" type="submit">Reverse</button></form>` : '',
+          canReverse ? `<form method="post" action="/finance/income/${r.id}/delete" data-confirm="Reverse and archive this income record?"><button class="link" type="submit">Reverse</button></form>` : '',
         ])) : '<p class="muted-text">No generic income recorded yet.</p>'}`;
     res.page({ title: 'Finance · Generic Income', active: '/finance', noHeader: true, body: `${pageHero('Generic Income', '')}${body}` });
   }));
@@ -1071,7 +1156,7 @@ function register(app) {
     res.redirect(`/finance/receipts/${encodeURIComponent(receiptNo)}/print?new=1`);
   }));
 
-  app.post('/finance/income/:id/delete', requireFinanceWrite, asyncHandler(async (req, res) => {
+  app.post('/finance/income/:id/delete', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const churchId = res.locals.churchId;
     const id = Number(req.params.id);
@@ -1092,6 +1177,8 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const canWrite = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(res.locals.user.financeRole);
+    // Undoing a posted entry is a fund manager's job; a Cashier records, but does not reverse.
+    const canReverse = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
     const rows = await db.dayBornCollection.findMany({
       where: { deletedAt: null }, orderBy: [{ collectionDate: 'desc' }, { id: 'desc' }], take: 120,
       include: { fund: { select: { name: true } } },
@@ -1134,7 +1221,7 @@ function register(app) {
           rows.map((r) => [
             esc(r.collectionDate.toISOString().slice(0, 10)), esc(dayBornLabel(r.dayBorn)), fmtMoney(r.amount), r.headCount || 0,
             esc(r.paymentMethod || 'Cash'), esc((r.fund && r.fund.name) || 'General fund'), esc(r.receiptNumber || '—'),
-            canWrite ? `<form method="post" action="/finance/day-borns/${r.id}/delete" onsubmit="return confirm('Reverse and archive this collection?')"><button class="link" type="submit">Reverse</button></form>` : '',
+            canReverse ? `<form method="post" action="/finance/day-borns/${r.id}/delete" data-confirm="Reverse and archive this collection?"><button class="link" type="submit">Reverse</button></form>` : '',
           ])) : '<p class="muted-text">No standalone day-born collections recorded yet.</p>'}
       </section>`;
     res.page({ title: 'Finance · Day-Borns', active: '/finance', noHeader: true, body: `${pageHero('Day-Born Collections', '')}${body}` });
@@ -1190,7 +1277,7 @@ function register(app) {
     res.redirect('/finance/day-borns');
   }));
 
-  app.post('/finance/day-borns/:id/delete', requireFinanceWrite, asyncHandler(async (req, res) => {
+  app.post('/finance/day-borns/:id/delete', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const churchId = res.locals.churchId;
     const id = Number(req.params.id);
@@ -1493,6 +1580,8 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const canWrite = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(res.locals.user.financeRole);
+    // Undoing a posted entry is a fund manager's job; a Cashier records, but does not reverse.
+    const canReverse = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
     const id = Number(req.params.id);
     const service = await db.service.findFirst({ where: { id, deletedAt: null }, include: { serviceType: { select: { typeName: true } } } });
     if (!service) return res.status(404).send('Not found');
@@ -1518,7 +1607,7 @@ function register(app) {
           <div class="actions"><button type="submit">Save breakdown</button></div>
         </form>` : ''}
       </section>
-      ${canWrite ? `<form method="post" action="/finance/services/${id}/delete" onsubmit="return confirm('Archive this service and reverse its journal entry?')">
+      ${canReverse ? `<form method="post" action="/finance/services/${id}/delete" data-confirm="Archive this service and reverse its journal entry?">
         <button class="danger" type="submit">Archive service</button>
       </form>` : ''}`;
     res.page({ title: `Service · ${service.serviceType.typeName}`, active: '/finance', noHeader: true, body: `${pageHero(`Service · ${esc(service.serviceType.typeName)}`, '')}${body}` });
@@ -1543,7 +1632,7 @@ function register(app) {
     res.redirect(`/finance/services/${id}`);
   }));
 
-  app.post('/finance/services/:id/delete', requireFinanceWrite, asyncHandler(async (req, res) => {
+  app.post('/finance/services/:id/delete', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const churchId = res.locals.churchId;
     const id = Number(req.params.id);
@@ -1647,6 +1736,8 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const canWrite = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER', 'CASHIER'].includes(res.locals.user.financeRole);
+    // Undoing a posted entry is a fund manager's job; a Cashier records, but does not reverse.
+    const canReverse = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
     const id = Number(req.params.id);
     const harvest = await db.harvest.findFirst({ where: { id, deletedAt: null }, include: { organization: { select: { name: true } } } });
     if (!harvest) return res.status(404).send('Not found');
@@ -1698,7 +1789,7 @@ function register(app) {
         </form>` : ''}
       </section>
       ${pledgesSection}
-      ${canWrite ? `<form method="post" action="/finance/harvests/${id}/delete" onsubmit="return confirm('Archive this harvest and reverse its journal entry?')">
+      ${canReverse ? `<form method="post" action="/finance/harvests/${id}/delete" data-confirm="Archive this harvest and reverse its journal entry?">
         <button class="danger" type="submit">Archive harvest</button>
       </form>` : ''}`;
     res.page({ title: `Harvest · ${harvest.harvestName}`, active: '/finance', noHeader: true, body: `${pageHero(`Harvest · ${esc(harvest.harvestName)}`, '')}${body}` });
@@ -1721,7 +1812,7 @@ function register(app) {
     res.redirect(`/finance/harvests/${id}`);
   }));
 
-  app.post('/finance/harvests/:id/delete', requireFinanceWrite, asyncHandler(async (req, res) => {
+  app.post('/finance/harvests/:id/delete', requireFundManager, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const churchId = res.locals.churchId;
     const id = Number(req.params.id);
@@ -1870,12 +1961,12 @@ function register(app) {
     const memberName = `${member.firstName} ${member.lastName}`.trim();
     const outstanding = Number(r.pledge.pledgedAmount) - Number(r.paidToDate);
     const sendForm = canWrite
-      ? `<form method="post" action="/finance/pledges/payments/${r.id}/send" onsubmit="return confirm('Send this receipt to ${esc(memberName)} via their preferred channel?')">
+      ? `<form method="post" action="/finance/pledges/payments/${r.id}/send" data-confirm="Send this receipt to ${esc(memberName)} via their preferred channel?">
            <button type="submit">📤 Send receipt to ${esc(member.firstName)}</button>
          </form>` : '';
     const body = `
       <div class="screen-only receipt-actions">
-        <a class="btn" href="javascript:window.print()">🖨 Print / save as PDF</a>
+        <a class="btn" href="#" data-print>🖨 Print / save as PDF</a>
         ${sendForm}
         <a class="btn-link" href="/finance/receipts">← Back to receipts</a>
       </div>
@@ -1911,7 +2002,7 @@ function register(app) {
     const emailBody = `Dear ${memberName},\n\nThank you for your payment. This is your official receipt.\n\n` +
       `Receipt no:   ${r.receiptNumber}\nDate:         ${when}\nPledge:       ${r.pledge.harvest.harvestName}${r.pledge.harvest.harvestYear ? ' ' + r.pledge.harvest.harvestYear : ''}\n` +
       `Amount paid:  ${fmtMoney(r.amount)}\nTotal pledged:${fmtMoney(r.pledge.pledgedAmount)}\nPaid to date: ${fmtMoney(r.paidToDate)}\n${balanceLine}\n\nGod bless you.\n${church.name}`;
-    const result = await sendMemberMessage(db, member, church.name, sms, `Payment receipt ${r.receiptNumber} — ${church.name}`, emailBody);
+    const result = await sendMemberMessage(db, member, church.name, sms, `Payment receipt ${r.receiptNumber} — ${church.name}`, emailBody, res.locals.churchId);
     if (!result.ok) return res.redirect(`/finance/pledges/payments/${r.id}/receipt?sent=${result.reason === 'do_not_contact' ? 'donotcontact' : 'nocontact'}`);
     await db.pledgePayment.update({ where: { id: r.id }, data: { sentAt: new Date(), sentChannel: result.channels } });
     await logActivity(db, 'receipt_sent', `Sent receipt ${r.receiptNumber} to ${memberName}`, `/finance/pledges/payments/${r.id}/receipt`, res.locals.user.id);
@@ -1929,7 +2020,7 @@ function register(app) {
     const memberName = `${member.firstName} ${member.lastName}`.trim();
     const totalOutstanding = pledges.reduce((a, p) => a + (Number(p.pledgedAmount) - Number(p.paidAmount)), 0);
     const sendForm = canWrite && pledges.length
-      ? `<form method="post" action="/finance/pledges/statement/${member.id}/send" onsubmit="return confirm('Send this outstanding-balance statement to ${esc(memberName)}?')">
+      ? `<form method="post" action="/finance/pledges/statement/${member.id}/send" data-confirm="Send this outstanding-balance statement to ${esc(memberName)}?">
            <button type="submit">📤 Send statement to ${esc(member.firstName)}</button>
          </form>` : '';
     const rowsHtml = pledges.length
@@ -1938,7 +2029,7 @@ function register(app) {
       : '<p class="muted-text">This member has no outstanding pledges. 🎉</p>';
     const body = `
       <div class="screen-only receipt-actions">
-        <a class="btn" href="javascript:window.print()">🖨 Print / save as PDF</a>
+        <a class="btn" href="#" data-print>🖨 Print / save as PDF</a>
         ${sendForm}
         <a class="btn-link" href="/finance/receipts">← Back to receipts</a>
       </div>
@@ -1966,7 +2057,7 @@ function register(app) {
     const lines = pledges.map((p) => `  • ${p.harvest.harvestName}: ${fmtMoney(p.pledgedAmount - p.paidAmount)} outstanding`).join('\n');
     const sms = `Dear ${member.firstName}, our records show a total outstanding pledge balance of ${fmtMoney(total)} across ${pledges.length} pledge(s). Kindly redeem it when you can. Thank you. — ${church.name}`;
     const emailBody = `Dear ${memberName},\n\nThis is a friendly statement of your outstanding pledge balance.\n\n${lines}\n\nTotal outstanding: ${fmtMoney(total)}\n\nKindly redeem your pledge(s) at your earliest convenience.\n\nGod bless you.\n${church.name}`;
-    const result = await sendMemberMessage(db, member, church.name, sms, `Your pledge statement — ${church.name}`, emailBody);
+    const result = await sendMemberMessage(db, member, church.name, sms, `Your pledge statement — ${church.name}`, emailBody, res.locals.churchId);
     if (!result.ok) return res.redirect(`/finance/pledges/statement/${member.id}?sent=${result.reason === 'do_not_contact' ? 'donotcontact' : 'nocontact'}`);
     await logActivity(db, 'statement_sent', `Sent outstanding-pledge statement to ${memberName}`, `/finance/pledges/statement/${member.id}`, res.locals.user.id);
     res.redirect(`/finance/pledges/statement/${member.id}?sent=${result.dryRun ? 'dry' : 'sent'}`);
@@ -2023,7 +2114,7 @@ function register(app) {
     const createdByName = (creator && creator.displayName) || '—';
     const body = `
       <div class="screen-only receipt-actions">
-        <a class="btn" href="javascript:window.print()">🖨 Print / save as PDF</a>
+        <a class="btn" href="#" data-print>🖨 Print / save as PDF</a>
         <a class="btn-link" href="/finance/receipts">← Back to receipts</a>
       </div>
       <div class="print-doc receipt-doc">
@@ -2051,7 +2142,7 @@ function register(app) {
     const totalGiving = rows.reduce((s, r) => s + r.total, 0);
     const yearSel = `<form method="get" class="filter-bar" style="margin:0">
         <label class="muted-text" style="display:flex;align-items:center;gap:0.4rem">Year
-          <select name="year" onchange="this.form.submit()">${givingYears().map((y) => `<option ${String(y) === year ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
+          <select name="year" data-autosubmit>${givingYears().map((y) => `<option ${String(y) === year ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
       </form>`;
     const inner = rows.length
       ? table(['Member', 'Gifts', `Total ${year}`, 'Statement'],
@@ -2078,14 +2169,14 @@ function register(app) {
     const { lines, byGroup, total } = await memberGivingForYear(db, id, year);
     const name = `${m.firstName} ${m.lastName}`.trim();
     const yearSel = `<form method="get" class="screen-only" style="display:inline">
-        <label>Year <select name="year" onchange="this.form.submit()">${givingYears().map((y) => `<option ${String(y) === year ? 'selected' : ''}>${y}</option>`).join('')}</select></label></form>`;
+        <label>Year <select name="year" data-autosubmit>${givingYears().map((y) => `<option ${String(y) === year ? 'selected' : ''}>${y}</option>`).join('')}</select></label></form>`;
     const rowsHtml = lines.length
       ? table(['Date', 'Category', 'Details', 'Amount'], lines.map((l) => [esc(l.dt), esc(l.category), esc(l.detail) || '—', fmtMoney(l.amount)]))
       : `<p class="muted-text">No giving was recorded for ${esc(name)} in ${year}.</p>`;
     const subtotals = Object.entries(byGroup).map(([g, a]) => `<div class="rc-line"><span>${esc(g)}</span><span>${fmtMoney(a)}</span></div>`).join('');
     const body = `
       <div class="screen-only receipt-actions">
-        <a class="btn" href="javascript:window.print()">🖨 Print / save as PDF</a>
+        <a class="btn" href="#" data-print>🖨 Print / save as PDF</a>
         ${yearSel}
         <a class="btn-link" href="/finance/statements?year=${year}">← Back to statements</a>
       </div>
@@ -2148,7 +2239,7 @@ function register(app) {
     ]);
     const body = `
       <div class="screen-only receipt-actions">
-        <a class="btn" href="javascript:window.print()">🖨 Print / save as PDF</a>
+        <a class="btn" href="#" data-print>🖨 Print / save as PDF</a>
         <a class="btn-link" href="/finance/vouchers">← Back to vouchers</a>
       </div>
       <div class="print-doc receipt-doc">
@@ -2357,7 +2448,7 @@ function register(app) {
            <form class="form" method="post" action="/finance/budgets" style="margin-top:0.75rem">
              <label class="wide">Name<input name="name" required placeholder="e.g. ${now.getFullYear()} Annual Budget"></label>
              <label>Year<input type="number" name="year" required value="${now.getFullYear()}"></label>
-             <label>Scope<select name="scope" onchange="this.form.month.disabled = this.value !== 'MONTHLY'">
+             <label>Scope<select name="scope" data-disable-unless="month=MONTHLY">
                <option value="ANNUAL">Annual</option><option value="MONTHLY">Monthly</option></select></label>
              <label>Month (if monthly)<input type="number" name="month" min="1" max="12" disabled></label>
              <label class="wide">Notes<input name="notes"></label>
@@ -2449,7 +2540,7 @@ function register(app) {
         ${lines.length ? table(['Type', 'Category', 'Account', 'Fund', 'Budgeted', 'Actual', 'Variance', canEditLines ? '' : null].filter(Boolean),
           lines.map((l) => [l.lineType, esc(l.category), esc(l.accountLabel), esc((l.fund && l.fund.name) || 'All funds'), fmtMoney(l.amount), fmtMoney(l.actual),
             fmtOutstanding(-l.variance),
-            ...(canEditLines ? [`<a class="btn-link" href="/finance/budgets/${id}/lines/${l.id}/edit">Edit</a> <form style="display:inline" method="post" action="/finance/budgets/${id}/lines/${l.id}/delete" onsubmit="return confirm('Remove this budget line?')"><button class="link" type="submit">Remove</button></form>`] : [])]))
+            ...(canEditLines ? [`<a class="btn-link" href="/finance/budgets/${id}/lines/${l.id}/edit">Edit</a> <form style="display:inline" method="post" action="/finance/budgets/${id}/lines/${l.id}/delete" data-confirm="Remove this budget line?"><button class="link" type="submit">Remove</button></form>`] : [])]))
           : '<p class="muted-text">No budget lines yet.</p>'}
       </section>
       ${addLineForm}`;
@@ -2608,18 +2699,18 @@ function register(app) {
     const id = Number(req.params.id);
     const expense = await db.expense.findUnique({ where: { id } });
     if (!expense) return res.status(404).send('Not found');
-    if (expense.approvalStatus !== 'SUBMITTED') { flash(req, 'This expense is not awaiting approval.'); return res.redirect('/finance/expenses'); }
-    if (expense.recordedBy === res.locals.user.id) { flash(req, 'You cannot approve an expense you recorded yourself — ask another fund manager.'); return res.redirect('/finance/expenses'); }
+    if (expense.approvalStatus !== 'SUBMITTED') { flash(req, 'This expense is not awaiting approval.'); return res.redirect(backTo(req, '/finance/expenses')); }
+    if (expense.recordedBy === res.locals.user.id) { flash(req, 'You cannot approve an expense you recorded yourself — ask another fund manager.'); return res.redirect(backTo(req, '/finance/expenses')); }
     const tier = checkApprovalTier(res.locals.user, expense.amount, await db.financeSetting.findFirst());
-    if (!tier.ok) { flash(req, `An expense of ${fmtMoney(expense.amount)} must be approved by ${tier.needs}.`); return res.redirect('/finance/expenses'); }
+    if (!tier.ok) { flash(req, `An expense of ${fmtMoney(expense.amount)} must be approved by ${tier.needs}.`); return res.redirect(backTo(req, '/finance/expenses')); }
     if (await refuseIfPeriodLocked(req, res, db, expense.spentOn.toISOString().slice(0, 10), '/finance/expenses')) return;
 
     const updated = await ledger.approveAndPayExpense(db, churchId, expense, res.locals.user.id);
-    if (!updated) { flash(req, 'This expense is not awaiting approval.'); return res.redirect('/finance/expenses'); }
+    if (!updated) { flash(req, 'This expense is not awaiting approval.'); return res.redirect(backTo(req, '/finance/expenses')); }
     await syncExpenseVoucher(db, updated, res.locals.user.id);
     await logActivity(db, 'expense_approved', `Expense approved and paid: ${expense.category} (${fmtMoney(expense.amount)})`, '/finance/expenses', res.locals.user.id);
     flash(req, 'Expense approved — a payment voucher was issued.', 'success');
-    res.redirect('/finance/expenses');
+    res.redirect(backTo(req, '/finance/expenses'));
   }));
 
   app.post('/finance/expenses/:id/reject', requireFundManager, asyncHandler(async (req, res) => {
@@ -2627,7 +2718,7 @@ function register(app) {
     const id = Number(req.params.id);
     const expense = await db.expense.findUnique({ where: { id } });
     if (!expense) return res.status(404).send('Not found');
-    if (expense.approvalStatus !== 'SUBMITTED') { flash(req, 'This expense is not awaiting approval.'); return res.redirect('/finance/expenses'); }
+    if (expense.approvalStatus !== 'SUBMITTED') { flash(req, 'This expense is not awaiting approval.'); return res.redirect(backTo(req, '/finance/expenses')); }
 
     await db.expense.update({
       where: { id },
@@ -2635,7 +2726,7 @@ function register(app) {
     });
     await logActivity(db, 'expense_rejected', `Expense rejected: ${expense.category} (${fmtMoney(expense.amount)})`, '/finance/expenses', res.locals.user.id);
     flash(req, 'Expense rejected.', 'success');
-    res.redirect('/finance/expenses');
+    res.redirect(backTo(req, '/finance/expenses'));
   }));
 
   // --- Journal entries ---
@@ -2655,7 +2746,7 @@ function register(app) {
       ${table(['Account', 'Fund', 'Debit', 'Credit', 'Memo'],
         entry.lines.map((l) => [esc(l.account.name), esc((l.fund && l.fund.name) || '—'), fmtMoney(l.debit), fmtMoney(l.credit), esc(l.memo) || '—']))}
       ${canManage && entry.status !== 'REVERSED' && !entry.reversesId ? `
-        <form method="post" action="/finance/journal/${entry.id}/reverse" onsubmit="return confirm('Reverse this journal entry?')" style="margin-top:1rem">
+        <form method="post" action="/finance/journal/${entry.id}/reverse" data-confirm="Reverse this journal entry?" style="margin-top:1rem">
           <label>Reason<input name="reason" placeholder="Why is this being reversed?"></label>
           <div class="actions"><button class="danger" type="submit">Reverse entry</button></div>
         </form>` : ''}`;
@@ -2990,17 +3081,19 @@ function register(app) {
   app.get('/finance/settings', requireFinanceReportAccess, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const canManage = res.locals.user.role === 'ADMIN' || ['FINANCE_ADMIN', 'TREASURER'].includes(res.locals.user.financeRole);
-    const s = (await db.financeSetting.findFirst()) || { receiptPrefix: 'RCT', voucherPrefix: 'PV', smallExpenseMax: 500, mediumExpenseMax: 5000 };
+    const s = (await db.financeSetting.findFirst()) || { receiptPrefix: 'RCT', voucherPrefix: 'PV', memberPrefix: 'MBR', smallExpenseMax: 500, mediumExpenseMax: 5000 };
     const dis = canManage ? '' : 'disabled';
     const body = `
       <section class="card">
-        <div class="card-head"><h2>Finance settings</h2><span class="meta">Receipt and voucher numbering</span></div>
+        <div class="card-head"><h2>Finance settings</h2><span class="meta">Receipt, voucher and member ID numbering</span></div>
         <form class="form" method="post" action="/finance/settings">
           <label>Receipt prefix<input name="receiptPrefix" required maxlength="24" value="${esc(s.receiptPrefix)}" ${dis}></label>
           <label>Voucher prefix<input name="voucherPrefix" required maxlength="24" value="${esc(s.voucherPrefix)}" ${dis}></label>
+          <label>Member ID prefix<input name="memberPrefix" required maxlength="24" value="${esc(s.memberPrefix || 'MBR')}" ${dis}></label>
           <label>Small expense limit<input type="number" step="0.01" min="0" name="smallExpenseMax" value="${esc(s.smallExpenseMax)}" ${dis}${res.locals.user.role === 'ADMIN' ? '' : ' readonly'}></label>
           <label>Medium expense limit<input type="number" step="0.01" min="0" name="mediumExpenseMax" value="${esc(s.mediumExpenseMax)}" ${dis}${res.locals.user.role === 'ADMIN' ? '' : ' readonly'}></label>
           <label class="wide">Next receipt preview<input value="${esc(await nextReceiptNo(db, todayISO()))}" disabled></label>
+          <label class="wide">Next member ID preview<input value="${esc(await nextMemberId(db))}" disabled></label>
           <label class="wide">Next voucher preview<input value="${esc(await nextVoucherNo(db, todayISO()))}" disabled></label>
           ${canManage ? '<div class="actions"><button type="submit">Save settings</button></div>' : '<p class="muted-text wide">Only finance fund managers can change these settings.</p>'}
         </form>
@@ -3015,7 +3108,8 @@ function register(app) {
     const clean = (v) => String(v || '').trim().replace(/\s+/g, '-').toUpperCase();
     const receiptPrefix = clean(b.receiptPrefix);
     const voucherPrefix = clean(b.voucherPrefix);
-    if (!receiptPrefix || !voucherPrefix || receiptPrefix.length > 24 || voucherPrefix.length > 24 || !isMoneyNonNeg(b.smallExpenseMax || 0) || !isMoneyNonNeg(b.mediumExpenseMax || 0)) {
+    const memberPrefix = clean(b.memberPrefix) || 'MBR';
+    if (!receiptPrefix || !voucherPrefix || receiptPrefix.length > 24 || voucherPrefix.length > 24 || memberPrefix.length > 24 || !isMoneyNonNeg(b.smallExpenseMax || 0) || !isMoneyNonNeg(b.mediumExpenseMax || 0)) {
       flash(req, 'Enter valid prefixes and expense limits.');
       return res.redirect('/finance/settings');
     }
@@ -3023,7 +3117,7 @@ function register(app) {
       flash(req, 'The small expense limit cannot be higher than the medium limit.');
       return res.redirect('/finance/settings');
     }
-    const data = { receiptPrefix, voucherPrefix, smallExpenseMax: Number(b.smallExpenseMax || 0), mediumExpenseMax: Number(b.mediumExpenseMax || 0) };
+    const data = { receiptPrefix, voucherPrefix, memberPrefix, smallExpenseMax: Number(b.smallExpenseMax || 0), mediumExpenseMax: Number(b.mediumExpenseMax || 0) };
     // The limits decide WHO may approve an expense. A Treasurer (tier 1) could
     // otherwise raise them until their own tier covers everything, defeating
     // the Finance Admin / Admin tiers. Only an Admin may change them.
@@ -3062,7 +3156,7 @@ function register(app) {
     const kq = kind ? `&kind=${encodeURIComponent(kind)}` : '';
     const body = `
       <form method="get" action="/finance/audit" class="filter-bar">
-        <select name="kind" onchange="this.form.submit()">
+        <select name="kind" data-autosubmit>
           <option value="">All finance events</option>
           ${FINANCE_ACTIVITY_KINDS.map((k) => `<option value="${esc(k)}" ${k === kind ? 'selected' : ''}>${esc(k.replace(/_/g, ' '))}</option>`).join('')}
         </select>
@@ -3099,7 +3193,7 @@ function register(app) {
       ${periods.length ? table(['Year', 'Month', 'Status', 'Closed at', 'Actions'],
         periods.map((p) => [p.year, p.month ?? '—', `<span class="pill pill-${esc(p.status.toLowerCase())}">${esc(p.status)}</span>`,
           p.closedAt ? esc(p.closedAt.toISOString().slice(0, 10)) : '—',
-          canReopen && p.status === 'LOCKED' ? `<form method="post" action="/finance/periods/unlock" class="form" style="display:flex;gap:0.5rem;align-items:center" onsubmit="return confirm('Reopen this period for backdated postings?')">
+          canReopen && p.status === 'LOCKED' ? `<form method="post" action="/finance/periods/unlock" class="form" style="display:flex;gap:0.5rem;align-items:center" data-confirm="Reopen this period for backdated postings?">
             <input type="hidden" name="year" value="${p.year}"><input type="hidden" name="month" value="${p.month}">
             <input type="text" name="reason" placeholder="Reason for reopening (required)" required style="width:14rem">
             <button class="link" type="submit">Unlock</button></form>` : '']))

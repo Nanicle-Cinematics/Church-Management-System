@@ -11,12 +11,14 @@
 // integration — see communications module's header).
 
 const asyncHandler = require('../lib/async-handler');
-const { esc, looksLikeImage } = require('../lib/format');
+const { loginLabel } = require('../lib/phone');
+const { esc, imageExt } = require('../lib/format');
 const { pageHero, statsRow } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
 const { PLAN_LIMITS, isPro } = require('../routes-pg/settings');
 const QRCode = require('qrcode');
 const { createTotpSecret, verifyTotp, createRecoveryCodes, consumeRecoveryCode } = require('../lib/mfa');
+const { seal } = require('../lib/secret-box');
 const { logSecurityEvent } = require('../lib/security-audit');
 const { logActivity } = require('../lib/tenant-activity');
 const { db: rawDb } = require('../lib/tenant');
@@ -26,12 +28,13 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const { icon } = require('../lib/icons');
+const { LOGO_DIR, tenantLogoPath, deleteTenantLogo } = require('../lib/church-logo');
+const { manifestFor, serveAppIcon } = require('../lib/app-icon');
+const { accessOpen, DURATIONS } = require('../lib/support-view');
 
-const LOGO_DIR = process.env.LOGO_DIR || path.join(process.env.PHOTO_DIR || path.join(__dirname, '..', 'photos'), 'church-logos');
-const DEFAULT_LOGO = path.join(__dirname, '..', 'public', 'logo.png');
-const LOGO_EXTENSIONS = ['png', 'jpg', 'webp', 'gif'];
+// 128px copy of the default logo: the original is ~840 KB and was sent on every page.
+const DEFAULT_LOGO = path.join(__dirname, '..', 'public', 'logo-128.png');
 const LOGO_EXT_FROM_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
-try { fs.mkdirSync(LOGO_DIR, { recursive: true }); } catch (_) { /* created by the mounted volume at runtime */ }
 const logoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 4 * 1024 * 1024 },
@@ -40,18 +43,6 @@ const logoUpload = multer({
     cb(ok ? null : new Error('Only JPG, PNG, WebP or GIF images are allowed.'), ok);
   },
 });
-function tenantLogoPath(churchId) {
-  for (const ext of LOGO_EXTENSIONS) {
-    const candidate = path.join(LOGO_DIR, `${churchId}.${ext}`);
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-function deleteTenantLogo(churchId) {
-  for (const ext of LOGO_EXTENSIONS) {
-    try { fs.unlinkSync(path.join(LOGO_DIR, `${churchId}.${ext}`)); } catch (_) { /* no file with this extension */ }
-  }
-}
 
 function requireOwner(req, res, next) {
   if (!res.locals.user) return res.redirect('/login');
@@ -77,12 +68,44 @@ function mfaControls(user) {
     </form>`;
 }
 
+// Settings › Support access: let Church Manager support see the app,
+// read-only, for a while (lib/support-view.js), and see when they did.
+async function supportAccessCard(church) {
+  const open = accessOpen(church);
+  const visits = await rawDb.securityAuditLog.findMany({
+    where: { churchId: church.id, event: { in: ['support.view_started', 'support.access_granted', 'support.access_revoked'] } },
+    orderBy: { occurredAt: 'desc' }, take: 5,
+  });
+  const until = open ? new Date(church.supportAccessUntil).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC' : '';
+  return `
+      <section class="card" style="margin-top:1rem" id="support-access">
+        <div class="card-head"><h2>Support access</h2><span class="meta">${open ? `<span class="pill pill-sent">on until ${esc(until)}</span>` : 'Off'}</span></div>
+        <p>When you report a problem, you can let Church Manager support see your church's app, read-only, so they can look into it. They cannot change, send or export anything, and every visit is listed below and in your security log.</p>
+        ${open
+          ? '<form method="post" action="/settings/support-access"><input type="hidden" name="hours" value="off"><button type="submit" class="danger">Turn off now</button></form>'
+          : `<form method="post" action="/settings/support-access" class="filter-bar">
+              <label>Allow for <select name="hours">${Object.entries(DURATIONS).map(([h, l]) => `<option value="${h}"${h === '24' ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+              <button type="submit">Allow support access</button>
+            </form>`}
+        ${visits.length ? `<ul class="muted-text">${visits.map((v) => `<li>${esc(v.occurredAt.toISOString().slice(0, 16).replace('T', ' '))} UTC · ${esc(v.subject || v.event)}</li>`).join('')}</ul>` : ''}
+      </section>`;
+}
+
 function register(app) {
   app.get('/branding/logo', (req, res) => {
     const custom = res.locals.churchId ? tenantLogoPath(res.locals.churchId) : null;
     res.set('Cache-Control', custom ? 'private, no-store' : 'public, max-age=86400');
     res.sendFile(custom || DEFAULT_LOGO);
   });
+
+  // The installed app (lib/app-icon.js): signed in, the church's own name and
+  // logo; signed out, the product's. Pages link it with
+  // crossorigin="use-credentials" so the browser sends the session.
+  app.get('/manifest.webmanifest', (req, res) => {
+    res.set({ 'Cache-Control': 'private, no-cache', Vary: 'Cookie' });
+    res.type('application/manifest+json').send(JSON.stringify(manifestFor(res.locals.churchId, res.locals.church && res.locals.church.name)));
+  });
+  app.get('/branding/app-icon/:churchId/:version/:sig/:variant.png', asyncHandler(serveAppIcon));
 
   app.get('/profile', requireAuth, (req, res) => {
     const user = res.locals.user;
@@ -92,6 +115,7 @@ function register(app) {
         <dl class="stats">
           <dt>Name</dt><dd>${esc(user.displayName || user.username)}</dd>
           <dt>Email</dt><dd>${esc(user.email || '—')}</dd>
+          ${user.phone ? `<dt>Phone</dt><dd>${esc(user.phone)}</dd>` : ''}
           <dt>Role</dt><dd>${esc(user.role)}</dd>
         </dl>
       </section>
@@ -132,12 +156,12 @@ function register(app) {
         <div class="church-logo-settings">
           <img src="/branding/logo?v=${church.updatedAt ? church.updatedAt.getTime() : Date.now()}" alt="${esc(church.name)} logo">
           <div>
-            <p>Upload your church’s logo. It will replace the default logo throughout your workspace.</p>
+            <p>Upload your church’s logo. It will replace the default logo throughout your workspace, and becomes the app’s icon when someone installs Church Manager on their phone or computer.</p>
             <form method="post" action="/settings/logo" enctype="multipart/form-data" class="church-logo-form">
               <input type="file" name="logo" accept="image/jpeg,image/png,image/webp,image/gif" required>
               <button type="submit">${tenantLogoPath(church.id) ? 'Replace logo' : 'Upload logo'}</button>
             </form>
-            ${tenantLogoPath(church.id) ? `<form method="post" action="/settings/logo/delete" onsubmit="return confirm('Remove your custom logo and restore the default?')">
+            ${tenantLogoPath(church.id) ? `<form method="post" action="/settings/logo/delete" data-confirm="Remove your custom logo and restore the default?">
               <button class="link" type="submit">Restore default logo</button>
             </form>` : ''}
             <small class="muted-text">PNG, JPG, WebP or GIF · maximum 4 MB · square images work best.</small>
@@ -161,7 +185,8 @@ function register(app) {
         <div class="card-head"><h2>Data portability</h2><span class="meta">Owner only</span></div>
         <p>Download a complete tenant-scoped JSON export. Password hashes, MFA secrets, recovery codes, and reset tokens are excluded.</p>
         <p><a class="btn ghost" href="/settings/export.json">Download church data</a></p>
-      </section>`;
+      </section>
+      ${await supportAccessCard(church)}`;
     res.page({ title: 'Settings', active: '/settings', noHeader: true, body });
   }));
 
@@ -176,16 +201,35 @@ function register(app) {
 
   app.post('/settings/logo', requireOwner, logoUpload.single('logo'), asyncHandler(async (req, res) => {
     if (!csrfValid(req)) return res.status(403).send('Security check failed. Refresh Settings and try again.');
-    if (!req.file || !looksLikeImage(req.file.buffer)) {
+    const ext = req.file && imageExt(req.file.buffer);
+    if (!ext) {
       flash(req, 'That file does not look like a valid image.');
       return res.redirect('/settings');
     }
-    const ext = LOGO_EXT_FROM_MIME[String(req.file.mimetype).toLowerCase()] || 'png';
     deleteTenantLogo(res.locals.churchId);
     fs.writeFileSync(path.join(LOGO_DIR, `${res.locals.churchId}.${ext}`), req.file.buffer);
     await logActivity(res.locals.db, 'settings_logo_updated', 'Church logo updated', '/settings', res.locals.user.id);
     flash(req, 'Church logo updated.', 'success');
     res.redirect('/settings');
+  }));
+
+  app.post('/settings/support-access', requireOwner, asyncHandler(async (req, res) => {
+    const hours = String((req.body && req.body.hours) || '');
+    const user = res.locals.user;
+    const who = user.displayName || user.username;
+    if (hours === 'off') {
+      await res.locals.db.church.update({ where: { id: res.locals.churchId }, data: { supportAccessUntil: null, supportAccessGrantedBy: null } });
+      await rawDb.securityAuditLog.create({ data: { churchId: res.locals.churchId, actorId: user.id, event: 'support.access_revoked', subject: `${who} turned support access off` } });
+      flash(req, 'Support access is off. Any support view ends at once.', 'success');
+    } else if (Object.hasOwn(DURATIONS, hours)) {
+      const until = new Date(Date.now() + Number(hours) * 3600 * 1000);
+      await res.locals.db.church.update({ where: { id: res.locals.churchId }, data: { supportAccessUntil: until, supportAccessGrantedBy: user.id } });
+      await rawDb.securityAuditLog.create({ data: { churchId: res.locals.churchId, actorId: user.id, event: 'support.access_granted', subject: `${who} allowed support access for ${DURATIONS[hours]}` } });
+      flash(req, `Support can view your church, read-only, for ${DURATIONS[hours]}.`, 'success');
+    } else {
+      flash(req, 'Choose how long to allow it.');
+    }
+    res.redirect('/settings#support-access');
   }));
 
   app.post('/settings/logo/delete', requireOwner, asyncHandler(async (req, res) => {
@@ -196,7 +240,7 @@ function register(app) {
   }));
 
   app.post('/settings/mfa/start', requireAuth, asyncHandler(async (req, res) => {
-    const enrollment = createTotpSecret(res.locals.user.email);
+    const enrollment = createTotpSecret(loginLabel(res.locals.user));
     req.session.mfaSetupSecret = enrollment.secret;
     req.session.mfaSetupUri = enrollment.uri;
     res.redirect('/settings/mfa/setup');
@@ -227,13 +271,13 @@ function register(app) {
     const recovery = createRecoveryCodes();
     await res.locals.db.user.update({
       where: { id: res.locals.user.id },
-      data: { totpEnabled: true, totpSecret: secret, totpRecoveryCodes: recovery.serialized },
+      data: { totpEnabled: true, totpSecret: seal(secret), totpRecoveryCodes: recovery.serialized },
     });
     delete req.session.mfaSetupSecret;
     delete req.session.mfaSetupUri;
     await logSecurityEvent(res.locals.db, req, {
       event: 'auth.mfa_enabled',
-      subject: res.locals.user.email,
+      subject: loginLabel(res.locals.user),
       actorId: res.locals.user.id,
     });
     const body = `
@@ -261,7 +305,7 @@ function register(app) {
     });
     await logSecurityEvent(res.locals.db, req, {
       event: 'auth.mfa_disabled',
-      subject: user.email,
+      subject: loginLabel(user),
       actorId: user.id,
     });
     flash(req, 'Two-factor authentication disabled.', 'success');

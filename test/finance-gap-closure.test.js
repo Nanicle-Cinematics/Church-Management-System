@@ -41,6 +41,7 @@ test.after(async () => {
     await db.financialPeriod.deleteMany({ where });
     await db.fund.deleteMany({ where });
     await db.account.deleteMany({ where });
+    await db.member.deleteMany({ where });
     await db.user.deleteMany({ where });
     await db.church.deleteMany({ where: { id: { in: createdChurchIds } } });
   }
@@ -82,7 +83,7 @@ function uniqueEmail(tag) {
 }
 async function signedInChurch(tag) {
   const c = client();
-  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'password123' });
+  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'Tr0ubadour-7!' });
   assert.strictEqual(signup.status, 201);
   createdChurchIds.push(signup.body.church.id);
   return { client: c, churchId: signup.body.church.id };
@@ -97,10 +98,10 @@ function csrfOf(html) {
 // actuals) has to go through this second-user approval step.
 async function approveExpense(churchId, expenseId) {
   const email = uniqueEmail('approver');
-  const passwordHash = await bcrypt.hash('password123', 10);
+  const passwordHash = await bcrypt.hash('Tr0ubadour-7!', 10);
   await db.user.create({ data: { churchId, username: `approver-${Date.now()}`, email, passwordHash, role: 'VIEWER', financeRole: 'TREASURER' } });
   const approver = client();
-  const login = await approver.postJson('/login', { email, password: 'password123' });
+  const login = await approver.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(login.status, 200);
   const page = await approver.getHtml('/finance/expenses');
   const csrf = csrfOf(page.text);
@@ -154,9 +155,9 @@ test('accounting is gated: anonymous redirected, user without a finance role is 
   const r = await anon.getHtml('/finance/accounting');
   assert.strictEqual(r.status, 302);
   const email = uniqueEmail('plain');
-  await db.user.create({ data: { churchId, username: `plain-${Date.now()}`, email, passwordHash: await bcrypt.hash('password123', 10), role: 'VIEWER', financeRole: 'NONE' } });
+  await db.user.create({ data: { churchId, username: `plain-${Date.now()}`, email, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 10), role: 'VIEWER', financeRole: 'NONE' } });
   const plain = client();
-  await plain.postJson('/login', { email, password: 'password123' });
+  await plain.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   for (const p of ['/finance/accounting', '/finance/accounting/trial-balance.csv', '/finance/audit', '/finance/settings']) {
     assert.strictEqual((await plain.getHtml(p)).status, 403, p);
   }
@@ -256,9 +257,9 @@ test('a recorder who edits their own submitted expense still cannot approve it, 
   await submitExpense(c, fund, cat);
   const e = await db.expense.findFirst({ where: { churchId } });
   const email = uniqueEmail('editor');
-  const editorUser = await db.user.create({ data: { churchId, username: `editor-${Date.now()}`, email, passwordHash: await bcrypt.hash('password123', 10), role: 'VIEWER', financeRole: 'TREASURER' } });
+  const editorUser = await db.user.create({ data: { churchId, username: `editor-${Date.now()}`, email, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 10), role: 'VIEWER', financeRole: 'TREASURER' } });
   const editor = client();
-  await editor.postJson('/login', { email, password: 'password123' });
+  await editor.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   const csrf = await csrfFrom(editor, `/finance/expenses/${e.id}/edit`);
   await editor.postForm(`/finance/expenses/${e.id}/edit`, { spentOn: '2026-06-01', expenseCatId: String(cat.id), amount: '120', fundId: String(fund.id), description: 'Tweaked by editor', _csrf: csrf });
   assert.strictEqual((await db.expense.findUnique({ where: { id: e.id } })).recordedBy, editorUser.id);
@@ -320,6 +321,15 @@ test('finance settings: prefixes change numbering, bad input is rejected, change
   assert.strictEqual(s.receiptPrefix, 'GRACE-CHURCH');
   assert.strictEqual(s.voucherPrefix, 'GC-PAY');
   assert.strictEqual(s.mediumExpenseMax, 2000);
+  assert.strictEqual(s.memberPrefix, 'MBR', 'left blank, the member prefix stays MBR');
+
+  // A church's own member prefix numbers its next member, starting at 001.
+  csrf = await csrfFrom(c, '/finance/settings');
+  await c.postForm('/finance/settings', { receiptPrefix: 'RCT', voucherPrefix: 'PV', memberPrefix: 'grace', smallExpenseMax: '200', mediumExpenseMax: '2000', _csrf: csrf });
+  assert.strictEqual((await db.financeSetting.findFirst({ where: { churchId } })).memberPrefix, 'GRACE');
+  const { createMemberWithId } = require('../lib/member-input');
+  const first = await createMemberWithId(require('../lib/tenant').tenantDb(churchId), { firstName: 'Ama', lastName: 'Mensah', membershipStatus: 'MEMBER' });
+  assert.strictEqual(first.externalId, 'GRACE-001');
 
   // Saving again updates in place rather than creating a second row.
   csrf = await csrfFrom(c, '/finance/settings');
@@ -362,4 +372,28 @@ test('every logActivity kind written by the finance routes is listed on the audi
   const listed = new Set([...src.match(/const FINANCE_ACTIVITY_KINDS = \[([\s\S]*?)\];/)[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
   const missing = [...used].filter((k) => !listed.has(k));
   assert.deepStrictEqual(missing, [], `finance activity kinds missing from the audit page: ${missing.join(', ')}`);
+});
+
+test('finance overview: shows collections, income by type and approvals; actions return only to /finance', async () => {
+  const { client: c, churchId } = await signedInChurch('fin-overview');
+  const { fund, cat } = await seedFundAndCat(churchId);
+  await submitExpense(c, fund, cat, '150', 'Overview fuel');
+  await submitExpense(c, fund, cat, '90', 'Overview paper');
+
+  const page = await c.getHtml('/finance');
+  assert.strictEqual(page.status, 200);
+  for (const text of ['Sunday collections', 'Income by type', 'Waiting for approval', 'Recent transactions', 'Overview fuel']) {
+    assert.match(page.text, new RegExp(text), `overview shows ${text}`);
+  }
+  // The admin recorded both, so they cannot approve them; the two-person rule shows here too.
+  assert.match(page.text, /Awaiting another fund manager/);
+
+  const [first, second] = await db.expense.findMany({ where: { churchId }, orderBy: { id: 'asc' } });
+  const csrf = csrfOf(page.text);
+  const back = await c.postForm(`/finance/expenses/${first.id}/reject`, { _csrf: csrf, return_to: '/finance' });
+  assert.strictEqual(back.status, 302);
+  assert.strictEqual(back.location, '/finance');
+  const elsewhere = await c.postForm(`/finance/expenses/${second.id}/reject`, { _csrf: csrf, return_to: 'https://evil.example/' });
+  assert.strictEqual(elsewhere.status, 302);
+  assert.strictEqual(elsewhere.location, '/finance/expenses', 'any other return_to falls back to the register');
 });

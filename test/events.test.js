@@ -69,17 +69,17 @@ function uniqueEmail(tag) {
 async function newSignedInChurch(tag) {
   const client = cookieClient();
   const email = uniqueEmail(tag);
-  const res = await client.post('/signup', { churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' });
+  const res = await client.post('/signup', { churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' });
   createdChurchIds.push(res.body.church.id);
   return { client, churchId: res.body.church.id };
 }
 
 async function addNonAdminUser(churchId, role) {
   const email = uniqueEmail(`non-admin-${role.toLowerCase()}`);
-  const passwordHash = await bcrypt.hash('password123', 10);
+  const passwordHash = await bcrypt.hash('Tr0ubadour-7!', 10);
   await db.user.create({ data: { churchId, username: `u-${Date.now()}`, email, passwordHash, role, financeRole: 'NONE' } });
   const client = cookieClient();
-  const login = await client.post('/login', { email, password: 'password123' });
+  const login = await client.post('/login', { email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(login.status, 200);
   return client;
 }

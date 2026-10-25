@@ -19,6 +19,12 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).json({ error: 'forbidden' });
 }
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
+  return res.status(403).json({ error: 'forbidden' });
+}
 
 function requireAuth(req, res, next) {
   if (!res.locals.user) return res.status(401).json({ error: 'not logged in' });
@@ -57,7 +63,7 @@ function register(app) {
     res.json(rows);
   }));
 
-  app.post('/api/communications/announcements', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/communications/announcements', requireEditor, asyncHandler(async (req, res) => {
     const { title, body, audience } = req.body || {};
     if (!title || !body) return res.status(400).json({ error: 'title and body are required' });
     const row = await res.locals.db.announcement.create({
@@ -186,7 +192,7 @@ function register(app) {
     // Sent in the background; poll GET /api/communications/broadcasts/:id for
     // the final status and per-recipient results.
     startBroadcast(db, {
-      broadcastId: broadcast.id, audience, channel, subject, body, ignorePrefs, churchName: church.name,
+      broadcastId: broadcast.id, audience, channel, subject, body, ignorePrefs, churchName: church.name, churchId: res.locals.churchId,
     });
     res.status(202).json(broadcast);
   }));

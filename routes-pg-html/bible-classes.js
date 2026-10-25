@@ -5,6 +5,7 @@
 // Role model: admin-only writes, matching routes-pg/bible-classes.js.
 
 const asyncHandler = require('../lib/async-handler');
+const { meetingDaysFields, meetsOnFromForm } = require('../lib/meeting-days');
 const { esc, initials } = require('../lib/format');
 const { pageHero, statsRow, filterCard, listCard } = require('../lib/views');
 const { logActivity } = require('../lib/tenant-activity');
@@ -12,6 +13,12 @@ const { icon } = require('../lib/icons');
 
 function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
+  return res.status(403).send('Forbidden');
+}
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
   return res.status(403).send('Forbidden');
 }
 
@@ -40,6 +47,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
     const q = (req.query.q || '').trim();
 
     const [rows, orgs, allMembers, totalClasses, enrolled, withLeader] = await Promise.all([
@@ -69,7 +77,7 @@ function register(app) {
       { cls: 'gold', icon: icon('book'), value: totalClasses.toLocaleString(), label: 'Bible Classes' },
       { cls: 'green', icon: icon('members'), value: enrolled.toLocaleString(), label: 'Members Enrolled' },
       { cls: 'blue', icon: icon('star'), value: withLeader.toLocaleString(), label: 'Classes with a Leader' },
-    ], isAdmin ? `<a class="btn primary" href="#add-class">＋ Add Bible Class</a>` : '');
+    ], canEdit ? `<a class="btn primary" href="#add-class">＋ Add Bible Class</a>` : '');
     const filters = filterCard({ q, placeholder: 'Search Bible classes by name…' });
 
     const rowHtml = rows.map((r) => `<tr>
@@ -78,17 +86,19 @@ function register(app) {
           <span class="org-badge">${esc(initials(r.name))}</span>
           <div>
             <div class="m-name">${esc(r.name)}</div>
-            <div class="m-sub">${r.description ? esc(r.description) : (r.meetsOn ? `Meets ${esc(r.meetsOn)}` : '—')}</div>
+            <div class="m-sub">${r.description ? esc(r.description) : '—'}</div>
           </div>
         </div>
       </td>
       <td data-label="Leader">${r.leader ? `<a href="/members/${r.leader.id}">${esc(r.leader.firstName + ' ' + r.leader.lastName)}</a>` : '<span class="muted-text">—</span>'}</td>
       <td data-label="Organization">${r.organization ? esc(r.organization.name) : '<span class="muted-text">—</span>'}</td>
+      <td data-label="Meeting days">${r.meetsOn ? esc(r.meetsOn) : '<span class="muted-text">—</span>'}</td>
       <td data-label="Members"><a class="count-badge" href="/members?class=${r.id}">${r._count.bibleClassMembers}</a></td>
-      ${isAdmin ? `<td data-label="Edit">
+      ${canEdit ? `<td data-label="Edit">
         <form method="post" action="/bible-classes/${r.id}" class="filter-bar" style="gap:0.4rem;margin:0">
           <select name="leaderId" aria-label="Leader">${memberOpts(r.leaderId)}</select>
           <select name="orgId" aria-label="Organization">${orgOpts(r.orgId)}</select>
+          ${meetingDaysFields(r.meetsOn, { inline: true })}
           <button type="submit">Save</button>
         </form></td>` : ''}
     </tr>`).join('');
@@ -96,25 +106,25 @@ function register(app) {
     const list = listCard({
       title: 'All Bible Classes', count: rows.length, countLabel: 'classes',
       inner: rows.length ? `<table class="data-table members-table">
-          <thead><tr><th>Bible class</th><th>Leader</th><th>Organization</th><th>Members</th>${isAdmin ? '<th>Edit</th>' : ''}</tr></thead>
+          <thead><tr><th>Bible class</th><th>Leader</th><th>Organization</th><th>Meeting days</th><th>Members</th>${canEdit ? '<th>Edit</th>' : ''}</tr></thead>
           <tbody>${rowHtml}</tbody>
         </table>` : `<div class="empty-state">
           <div class="empty-ico" aria-hidden="true">📖</div>
           <h3>${q ? `No Bible classes match "${esc(q)}"` : 'No Bible classes yet'}</h3>
           <p>${q ? 'Try a different search term, or add a new class below.' : 'Add your first Bible class using the form below.'}</p>
-          ${isAdmin ? '<a class="btn primary" href="#add-class">＋ Add Bible Class</a>' : ''}
+          ${canEdit ? '<a class="btn primary" href="#add-class">＋ Add Bible Class</a>' : ''}
           ${q ? '<div style="margin-top:0.6rem"><a class="link" href="/bible-classes">Clear search →</a></div>' : ''}
         </div>`,
     });
 
-    const newForm = isAdmin
+    const newForm = canEdit
       ? `<details class="form-toggle" id="add-class" style="margin-top:1rem">
            <summary><strong>＋ Add a Bible class</strong></summary>
            <form class="form" method="post" action="/bible-classes" style="margin-top:0.75rem">
              <label>Bible class<input name="name" required></label>
              <label>Leader<select name="leaderId">${memberOpts()}</select></label>
              <label>Organization<select name="orgId">${orgOpts()}</select></label>
-             <label>Meets<input name="meetsOn" placeholder="e.g. Sunday 8am"></label>
+             ${meetingDaysFields(null)}
              <label class="wide">Description<input name="description"></label>
              <div class="actions"><button type="submit">Add</button></div>
            </form>
@@ -126,7 +136,7 @@ function register(app) {
     });
   }));
 
-  app.post('/bible-classes', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/bible-classes', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const b = req.body || {};
     if (!b.name || !String(b.name).trim()) return res.redirect('/bible-classes');
@@ -140,7 +150,7 @@ function register(app) {
           description: b.description || null,
           leaderId: leaderCheck.leaderId,
           orgId: orgCheck.orgId,
-          meetsOn: b.meetsOn || null,
+          meetsOn: meetsOnFromForm(b),
         },
       });
       await logActivity(db, 'bible_class_added', `Bible class created: ${created.name}`, '/bible-classes', res.locals.user.id);
@@ -150,19 +160,22 @@ function register(app) {
     res.redirect('/bible-classes');
   }));
 
-  app.post('/bible-classes/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/bible-classes/:id', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const id = Number(req.params.id);
     const b = req.body || {};
     const leaderCheck = await checkLeaderId(db, b.leaderId);
     const orgCheck = await checkOrgId(db, b.orgId);
     if (!leaderCheck.ok || !orgCheck.ok) return res.redirect('/bible-classes');
+    const existing = await db.ministry.findUnique({ where: { id }, select: { meetsOn: true } });
+    if (!existing) return res.redirect('/bible-classes');
     try {
       const updated = await db.ministry.update({
         where: { id },
         data: {
           leaderId: leaderCheck.leaderId,
           orgId: orgCheck.orgId,
+          meetsOn: meetsOnFromForm(b, existing.meetsOn),
         },
       });
       await logActivity(db, 'bible_class_updated', `Bible class updated: ${updated.name}`, '/bible-classes', res.locals.user.id);

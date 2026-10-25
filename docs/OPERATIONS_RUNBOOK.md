@@ -75,3 +75,28 @@ Use restore only when the current production database is confirmed bad or incomp
 2. Stage restore from `/backups`.
 3. Restart the app so startup restore logic applies the staged file.
 4. Check `/readyz`, member directory, finance overview, and `/errors`.
+
+## Platform Operator Accounts
+
+Operators run the platform console at `/platform/login`. They are not church
+accounts; there is no sign-up page. Manage them on the server:
+
+```bash
+fly ssh console -a church-management-system
+node scripts/platform-operator.js create you@example.com --name "Your Name"
+```
+
+`create` asks for the password twice at a hidden prompt (at least 12
+characters). Then sign in at `/platform/login`: the first sign-in sets up
+two-factor with an authenticator app and shows ten recovery codes once.
+
+Other commands:
+
+- `list`: every operator, whether two-factor is set up, last sign-in.
+- `reset-password <email>`: new password; signs them out everywhere.
+- `reset-2fa <email>`: lost phone and no recovery codes left; they set up
+  two-factor again at the next sign-in. Signs them out everywhere.
+- `disable <email>` / `enable <email>`: block or restore an operator.
+- `rename <email> --name "New Name"`: change the name shown in the console.
+
+Each command is recorded in `platform_audit_log`.

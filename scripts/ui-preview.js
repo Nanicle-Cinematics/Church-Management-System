@@ -20,6 +20,9 @@ const { sparkline } = require('../lib/charts');
 const ROOT = path.join(__dirname, '..');
 const CSS = fs.readFileSync(path.join(ROOT, 'public', 'styles.css'), 'utf8');
 const THEME = fs.readFileSync(path.join(ROOT, 'public', 'theme-ios26.css'), 'utf8');
+const THEME_PC = fs.readFileSync(path.join(ROOT, 'public', 'theme-precision.css'), 'utf8');
+const APP_JS = fs.readFileSync(path.join(ROOT, 'public', 'app-theme.js'), 'utf8');
+const PUBLIC_CSS = fs.readFileSync(path.join(ROOT, 'public', 'public.css'), 'utf8');
 
 const USER = { role: 'admin', display_name: 'Nana Aboagye', username: 'nana' };
 const CHURCH = 'Dunwell Methodist Church';
@@ -95,19 +98,15 @@ function page(html, { theme } = {}) {
   // Inline both stylesheets, in link order, so the file is self-contained.
   const inlined = html
     .replace(/<link rel="stylesheet" href="\/static\/styles\.css[^"]*">/, `<style>\n${CSS}\n</style>`)
-    .replace(/<link rel="stylesheet" href="\/static\/theme-ios26\.css[^"]*">/, `<style>\n${THEME}\n</style>`);
-  // Pin the colour scheme so a screenshot is deterministic instead of
-  // following whatever the rendering host prefers. The shell's inline
-  // theme-init script reads localStorage/matchMedia and would immediately
-  // overwrite the pinned attribute, so it is dropped when pinning.
-  if (!theme) return inlined;
-  // The shell runs two theme scripts that read localStorage/matchMedia, so a
-  // pinned attribute in <html> gets overwritten during load. Re-assert it
-  // from the very end of <body>, after both have run.
-  const pin = `<script>document.documentElement.setAttribute('data-theme',${JSON.stringify(theme)});</script>`;
+    .replace(/<link rel="stylesheet" href="\/static\/theme-ios26\.css[^"]*">/, `<style>\n${THEME}\n</style>`)
+    .replace(/<link rel="stylesheet" href="\/static\/theme-precision\.css[^"]*">/, `<style>\n${THEME_PC}\n</style>`)
+    .replace(/<link rel="stylesheet" href="\/static\/public\.css[^"]*">/, `<style>\n${PUBLIC_CSS}\n</style>`);
+  // The theme script (public/app-theme.js) is inlined so the file is
+  // self-contained. To pin the colour scheme for a deterministic screenshot,
+  // the saved choice is written first; the script reads it on load.
+  const pinned = theme ? `try{localStorage.setItem('theme',${JSON.stringify(theme)});}catch(e){}\n` : '';
   return inlined
-    .replace('<html lang="en">', `<html lang="en" data-theme="${theme}">`)
-    .replace('</body>', `${pin}</body>`);
+    .replace(/<script src="\/static\/app-theme\.js[^"]*"><\/script>/, `<script>${pinned}${APP_JS}</script>`);
 }
 
 // The real dashboard (lib/tenant-dashboard.js) needs a database, so its markup
@@ -329,7 +328,19 @@ function platformPortal() {
       ${V.listCard({ title: 'Recent security audit', count: 2, countLabel: 'events', inner: auditInner })}
       ${V.listCard({ title: 'Recent errors', count: 2, countLabel: 'errors', inner: errorInner })}
     </div>`;
-  return layout({ title: 'Platform', body, active: '/platform', user: USER, churchName: CHURCH, noHeader: true });
+  const { operatorLayout } = require('../lib/operator-shell');
+  return operatorLayout({ title: 'Platform', body, operator: { email: 'ops@example.org', displayName: 'Nana Aboagye' } });
+}
+
+// Operator sign-in (routes-pg-html/platform-auth.js).
+function operatorLogin() {
+  const { operatorAuthPage } = require('../lib/operator-shell');
+  return operatorAuthPage('Sign in', `<form class="form auth-form" method="post" action="#">
+      <label class="wide">Email<input type="email" name="email"></label>
+      <label class="wide">Password<input type="password" name="password"></label>
+      <div class="actions"><button type="submit">Continue</button></div>
+      <p class="auth-aux">For platform operators only. Church staff sign in at <a href="#">/login</a>.</p>
+    </form>`);
 }
 
 // The bare/auth shell is a separate template in lib/shell.js — worth its own
@@ -350,23 +361,206 @@ function landing() {
   return require('../lib/tenant-landing').landingPage(false);
 }
 
+// ---- The REAL dashboard and member profile, fed sample data ---------------
+// These call the production renderers (lib/tenant-dashboard.js,
+// lib/member-profile.js) so what is reviewed here is what ships.
+async function dashboardReal() {
+  const day = 86400000;
+  const now = Date.now();
+  const ago = (d) => new Date(now - d * day);
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Ledger income for the last year: Sunday tithes and offerings, a day-born
+  // collection mid-week, harvest and special offerings now and then.
+  const income = [];
+  for (let w = 0; w < 53; w++) {
+    const sunday = ago(((new Date(now).getDay()) + 7 * w) % 400);
+    const wiggle = 1 + Math.sin(w * 1.7) * 0.12;
+    income.push({ day: iso(sunday), code: '4000', amount: Math.round(8600 * wiggle) });
+    income.push({ day: iso(sunday), code: '4010', amount: Math.round(3300 * wiggle) });
+    if (w % 2) income.push({ day: iso(new Date(sunday.getTime() - 4 * day)), code: '4020', amount: 380 });
+    if (w % 5 === 1) income.push({ day: iso(sunday), code: '4030', amount: 2400 });
+    if (w % 3 === 0) income.push({ day: iso(sunday), code: '4040', amount: 900 });
+    if (w % 4 === 2) income.push({ day: iso(sunday), code: '4900', amount: 450 });
+  }
+  const weekly = [693, 688, 702, 671, 715, 698, 730, 705, 719, 726, 711, 758, 214];
+  let weekCall = 0;
+  const birthday = (offset, first, last, year) => { const d = new Date(now + offset * day); return { id: 40 + offset, firstName: first, lastName: last, photoFilename: null, dateOfBirth: new Date(Date.UTC(year, d.getMonth(), d.getDate())) }; };
+  const stub = {
+    member: {
+      count: async ({ where }) => (where.joinDate ? 26 : (where.email === null ? 12 : 1284)),
+      findMany: async () => Array.from({ length: 64 }, (_, i) => ({ createdAt: ago(i * 1.3), membershipStatus: i % 3 === 0 ? 'VISITOR' : 'MEMBER' })),
+      groupBy: async () => [
+        { membershipStatus: 'MEMBER', _count: 1110 }, { membershipStatus: 'REGULAR', _count: 128 },
+        { membershipStatus: 'VISITOR', _count: 46 }, { membershipStatus: 'INACTIVE', _count: 31 },
+      ],
+    },
+    event: {
+      findMany: async () => [
+        { id: 1, title: 'First Service (English)', startsAt: new Date(now + 2 * day), eventType: 'SERVICE', location: 'Main sanctuary' },
+        { id: 2, title: 'Second Service (Twi)', startsAt: new Date(now + 2 * day + 2 * 3600000), eventType: 'SERVICE', location: 'Main sanctuary' },
+        { id: 3, title: 'Mid-week Bible Study', startsAt: new Date(now + 5 * day), eventType: 'BIBLE_STUDY', location: 'Chapel hall' },
+        { id: 4, title: 'Youth Fellowship Rally', startsAt: new Date(now + 7 * day), eventType: 'YOUTH', location: 'Church grounds' },
+        { id: 5, title: 'Harvest Thanksgiving', startsAt: new Date(now + 16 * day), eventType: 'OTHER', location: 'Main sanctuary' },
+      ],
+      count: async () => 9,
+    },
+    almanacEntry: { findMany: async () => [{
+      id: 1, serviceDate: new Date(Date.UTC(2026, 10, 1)), serviceLabel: '', title: 'All Saints Sunday', colour: 'WHITE', theme: 'Hope in the saints',
+      oldTestament: 'Revelation 7:9-17', psalm: 'Psalm 34:1-10', epistle: '1 John 3:1-3', gospel: 'Matthew 5:1-12', hymns: ['56', '112', '203', '340/341'], teachingService: false, notes: null,
+    }] },
+    preachingPlan: { findMany: async () => [{ preacher: { code: 'M1', name: 'Rev. Kofi Mensah' }, member: null, preacherName: null }] },
+    attendance: { count: async ({ where }) => (where.checkedInAt.lt ? weekly[weekCall++ % 13] : 742) },
+    activityLog: { findMany: async () => [
+      { description: 'Sunday offering posted: GH₵ 1,842.50 (1st Service)', link: '/finance/income', occurredAt: ago(0.1), kind: 'income_recorded' },
+      { description: 'New member added: Kofi Adjei (MBR-1285)', link: '/members/1', occurredAt: ago(1), kind: 'member_added' },
+      { description: 'November preaching plan published', link: null, occurredAt: ago(1), kind: 'preaching_published' },
+      { description: 'Attendance recorded for Class 4', link: null, occurredAt: ago(2), kind: 'attendance_recorded' },
+      { description: 'Harvest planning meeting scheduled', link: '/events/5', occurredAt: ago(3), kind: 'event_created' },
+      { description: 'Cash count for Sunday verified', link: null, occurredAt: ago(6), kind: 'expense_approved' },
+    ] },
+    expense: { aggregate: async () => ({ _count: 3, _sum: { amount: 4860 } }) },
+    cashCountSheet: { count: async () => 2 }, bankDeposit: { count: async () => 1 },
+    // Two raw queries: the ledger's income-by-day (lib/ledger-pg.js) and birthdays.
+    $queryRaw: async (strings) => (strings.join('').includes('journal_lines')
+      ? income.map((r) => ({ ...r }))
+      : [birthday(0, 'Akua', 'Nyarko', 1991), birthday(2, 'Kojo', 'Badu', 1978), birthday(5, 'Efua', 'Asante', 2004)]),
+  };
+  const user = { role: 'ADMIN', financeRole: 'FINANCE_ADMIN', displayName: 'Nana Aboagye', username: 'nana', churchId: 'preview', church: { name: CHURCH } };
+  const body = await require('../lib/tenant-dashboard').renderDashboard(stub, user);
+  return layout({ title: 'Dashboard', body, active: '/', user: USER, churchName: CHURCH, noHeader: true });
+}
+
+// The REAL members directory (routes-pg-html/members.js GET /members), run
+// against a stub database with the route's own handler.
+async function membersReal(query = {}) {
+  const handlers = {};
+  const fakeApp = { get: (p, ...fns) => { handlers[`GET ${p}`] = fns[fns.length - 1]; }, post: () => {} };
+  require('../routes-pg-html/members').register(fakeApp);
+  const people = [
+    ['Kwame', 'Mensah', 'MEMBER', 4, ["Men's Fellowship"], '024 412 7781', 4820, 11],
+    ['Akosua', 'Boateng', 'MEMBER', 2, ["Women's Fellowship", 'Singing Band'], '020 918 3342', 6150, 12],
+    ['Yaw', 'Owusu-Ansah', 'REGULAR', 7, ['Youth Fellowship'], '055 207 6610', 1240, 8],
+    ['Efua', 'Asante', 'MEMBER', 1, ['Choir'], '024 771 0923', 3980, 9],
+    ['Kofi', 'Adjei', 'VISITOR', null, [], '059 334 8812', 0, 1],
+    ['Abena', 'Darko', 'MEMBER', 3, ['Guild'], null, 2760, 10],
+    ['Adwoa', 'Sarpong', 'INACTIVE', 6, ["Women's Fellowship"], '027 119 5530', 320, 1],
+  ].map(([firstName, lastName, membershipStatus, cls, orgs, mobilePhone, giving, weeks], i) => ({
+    id: i + 1, firstName, lastName, membershipStatus, mobilePhone, externalId: `MBR-${String(i + 1).padStart(3, '0')}`, photoFilename: null,
+    bibleClass: cls ? { name: `Class ${cls}` } : null, orgMemberships: orgs.map((name) => ({ organization: { name } })), giving, weeks,
+  }));
+  const now = Date.now();
+  const db = {
+    member: {
+      count: async () => 1315,
+      findMany: async () => people,
+      groupBy: async ({ by }) => (by[0] === 'membershipStatus'
+        ? [{ membershipStatus: 'MEMBER', _count: 1110 }, { membershipStatus: 'REGULAR', _count: 128 }, { membershipStatus: 'VISITOR', _count: 46 }, { membershipStatus: 'INACTIVE', _count: 31 }]
+        : Array.from({ length: 8 }, (_, i) => ({ bibleClassId: i + 1, _count: 140 + i * 6 }))),
+    },
+    ministry: { findMany: async () => Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Class ${i + 1}` })) },
+    organization: { findMany: async () => ["Men's Fellowship", "Women's Fellowship", 'Youth Fellowship', 'Singing Band', 'Choir', 'Guild'].map((name, i) => ({ id: i + 1, name })) },
+    organizationMembership: { groupBy: async () => [168, 214, 187, 96, 58, 73].map((n, i) => ({ orgId: i + 1, _count: n })) },
+    attendance: { findMany: async () => people.flatMap((m) => Array.from({ length: m.weeks }, (_, w) => ({ memberId: m.id, checkedInAt: new Date(now - (w * 7 + 1) * 86400000) }))) },
+    tithe: { groupBy: async () => people.filter((m) => m.giving).map((m) => ({ memberId: m.id, _sum: { amount: m.giving } })) },
+    incomeRecord: { groupBy: async () => [] },
+  };
+  let html = '';
+  const res = { locals: { db, user: { role: 'ADMIN', financeRole: 'FINANCE_ADMIN' } }, page: (opts) => { html = layout({ ...opts, user: USER, churchName: CHURCH }); }, redirect: () => {} };
+  await handlers['GET /members']({ query }, res);
+  return html;
+}
+
+// The REAL finance overview (routes-pg-html/finance.js GET /finance), run
+// against a stub database through the route's own handler and the real
+// ledger helpers.
+async function financeReal() {
+  const handlers = {};
+  const fakeApp = { get: (p, ...fns) => { handlers[`GET ${p}`] = fns[fns.length - 1]; }, post: () => {}, use: () => {} };
+  require('../routes-pg-html/finance').register(fakeApp);
+  const now = new Date();
+  const day = (d) => new Date(now.getFullYear(), now.getMonth(), now.getDate() - d);
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const funds = [['General Fund', 92410, false, 'Treasurer'], ['Building Fund', 61300, true, 'Building committee'], ['Harvest 2026', 181400, true, null], ['Welfare Fund', 14820, true, 'Welfare secretary']]
+    .map(([name, bal, restricted, responsibleOfficer], i) => ({ id: i + 1, name, restricted, responsibleOfficer, openingBalance: bal }));
+  const db = {
+    fund: { findMany: async () => funds, findUnique: async ({ where }) => funds.find((f) => f.id === where.id) },
+    pledge: { aggregate: async () => ({ _sum: { pledgedAmount: 250000, paidAmount: 181400 }, _count: 642 }) },
+    financialPeriod: { findUnique: async () => ({ status: 'OPEN' }) },
+    financeBudget: { findFirst: async () => null },
+    journalEntry: { findMany: async () => [
+      ['Tithe · Nana Yaw Bonsu', 'TITHE', 0, 650, 'INCOME'], ['1st Service offering', 'SERVICE', 1, 1842.5, 'INCOME'], ['2nd Service offering', 'SERVICE', 1, 1607, 'INCOME'],
+      ['Harvest pledge · Akosua Boateng', 'PLEDGE_PAYMENT', 1, 1000, 'INCOME'], ['ECG electricity bill', 'EXPENSE', 2, 1264.8, 'EXPENSE'], ['Bereavement · Sarpong family', 'EXPENSE', 4, 1500, 'EXPENSE'],
+      ['Bank deposit DEP-2026-0041', 'BANK_DEPOSIT', 5, 6100, 'ASSET'], ['Wednesday-born collection', 'DAY_BORN', 6, 386, 'INCOME'],
+    ].map(([memo, sourceType, d, amt, type], i) => ({ id: 100 - i, entryNo: `JE-2026-${String(812 - i).padStart(4, '0')}`, entryDate: day(d), memo, sourceType, status: 'POSTED',
+      lines: [{ debit: type === 'INCOME' ? amt : type === 'EXPENSE' ? amt : amt, credit: 0, account: { accountType: type === 'INCOME' ? 'ASSET' : type === 'EXPENSE' ? 'EXPENSE' : 'ASSET' } }, { debit: 0, credit: amt, account: { accountType: type === 'INCOME' ? 'INCOME' : 'ASSET' } }] })) },
+    cashCountSheet: { findMany: async () => [
+      [1, '1st Service · English', 'Esi Quaye & Kojo Badu', 'COUNTED', 1842.5, 7], [1, '2nd Service · Twi', 'Akua Nyarko & Kwesi Appiah', 'COUNTED', 1607, 7],
+      [1, 'Youth Service', 'Kofi Antwi & Ama Frimpong', 'VERIFIED', 412.2, 9], [8, '1st Service · English', 'Esi Quaye & Kojo Badu', 'VERIFIED', 2104, 7], [8, '2nd Service · Twi', 'Akua Nyarko & Kwesi Appiah', 'VERIFIED', 1796.4, 7],
+    ].map(([d, serviceLabel, countedBy, status, countedAmount, enteredBy], i) => ({ id: i + 1, sheetNo: `CC-2026-${String(88 - i).padStart(4, '0')}`, serviceDate: day(d), serviceLabel, countedBy, status, countedAmount, enteredBy })) },
+    bankDeposit: { groupBy: async () => [{ status: 'PENDING', _count: 1 }, { status: 'DEPOSITED', _count: 1 }] },
+    expense: {
+      findMany: async () => [['Sound equipment repair', 'Repairs', 'Kumi Audio', 2150, 3], ['Generator servicing', 'Repairs & maintenance', 'PowerTech', 1850, 2], ["Children's ministry materials", 'Children', null, 860, 0]]
+        .map(([description, category, paidTo, amount, d], i) => ({ id: i + 1, description, category, paidTo, amount, spentOn: day(d), approvalStatus: 'SUBMITTED', recordedBy: 7 })),
+      aggregate: async () => ({ _count: 3, _sum: { amount: 4860 } }),
+    },
+    financeSetting: { findFirst: async () => null },
+    $queryRaw: async (strings, ...values) => {
+      const sql = strings.join('');
+      if (sql.includes('GROUP BY je.entry_date')) return [['4000', 21700], ['4010', 6200], ['4020', 1150], ['4030', 3000], ['4040', 1200], ['4900', 1600]].map(([code, amount], i) => ({ day: iso(day(i)), code, amount }));
+      if (sql.includes('a.account_type, jl.debit')) return [];
+      if (sql.includes('SELECT jl.debit, jl.credit')) return values.includes('INCOME') ? [{ debit: 0, credit: 34850 }] : [{ debit: 12430, credit: 0 }];
+      return [];
+    },
+  };
+  let html = '';
+  const res = { locals: { db, churchId: 'preview', user: { id: 1, role: 'ADMIN', financeRole: 'FINANCE_ADMIN' } }, page: (opts) => { html = layout({ ...opts, user: USER, churchName: CHURCH }); }, redirect: () => {}, status() { return this; }, send: () => {} };
+  await handlers['GET /finance']({ query: {} }, res);
+  return html;
+}
+
+function memberProfile() {
+  const { renderMemberProfile } = require('../lib/member-profile');
+  const m = {
+    id: 12, externalId: 'MBR-012', firstName: 'Ama', lastName: 'Serwaa', membershipStatus: 'MEMBER', photoFilename: null,
+    bibleClass: { name: 'Bible Class B' }, mobilePhone: '024 555 0111', email: 'ama.serwaa@example.org',
+    dateOfBirth: new Date('1988-03-14'), dayBorn: 'Friday', gender: 'F', maritalStatus: 'MARRIED', preferredChannel: 'EITHER',
+    joinDate: new Date('2019-06-02'), baptismDate: new Date('2019-08-18'), confirmationDate: new Date('2020-04-12'),
+    notes: 'Leads the children’s choir on first Sundays. Prefers calls in the evening.',
+    emergencyContactName: 'Kwame Serwaa', emergencyContactPhone: '020 555 0142', emergencyContactRelation: 'spouse',
+  };
+  const body = renderMemberProfile({
+    m, isAdmin: true, akanName: 'Afia / Kofi',
+    orgs: [{ organization: { id: 1, name: 'Women’s Fellowship' } }, { organization: { id: 2, name: 'Choir' } }],
+    ministries: [{ ministry: { name: 'Children’s Ministry' }, role: 'Leader', joinedDate: new Date('2021-01-10') }],
+    sacraments: [{ sacramentType: 'BAPTISM', occurredOn: new Date('2019-08-18'), location: 'Dunwell Methodist' }],
+    attendance: [
+      { event: { title: 'Sunday Worship Service', startsAt: new Date('2026-10-04') } },
+      { event: { title: 'Wednesday Bible Study', startsAt: new Date('2026-09-30') } },
+    ],
+    photoControlsHtml: '<form class="photo-form"><input type="file"><button type="submit">Upload photo</button></form>',
+    editFormHtml: '<form class="form"><label>First name<input value="Ama"></label><label>Last name<input value="Serwaa"></label><div class="actions"><button type="submit">Save member</button></div></form>',
+  });
+  return layout({ title: 'Ama Serwaa', body, active: '/members', user: USER, churchName: CHURCH, noHeader: true });
+}
+
 const PAGES = {
   dashboard, dashboardHero, members: membersPage, form: formPage,
   financeIndex, financeReceipt, attendancePage, attendanceEmpty,
-  platformPortal, login: loginPage, landing,
+  platformPortal, operatorLogin, login: loginPage, landing, dashboardReal, memberProfile,
+  financeReal, membersReal, membersFiltered: () => membersReal({ status: ['MEMBER'], org: ['2'], day_born: ['Sunday'] }),
 };
 
-function main() {
+async function main() {
   const outDir = process.argv[2] || path.join(ROOT, '.ui-preview');
   fs.mkdirSync(outDir, { recursive: true });
   for (const [name, fn] of Object.entries(PAGES)) {
     for (const theme of ['light', 'dark']) {
       const file = path.join(outDir, `${name}-${theme}.html`);
-      fs.writeFileSync(file, page(fn(), { theme }));
+      fs.writeFileSync(file, page(await fn(), { theme }));
       console.log(file);
     }
   }
 }
 
-if (require.main === module) main();
+if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });
 module.exports = { PAGES, page };

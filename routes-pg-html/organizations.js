@@ -6,6 +6,7 @@
 // reuses that module's cross-tenant-reference check on /add (see its comment).
 
 const asyncHandler = require('../lib/async-handler');
+const { meetingDaysFields, meetsOnFromForm } = require('../lib/meeting-days');
 const { esc, initials } = require('../lib/format');
 const { pageHero, statsRow, filterCard, listCard, ICON_EYE, ICON_TRASH, memberAvatar } = require('../lib/views');
 const { flash } = require('../lib/tenant-flash');
@@ -14,6 +15,12 @@ const { icon } = require('../lib/icons');
 
 function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
+  return res.status(403).send('Forbidden');
+}
+// Editors can add and edit; deleting, archiving and anything that sends
+// messages stays with admins.
+function requireEditor(req, res, next) {
+  if (res.locals.user && ['ADMIN', 'EDITOR'].includes(res.locals.user.role)) return next();
   return res.status(403).send('Forbidden');
 }
 
@@ -34,6 +41,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
     const q = (req.query.q || '').trim();
     const sort = (req.query.sort || '').trim();
 
@@ -64,7 +72,7 @@ function register(app) {
       { cls: 'gold', icon: icon('organizations'), value: orgCount.toLocaleString(), label: 'Organizations' },
       { cls: 'green', icon: icon('members'), value: enrolled.toLocaleString(), label: 'Members Enrolled' },
       { cls: 'blue', icon: icon('star'), value: leaders.toLocaleString(), label: 'Groups with a Leader' },
-    ], `${isAdmin ? `<a class="btn primary" href="/organizations/new">＋ Add Organization</a>` : ''}
+    ], `${canEdit ? `<a class="btn primary" href="/organizations/new">＋ Add Organization</a>` : ''}
         <a class="btn ghost" href="/members">View Members</a>`);
     const sortOpts = [['', 'Sort: A–Z'], ['members', 'Sort: Most members']]
       .map(([v, l]) => `<option value="${v}" ${v === sort ? 'selected' : ''}>${l}</option>`).join('');
@@ -78,7 +86,7 @@ function register(app) {
       const actions = `
         <div class="row-actions">
           <a class="icon-btn view" href="/organizations/${o.id}" title="Manage" aria-label="Manage">${ICON_EYE}</a>
-          ${isAdmin ? `<form method="post" action="/organizations/${o.id}/archive" onsubmit="return confirm('Archive this organization? It will be hidden from the list.')">
+          ${isAdmin ? `<form method="post" action="/organizations/${o.id}/archive" data-confirm="Archive this organization? It will be hidden from the list.">
             <button class="icon-btn del" type="submit" title="Archive" aria-label="Archive">${ICON_TRASH}</button>
           </form>` : ''}
         </div>`;
@@ -108,7 +116,7 @@ function register(app) {
           <div class="empty-ico" aria-hidden="true">♫</div>
           <h3>${q ? `No organizations match "${esc(q)}"` : 'No organizations yet'}</h3>
           <p>${q ? 'Try a different search term, or add a new group.' : 'Add your first choir, fellowship or band to get started.'}</p>
-          ${isAdmin ? '<a class="btn primary" href="/organizations/new">＋ Add Organization</a>' : ''}
+          ${canEdit ? '<a class="btn primary" href="/organizations/new">＋ Add Organization</a>' : ''}
           ${q ? '<div style="margin-top:0.6rem"><a class="link" href="/organizations">Clear search →</a></div>' : ''}
         </div>`,
     });
@@ -119,12 +127,12 @@ function register(app) {
     });
   }));
 
-  app.get('/organizations/new', requireAdmin, asyncHandler(async (req, res) => {
+  app.get('/organizations/new', requireEditor, asyncHandler(async (req, res) => {
     const options = await orgMemberOptions(res.locals.db);
     const body = `
       <form class="form" method="post" action="/organizations">
         <label class="wide">Name<input name="name" required></label>
-        <label>Meets<input name="meetsOn" placeholder="e.g. Saturday 5pm"></label>
+        ${meetingDaysFields(null)}
         <label>Leader<select name="leaderId">${options}</select></label>
         <label class="wide">Description<input name="description"></label>
         <div class="actions form-actions">
@@ -139,6 +147,7 @@ function register(app) {
     if (!res.locals.user) return res.redirect('/login');
     const db = res.locals.db;
     const isAdmin = res.locals.user.role === 'ADMIN';
+    const canEdit = isAdmin || res.locals.user.role === 'EDITOR';
     const id = Number(req.params.id);
     const o = await db.organization.findFirst({
       where: { id, active: true },
@@ -153,7 +162,7 @@ function register(app) {
 
     const roster = memberships.length
       ? `<table class="data-table members-table">
-           <thead><tr><th>Member</th><th>Role</th>${isAdmin ? '<th>Actions</th>' : ''}</tr></thead>
+           <thead><tr><th>Member</th><th>Role</th>${canEdit ? '<th>Actions</th>' : ''}</tr></thead>
            <tbody>${memberships.map((mm) => { const m = mm.member; return `<tr>
              <td data-label="Member">
                <div class="m-name-cell">
@@ -165,8 +174,8 @@ function register(app) {
                </div>
              </td>
              <td data-label="Role"><span class="pill ${mm.role === 'leader' ? 'pill-member' : 'pill-regular'}">${esc(mm.role)}</span></td>
-             ${isAdmin ? `<td data-label="Actions">
-               <form method="post" action="/organizations/${id}/remove" onsubmit="return confirm('Remove this member from ${esc(o.name).replace(/'/g, "\\'")}?')">
+             ${canEdit ? `<td data-label="Actions">
+               <form method="post" action="/organizations/${id}/remove" data-confirm="Remove this member from ${esc(o.name)}?">
                  <input type="hidden" name="memberId" value="${m.id}">
                  <button class="icon-btn del" type="submit" title="Remove" aria-label="Remove">${ICON_TRASH}</button>
                </form></td>` : ''}
@@ -175,10 +184,10 @@ function register(app) {
       : `<div class="empty-state">
           <div class="empty-ico" aria-hidden="true">👥</div>
           <h3>No members in this group yet</h3>
-          <p>${isAdmin ? 'Use the form below to add the first member.' : 'Ask an admin to add members to this organization.'}</p>
+          <p>${canEdit ? 'Use the form below to add the first member.' : 'Ask an admin to add members to this organization.'}</p>
         </div>`;
 
-    const manage = isAdmin
+    const manage = canEdit
       ? `<div class="card" style="margin-top:1rem">
            <div class="card-head"><h2>Manage</h2></div>
            <form method="post" action="/organizations/${id}/add" class="filter-bar" style="margin-bottom:0.8rem">
@@ -190,6 +199,10 @@ function register(app) {
              <select name="leaderId" style="flex:1;min-width:200px">${await orgMemberOptions(db, o.leaderId)}</select>
              <button type="submit">Set leader</button>
            </form>
+           <form method="post" action="/organizations/${id}/meeting" class="filter-bar" style="margin-top:0.8rem">
+             ${meetingDaysFields(o.meetsOn, { inline: true })}
+             <button type="submit">Save meeting days</button>
+           </form>
          </div>`
       : '';
 
@@ -199,14 +212,14 @@ function register(app) {
       ${statsRow([
         { cls: 'gold', icon: icon('members'), value: memberships.length, label: 'Members' },
         { cls: 'green', icon: icon('star'), value: o.leader ? esc(`${o.leader.firstName} ${o.leader.lastName}`) : '—', label: 'Leader' },
-        { cls: 'blue', icon: icon('events'), value: o.meetsOn ? esc(o.meetsOn) : '—', label: 'Meets' },
+        { cls: 'blue', icon: icon('events'), value: o.meetsOn ? esc(o.meetsOn) : '—', label: 'Meeting days' },
       ])}
       ${listCard({ title: 'Roster', count: memberships.length, countLabel: 'members', inner: roster })}
       ${manage}`;
     res.page({ title: o.name, active: '/organizations', noHeader: true, body });
   }));
 
-  app.post('/organizations', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/organizations', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const b = req.body || {};
     if (!b.name || !b.name.trim()) { flash(req, 'Organization name is required.'); return res.redirect('/organizations/new'); }
@@ -217,7 +230,7 @@ function register(app) {
     try {
       const created = await db.organization.create({
         data: {
-          name: b.name.trim(), description: b.description || null, meetsOn: b.meetsOn || null,
+          name: b.name.trim(), description: b.description || null, meetsOn: meetsOnFromForm(b),
           leaderId: leader ? leader.id : null,
         },
       });
@@ -231,7 +244,7 @@ function register(app) {
     res.redirect('/organizations');
   }));
 
-  app.post('/organizations/:id/add', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/organizations/:id/add', requireEditor, asyncHandler(async (req, res) => {
     const oid = Number(req.params.id);
     const mid = Number(req.body.memberId);
     if (!mid) { flash(req, 'Choose a member to add.'); return res.redirect(`/organizations/${oid}`); }
@@ -254,7 +267,7 @@ function register(app) {
     res.redirect(`/organizations/${oid}`);
   }));
 
-  app.post('/organizations/:id/remove', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/organizations/:id/remove', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const oid = Number(req.params.id);
     const mid = Number(req.body.memberId);
@@ -275,7 +288,7 @@ function register(app) {
     res.redirect(`/organizations/${oid}`);
   }));
 
-  app.post('/organizations/:id/leader', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/organizations/:id/leader', requireEditor, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const oid = Number(req.params.id);
     const leader = req.body.leaderId ? await db.member.findUnique({ where: { id: Number(req.body.leaderId) } }) : null;
@@ -291,6 +304,18 @@ function register(app) {
     } catch (e) {
       if (e.code !== 'P2025') throw e;
     }
+    res.redirect(`/organizations/${oid}`);
+  }));
+
+  app.post('/organizations/:id/meeting', requireEditor, asyncHandler(async (req, res) => {
+    const db = res.locals.db;
+    const oid = Number(req.params.id);
+    const org = await db.organization.findUnique({ where: { id: oid }, select: { name: true, meetsOn: true } });
+    if (!org) return res.status(404).send('Not found');
+    const meetsOn = meetsOnFromForm(req.body || {}, org.meetsOn);
+    await db.organization.update({ where: { id: oid }, data: { meetsOn } });
+    await logActivity(db, 'organization_updated', meetsOn ? `${org.name} meets ${meetsOn}` : `Meeting days cleared for ${org.name}`, `/organizations/${oid}`, res.locals.user.id);
+    flash(req, 'Meeting days saved.', 'success');
     res.redirect(`/organizations/${oid}`);
   }));
 

@@ -31,7 +31,7 @@ test.after(async () => {
 
 async function newChurch(tag) {
   const email = `${tag}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
-  const { church, user } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' });
+  const { church, user } = await signupChurch({ churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' });
   createdChurchIds.push(church.id);
   return { churchId: church.id, user };
 }

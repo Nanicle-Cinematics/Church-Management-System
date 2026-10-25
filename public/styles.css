@@ -602,6 +602,7 @@ tbody tr:hover td { background: var(--row-hover); }
 .pill-visitor { background: var(--orange-soft); color: #6b4915; }
 .pill-inactive { background: #ddd; color: #555; }
 .pill-deceased, .pill-transferred { background: #eedede; color: #6b1f1f; }
+.pill-distant { background: #ddd; color: #555; }
 .pill-open { background: var(--orange-soft); color: var(--orange); }
 .pill-in_progress { background: var(--blue-soft); color: var(--blue); }
 .pill-closed { background: var(--green-soft); color: var(--green); }

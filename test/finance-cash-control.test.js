@@ -106,16 +106,16 @@ function csrfOf(html) {
 }
 async function signedInChurch(tag) {
   const c = client();
-  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'password123' });
+  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'Tr0ubadour-7!' });
   assert.strictEqual(signup.status, 201);
   createdChurchIds.push(signup.body.church.id);
   return { admin: c, churchId: signup.body.church.id };
 }
 async function financeUser(churchId, financeRole, role = 'VIEWER') {
   const email = uniqueEmail(financeRole.toLowerCase());
-  await db.user.create({ data: { churchId, username: `${financeRole.toLowerCase()}-${Date.now()}-${Math.random()}`, email, passwordHash: await bcrypt.hash('password123', 4), role, financeRole } });
+  await db.user.create({ data: { churchId, username: `${financeRole.toLowerCase()}-${Date.now()}-${Math.random()}`, email, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 4), role, financeRole } });
   const c = client();
-  const login = await c.postJson('/login', { email, password: 'password123' });
+  const login = await c.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(login.status, 200);
   return c;
 }

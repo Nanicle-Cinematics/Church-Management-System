@@ -15,10 +15,12 @@
 // is now wired in via lib/delivery.js.
 
 const asyncHandler = require('../lib/async-handler');
+const { requireEditorWithFullAccess } = require('../lib/access');
 const { sendSmsBatch, sendEmailEach, normalizePhoneGH } = require('../lib/delivery');
 const { fmtPreachDate } = require('../lib/format');
 const { logActivity } = require('../lib/tenant-activity');
 const { createRateLimiter } = require('../lib/rate-limit');
+const { entryForDate, reminderText } = require('../lib/liturgical');
 
 // Reminders go to a phone/email the admin typed in, via the platform's shared
 // SMS/email accounts, so cap how many one church can trigger.
@@ -31,7 +33,8 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).json({ error: 'forbidden' });
 }
-
+// Admins and Editors with finance access add and edit (requireEditorWithFullAccess,
+// lib/access.js); deleting and anything that sends messages stays with admins.
 function requireAuth(req, res, next) {
   if (!res.locals.user) return res.status(401).json({ error: 'not logged in' });
   next();
@@ -63,16 +66,21 @@ async function sendPreachingReminder(db, plan, userId, churchName) {
   const when = fmtPreachDate(iso(plan.preachDate));
   const where = plan.serviceLabel ? ` (${plan.serviceLabel})` : '';
   const topic = plan.topic ? ` Topic: ${plan.topic}.` : '';
-  const msg = `Hello ${c.first || 'Preacher'}, a reminder that you are scheduled to preach on ${when}${where}.${topic} — ${churchName}`;
+  // What the Almanac sets for that day: a line for the text message, the full detail for email.
+  let entry = null;
+  try { entry = await entryForDate(db, plan.preachDate); } catch (_) { /* the reminder goes without it */ }
+  const msgFor = (almanac) => `Hello ${c.first || 'Preacher'}, a reminder that you are scheduled to preach on ${when}${where}.${topic}${almanac ? ` ${almanac}` : ''} — ${churchName}`;
+  const msg = msgFor(reminderText(entry, { short: true }));
+  const emailMsg = msgFor(reminderText(entry));
 
   const phone = normalizePhoneGH(c.phone);
   let sms = null, email = null;
   if (phone) {
-    try { sms = await sendSmsBatch([phone], msg); }
+    try { sms = await sendSmsBatch([phone], msg, { churchId: plan.churchId }); }
     catch (e) { sms = { ok: false, error: e.message }; }
   }
   if (c.email) {
-    try { email = await sendEmailEach(db, [{ addr: c.email, token: c.token }], `Preaching reminder — ${when}`, msg, { withFooter: false, churchName }); }
+    try { email = await sendEmailEach(db, [{ addr: c.email, token: c.token }], `Preaching reminder — ${when}`, emailMsg, { withFooter: false, churchName }); }
     catch (e) { email = { ok: false, error: e.message }; }
   }
   const dryRun = (sms && sms.dryRun) || (email && email.dryRun);
@@ -146,7 +154,7 @@ function register(app) {
     res.json(plan);
   }));
 
-  app.post('/api/preaching', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/preaching', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const v = parsePlanBody(req.body || {});
     if (!v.preachDate || Number.isNaN(v.preachDate.getTime())) {
@@ -158,7 +166,7 @@ function register(app) {
     res.status(201).json(plan);
   }));
 
-  app.put('/api/preaching/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.put('/api/preaching/:id', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const db = res.locals.db;
     const v = parsePlanBody(req.body || {});
     if (!v.preachDate || Number.isNaN(v.preachDate.getTime())) {

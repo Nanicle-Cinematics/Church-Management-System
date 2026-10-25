@@ -105,19 +105,19 @@ test('signup creates a church + admin user and starts a session', async () => {
 test('duplicate email is rejected', async () => {
   const client = cookieClient();
   const email = uniqueEmail('dup');
-  const first = await client.post('/signup', { churchName: 'First Church', name: 'A', email, password: 'password123' });
+  const first = await client.post('/signup', { churchName: 'First Church', name: 'A', email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(first.status, 201);
   createdChurchIds.push(first.body.church.id);
 
-  const second = await client.post('/signup', { churchName: 'Second Church', name: 'B', email, password: 'password123' });
+  const second = await client.post('/signup', { churchName: 'Second Church', name: 'B', email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(second.status, 400);
 });
 
 test('two churches can each have a user with the same display username, no collision', async () => {
   const clientA = cookieClient();
   const clientB = cookieClient();
-  const signupA = await clientA.post('/signup', { churchName: 'Alpha Church', name: 'Same Name', email: uniqueEmail('alpha'), password: 'password123' });
-  const signupB = await clientB.post('/signup', { churchName: 'Beta Church', name: 'Same Name', email: uniqueEmail('beta'), password: 'password123' });
+  const signupA = await clientA.post('/signup', { churchName: 'Alpha Church', name: 'Same Name', email: uniqueEmail('alpha'), password: 'Tr0ubadour-7!' });
+  const signupB = await clientB.post('/signup', { churchName: 'Beta Church', name: 'Same Name', email: uniqueEmail('beta'), password: 'Tr0ubadour-7!' });
   assert.strictEqual(signupA.status, 201);
   assert.strictEqual(signupB.status, 201);
   createdChurchIds.push(signupA.body.church.id, signupB.body.church.id);
@@ -126,8 +126,8 @@ test('two churches can each have a user with the same display username, no colli
 test('authenticated shell uses each tenant church name without cross-tenant branding', async () => {
   const clientA = cookieClient();
   const clientB = cookieClient();
-  const signupA = await clientA.post('/signup', { churchName: 'Brand Alpha Church', name: 'Owner A', email: uniqueEmail('brand-a'), password: 'password123' });
-  const signupB = await clientB.post('/signup', { churchName: 'Brand Beta Church', name: 'Owner B', email: uniqueEmail('brand-b'), password: 'password123' });
+  const signupA = await clientA.post('/signup', { churchName: 'Brand Alpha Church', name: 'Owner A', email: uniqueEmail('brand-a'), password: 'Tr0ubadour-7!' });
+  const signupB = await clientB.post('/signup', { churchName: 'Brand Beta Church', name: 'Owner B', email: uniqueEmail('brand-b'), password: 'Tr0ubadour-7!' });
   createdChurchIds.push(signupA.body.church.id, signupB.body.church.id);
 
   const pageA = await clientA.getHtml('/');
@@ -215,8 +215,8 @@ test('MFA-enabled users must complete TOTP challenge before receiving an authent
 test('cross-tenant isolation: church B cannot see church A rows via a converted feature route', async () => {
   const clientA = cookieClient();
   const clientB = cookieClient();
-  const signupA = await clientA.post('/signup', { churchName: 'Isolation Church A', name: 'Owner A', email: uniqueEmail('iso-a'), password: 'password123' });
-  const signupB = await clientB.post('/signup', { churchName: 'Isolation Church B', name: 'Owner B', email: uniqueEmail('iso-b'), password: 'password123' });
+  const signupA = await clientA.post('/signup', { churchName: 'Isolation Church A', name: 'Owner A', email: uniqueEmail('iso-a'), password: 'Tr0ubadour-7!' });
+  const signupB = await clientB.post('/signup', { churchName: 'Isolation Church B', name: 'Owner B', email: uniqueEmail('iso-b'), password: 'Tr0ubadour-7!' });
   createdChurchIds.push(signupA.body.church.id, signupB.body.church.id);
 
   // Must stay in the future: the assertions below count `upcoming`, which

@@ -9,15 +9,13 @@
 // plan" view, and (b) this file, a real cross-tenant view for the person
 // running the SaaS platform itself, not any individual church.
 //
-// DECISION (one of the plan's explicitly flagged open items — "platform/
-// superadmin model: dedicated table vs. env allowlist"): went with an env
-// allowlist (PLATFORM_ADMIN_EMAILS, comma-separated), the simpler of the
-// two options. A dedicated PlatformAdmin table would be the natural
-// upgrade if/when this needs finer-grained roles.
+// Access: platform operators only (lib/platform-operators.js), a separate
+// kind of account with its own sign-in and mandatory two-factor. This used
+// to be an email allowlist on church accounts (PLATFORM_ADMIN_EMAILS).
 //
 // SAFETY: every handler here deliberately uses the RAW (unscoped) Prisma
 // client — that's the whole point, seeing across tenants — so none of it
-// goes through tenantDb's protection. Gate first, always: requirePlatformAdmin
+// goes through tenantDb's protection. Gate first, always: requireOperatorJson
 // runs before any handler touches the raw client.
 
 const asyncHandler = require('../lib/async-handler');
@@ -25,16 +23,11 @@ const { db: rawDb } = require('../lib/tenant');
 const { isPro } = require('./settings');
 const { requestIp, requestUserAgent } = require('../lib/security-audit');
 
-const { platformAdminEmails } = require('../lib/platform-admins');
-
-function requirePlatformAdmin(req, res, next) {
-  const email = res.locals.user && res.locals.user.email;
-  if (email && platformAdminEmails().includes(email.toLowerCase())) return next();
-  return res.status(403).json({ error: 'platform admin only' });
-}
+const { requireOperatorJson, logPlatformEvent } = require('../lib/platform-operators');
+const { releaseChurchEmails, reclaimChurchEmails } = require('../lib/church-emails');
 
 function register(app) {
-  app.get('/api/platform/churches', requirePlatformAdmin, asyncHandler(async (req, res) => {
+  app.get('/api/platform/churches', requireOperatorJson, asyncHandler(async (req, res) => {
     const churches = await rawDb.church.findMany({
       orderBy: { createdAt: 'desc' },
       include: { _count: { select: { users: true, members: true } } },
@@ -49,7 +42,7 @@ function register(app) {
     })));
   }));
 
-  app.get('/api/platform/summary', requirePlatformAdmin, asyncHandler(async (req, res) => {
+  app.get('/api/platform/summary', requireOperatorJson, asyncHandler(async (req, res) => {
     const [churchCount, userCount, memberCount, proCount] = await Promise.all([
       rawDb.church.count(),
       rawDb.user.count({ where: { deletedAt: null } }),
@@ -62,7 +55,7 @@ function register(app) {
   // Operator-run plan activation (mirrors poultry-manager's scripts/set-plan.mjs,
   // as a real authenticated endpoint instead of a script — flip a church to
   // Pro after a manual payment is confirmed).
-  app.post('/api/platform/churches/:id/plan', requirePlatformAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/platform/churches/:id/plan', requireOperatorJson, asyncHandler(async (req, res) => {
     const { plan, months } = req.body || {};
     if (!['free', 'pro'].includes(plan)) return res.status(400).json({ error: 'plan must be "free" or "pro"' });
     const data = { plan };
@@ -78,12 +71,13 @@ function register(app) {
     }
     try {
       const church = await rawDb.church.update({ where: { id: req.params.id }, data });
+      const event = plan === 'pro' ? 'platform.plan_upgraded' : 'platform.plan_downgraded';
+      const subject = `${church.name} (${church.slug}) -> ${plan}`;
       await rawDb.securityAuditLog.create({ data: {
-        churchId: church.id, actorId: res.locals.user.id,
-        event: plan === 'pro' ? 'platform.plan_upgraded' : 'platform.plan_downgraded',
-        subject: `${church.name} (${church.slug}) -> ${plan}`,
+        churchId: church.id, actorId: null, event, subject,
         ip: requestIp(req), userAgent: requestUserAgent(req),
       } });
+      await logPlatformEvent(req, { operator: res.locals.operator, event, subject, churchId: church.id });
       res.json({ id: church.id, plan: church.plan, proUntil: church.proUntil });
     } catch (e) {
       if (e.code === 'P2025') return res.status(404).json({ error: 'Not found' });
@@ -91,7 +85,7 @@ function register(app) {
     }
   }));
 
-  app.post('/api/platform/churches/:id/access', requirePlatformAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/platform/churches/:id/access', requireOperatorJson, asyncHandler(async (req, res) => {
     const action = String(req.body?.action || '');
     if (!['suspend', 'reactivate', 'delete', 'restore'].includes(action)) {
       return res.status(400).json({ error: 'invalid access action' });
@@ -120,24 +114,26 @@ function register(app) {
         where: { id: req.params.id },
         data,
       });
+      const releasedEmails = action === 'delete' ? await releaseChurchEmails(rawDb, church.id) : undefined;
+      const reclaimed = action === 'restore' ? await reclaimChurchEmails(rawDb, church.id) : undefined;
       const events = {
         suspend: 'platform.church_suspended', reactivate: 'platform.church_reactivated',
         delete: 'platform.church_deleted', restore: 'platform.church_restored',
       };
+      const subject = ['suspend', 'delete'].includes(action) ? reason : `${church.name} ${action}d`;
       await rawDb.securityAuditLog.create({
         data: {
-          churchId: church.id,
-          actorId: res.locals.user.id,
-          event: events[action],
-          subject: ['suspend', 'delete'].includes(action) ? reason : `${church.name} ${action}d`,
-          ip: String(req.ip || '').slice(0, 128) || null,
-          userAgent: String(req.get('user-agent') || '').slice(0, 512) || null,
+          churchId: church.id, actorId: null, event: events[action], subject,
+          ip: requestIp(req), userAgent: requestUserAgent(req),
         },
       });
+      await logPlatformEvent(req, { operator: res.locals.operator, event: events[action], subject: `${church.name} (${church.slug}): ${subject}`, churchId: church.id });
       return res.json({
         id: church.id, suspendedAt: church.suspendedAt, suspensionReason: church.suspensionReason,
         deletedAt: church.deletedAt, deletionReason: church.deletionReason,
         deletionPurgeAfter: church.deletionPurgeAfter,
+        ...(releasedEmails !== undefined ? { releasedEmails } : {}),
+        ...(reclaimed ? { restoredEmails: reclaimed.restored, emailsTakenMeanwhile: reclaimed.taken } : {}),
       });
     } catch (e) {
       if (e.code === 'P2025') return res.status(404).json({ error: 'Not found' });
@@ -146,4 +142,4 @@ function register(app) {
   }));
 }
 
-module.exports = { register, platformAdminEmails, requirePlatformAdmin };
+module.exports = { register };

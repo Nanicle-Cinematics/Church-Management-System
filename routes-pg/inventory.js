@@ -3,6 +3,7 @@
 // Same coexistence approach as the other routes-pg/*.js modules.
 
 const asyncHandler = require('../lib/async-handler');
+const { requireEditorWithFullAccess } = require('../lib/access');
 
 const RECOMMENDED_CATEGORIES = [
   'Audio-Visual / Media',
@@ -25,7 +26,8 @@ function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
   return res.status(403).json({ error: 'forbidden' });
 }
-
+// Admins and Editors with finance access add and edit (requireEditorWithFullAccess,
+// lib/access.js); deleting and anything that sends messages stays with admins.
 function requireAuth(req, res, next) {
   if (!res.locals.user) return res.status(401).json({ error: 'not logged in' });
   next();
@@ -51,7 +53,7 @@ function register(app) {
     res.json(merged);
   }));
 
-  app.post('/api/inventory/categories', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/inventory/categories', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'name is required' });
     const category = await res.locals.db.inventoryCategory.upsert({
@@ -82,14 +84,14 @@ function register(app) {
     res.json(item);
   }));
 
-  app.post('/api/inventory', requireAdmin, asyncHandler(async (req, res) => {
+  app.post('/api/inventory', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const v = parseItemBody(req.body || {});
     if (!v.name) return res.status(400).json({ error: 'name is required' });
     const item = await res.locals.db.inventoryItem.create({ data: v });
     res.status(201).json(item);
   }));
 
-  app.put('/api/inventory/:id', requireAdmin, asyncHandler(async (req, res) => {
+  app.put('/api/inventory/:id', requireEditorWithFullAccess, asyncHandler(async (req, res) => {
     const v = parseItemBody(req.body || {});
     if (!v.name) return res.status(400).json({ error: 'name is required' });
     try {

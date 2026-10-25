@@ -73,17 +73,17 @@ function uniqueEmail(tag) {
 async function newSignedInChurch(tag) {
   const client = cookieClient();
   const email = uniqueEmail(tag);
-  const res = await client.post('/signup', { churchName: `${tag} Church`, name: 'Owner', email, password: 'password123' });
+  const res = await client.post('/signup', { churchName: `${tag} Church`, name: 'Owner', email, password: 'Tr0ubadour-7!' });
   createdChurchIds.push(res.body.church.id);
   return { client, churchId: res.body.church.id };
 }
 
-async function addNonAdminUser(churchId, role) {
+async function addNonAdminUser(churchId, role, financeRole = 'NONE') {
   const email = uniqueEmail(`non-admin-${role.toLowerCase()}`);
-  const passwordHash = await bcrypt.hash('password123', 10);
-  await db.user.create({ data: { churchId, username: `u-${Date.now()}`, email, passwordHash, role, financeRole: 'NONE' } });
+  const passwordHash = await bcrypt.hash('Tr0ubadour-7!', 10);
+  await db.user.create({ data: { churchId, username: `u-${Date.now()}`, email, passwordHash, role, financeRole } });
   const client = cookieClient();
-  const login = await client.post('/login', { email, password: 'password123' });
+  const login = await client.post('/login', { email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(login.status, 200);
   return client;
 }
@@ -172,8 +172,12 @@ test('cross-tenant: church B cannot see church A\'s announcements or broadcasts'
 
 test('non-admin can read but not post announcements/broadcasts or change email settings', async () => {
   const { churchId } = await newSignedInChurch('comm-rbac');
-  const viewer = await addNonAdminUser(churchId, 'VIEWER');
+  // A viewer with a finance role can open Communications; one without cannot
+  // (see test/no-finance-access.test.js).
+  const viewer = await addNonAdminUser(churchId, 'VIEWER', 'AUDITOR');
   assert.strictEqual((await viewer.get('/api/communications/announcements')).status, 200);
+  const limited = await addNonAdminUser(churchId, 'VIEWER');
+  assert.strictEqual((await limited.get('/api/communications/announcements')).status, 403);
   assert.strictEqual((await viewer.post('/api/communications/announcements', { title: 'x', body: 'y' })).status, 403);
   assert.strictEqual((await viewer.put('/api/communications/email-settings', { senderName: 'x', senderEmail: 'a@b.com' })).status, 403);
 });

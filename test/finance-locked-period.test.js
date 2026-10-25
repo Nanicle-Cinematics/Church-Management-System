@@ -94,7 +94,7 @@ function uniqueEmail(tag) {
 }
 async function signedInChurch(tag) {
   const c = client();
-  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'password123' });
+  const signup = await c.postJson('/signup', { churchName: `${tag} Church`, name: 'Admin Person', email: uniqueEmail(tag), password: 'Tr0ubadour-7!' });
   assert.strictEqual(signup.status, 201);
   createdChurchIds.push(signup.body.church.id);
   return { client: c, churchId: signup.body.church.id };
@@ -109,10 +109,10 @@ function csrfOf(html) {
 // actuals) has to go through this second-user approval step.
 async function approveExpense(churchId, expenseId) {
   const email = uniqueEmail('approver');
-  const passwordHash = await bcrypt.hash('password123', 10);
+  const passwordHash = await bcrypt.hash('Tr0ubadour-7!', 10);
   await db.user.create({ data: { churchId, username: `approver-${Date.now()}`, email, passwordHash, role: 'VIEWER', financeRole: 'TREASURER' } });
   const approver = client();
-  const login = await approver.postJson('/login', { email, password: 'password123' });
+  const login = await approver.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   assert.strictEqual(login.status, 200);
   const page = await approver.getHtml('/finance/expenses');
   const csrf = csrfOf(page.text);
@@ -183,9 +183,9 @@ test('expense approval into a locked period is refused and the expense stays sub
   const e = await db.expense.create({ data: { churchId, expenseCatId: cat.id, category: 'Utilities', amount: 90, spentOn: new Date('2026-06-05'), description: 'June bill', fundId: fund.id, approvalStatus: 'SUBMITTED', submittedAt: new Date(), recordedBy: admin.id } });
   await db.financialPeriod.create({ data: { churchId, year: 2026, month: 6, status: 'LOCKED', closedAt: new Date() } });
   const email = uniqueEmail('lk-approver');
-  await db.user.create({ data: { churchId, username: `lk-${Date.now()}`, email, passwordHash: await bcrypt.hash('password123', 10), role: 'VIEWER', financeRole: 'TREASURER' } });
+  await db.user.create({ data: { churchId, username: `lk-${Date.now()}`, email, passwordHash: await bcrypt.hash('Tr0ubadour-7!', 10), role: 'VIEWER', financeRole: 'TREASURER' } });
   const approver = client();
-  await approver.postJson('/login', { email, password: 'password123' });
+  await approver.postJson('/login', { email, password: 'Tr0ubadour-7!' });
   const csrf = await csrfFrom(approver, '/finance/expenses');
   const r = await approver.postForm(`/finance/expenses/${e.id}/approve`, { _csrf: csrf });
   assert.strictEqual(r.status, 302);
