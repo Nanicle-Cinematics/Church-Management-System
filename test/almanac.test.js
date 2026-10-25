@@ -361,7 +361,7 @@ test('This Sunday: everyone sees the next Sunday\'s service and who is preaching
   const viewer = await staff(a.churchId, 'VIEWER');
   const today = L.toDay(new Date());
   const sunday = L.addDays(today, (7 - today.getUTCDay()) % 7);
-  const mine = await db.almanacEntry.create({ data: { serviceDate: sunday, serviceLabel: `${TAG}-sun`, title: `Sunday Card ${TAG}`, colour: 'RED', theme: 'Fire', gospel: 'John 20:19-23', hymns: ['7', '8'] } });
+  const mine = await db.almanacEntry.create({ data: { serviceDate: sunday, serviceLabel: '', title: `Sunday Card ${TAG}`, colour: 'RED', theme: 'Fire', gospel: 'John 20:19-23', hymns: ['7', '8'] } });
   assert.doesNotMatch((await viewer.page('/')).text, /Preaching:<\/b>/, 'no preacher appointed yet');
   await db.preachingPlan.create({ data: { churchId: a.churchId, preachDate: sunday, preacherName: 'Rev. Test Preacher' } });
   for (const [who, c] of [['admin', a.admin], ['viewer', viewer]]) {
