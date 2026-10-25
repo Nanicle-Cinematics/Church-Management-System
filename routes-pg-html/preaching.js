@@ -19,6 +19,8 @@ const { logActivity } = require('../lib/tenant-activity');
 const { sendPreachingReminder, remindRateLimit } = require('../routes-pg/preaching');
 const { icon } = require('../lib/icons');
 const P = require('../lib/preachers');
+const { choiceField, readChoice } = require('../lib/choice');
+const { serviceNames } = require('../lib/choice-lists');
 const { chip, entryCard } = require('../lib/almanac-ui');
 
 function requireAdmin(req, res, next) {
@@ -59,7 +61,7 @@ function parsePlanBody(b) {
   const preachDate = b.preachDate ? new Date(b.preachDate) : null;
   return {
     preachDate,
-    serviceLabel: (b.serviceLabel || '').trim() || null,
+    serviceLabel: readChoice(b, 'serviceLabel', 120) || null,
     preacherId: b.preacherId ? Number(b.preacherId) : null,
     memberId: b.memberId ? Number(b.memberId) : null,
     preacherName: (b.preacherName || '').trim() || null,
@@ -95,7 +97,7 @@ function register(app) {
     return `
       <form class="form" method="post" action="${action}">
         <label>Date<input type="date" name="preachDate" required value="${esc(iso(plan.preachDate))}"></label>
-        <label>Service / occasion<input name="serviceLabel" placeholder="e.g. Sunday 9:00 AM service" value="${esc(plan.serviceLabel || '')}"></label>
+        ${choiceField({ name: 'serviceLabel', label: 'Service / occasion', options: await serviceNames(db), value: plan.serviceLabel || '', noneLabel: '— choose —', otherPlaceholder: 'e.g. Sunday 9:00 AM service' })}
         <label>Preacher (by code)<select name="preacherId">${rosterOptions}</select><span class="hint"><a href="/preachers">The preachers list</a>: S, M1, M2 and the lay preachers. A preacher chosen here replaces the member or guest below.</span></label>
         <label>Preacher (member)<select name="memberId">${options}</select></label>
         <div class="wide-cell"><span class="hint">If the preacher is a guest (not a member), leave the dropdown on
