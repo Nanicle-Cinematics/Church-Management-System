@@ -24,7 +24,7 @@
 
 const asyncHandler = require('../lib/async-handler');
 const { choiceField, readChoice } = require('../lib/choice');
-const { incomeSubcategoryOptions } = require('../lib/choice-lists');
+const { incomeSubcategoryOptions, expenseSubcategoryOptions } = require('../lib/choice-lists');
 const { esc, fmtMoney, fmtOutstanding, todayISO, isMoneyPositive, isMoneyNonNeg, isValidDate, DAYS_OF_WEEK } = require('../lib/format');
 const { pageHero, statsRow, listCard, table } = require('../lib/views');
 const { scriptTag } = require('../lib/style-tags');
@@ -911,7 +911,7 @@ function register(app) {
     const givingByCategory = reportGroup(givingRows, 'category');
     const givingByMember = reportGroup(givingRows, 'member');
     const expenseAnalysisRows = expenses.map((row) => [
-      row.spentOn.toISOString().slice(0, 10), esc(row.expenseCategory?.categoryName || row.category), esc(row.description || '—'),
+      row.spentOn.toISOString().slice(0, 10), esc((row.expenseCategory?.categoryName || row.category) + (row.subcategory ? ` · ${row.subcategory}` : '')), esc(row.description || '—'),
       esc(row.paidTo || '—'), esc(row.fund?.name || 'General'), esc(row.project?.name || '—'), fmtMoney(row.amount),
     ]);
 
@@ -2640,6 +2640,7 @@ function register(app) {
            <form class="form" method="post" action="/finance/expenses" style="margin-top:0.75rem">
              <label>Date<input type="date" name="spentOn" required value="${todayISO()}"></label>
              <label>Category<select name="expenseCatId" required>${catOpts}</select></label>
+             ${choiceField({ name: 'subcategory', label: 'Subcategory', options: expenseSubcategoryOptions(cats), groupFrom: 'expenseCatId', noneLabel: '— none —', otherPlaceholder: 'e.g. Generator servicing' })}
              <label>Amount (GH₵)<input type="number" step="0.01" min="0.01" name="amount" required></label>
              <label>Payment method<select name="paymentMethod">${['Cash', 'Bank Transfer', 'Cheque', 'Mobile Money', 'Other'].map((m) => `<option>${m}</option>`).join('')}</select></label>
              <label>Fund<select name="fundId">${await fundOptions(db, await defaultFundId(db), false)}</select></label>
@@ -2656,7 +2657,7 @@ function register(app) {
       ${rows.length ? table(['Date', 'Amount', 'Status', 'Category', 'Description', 'Fund', 'Project', 'Paid to', 'Method', 'Voucher', ...(canWrite || canApprove ? ['Actions'] : [])],
         rows.map((e) => [esc(e.spentOn.toISOString().slice(0, 10)),
           fmtMoney(e.amount), `<span class="pill pill-${esc(e.approvalStatus.toLowerCase())}">${esc(e.approvalStatus)}</span>`,
-          esc((e.expenseCategory && e.expenseCategory.categoryName) || e.category),
+          `${esc((e.expenseCategory && e.expenseCategory.categoryName) || e.category)}${e.subcategory ? `<br><span class="muted-text">${esc(e.subcategory)}</span>` : ''}`,
           `${esc(e.description)}${e.notes ? `<br><span class="muted-text">${esc(e.notes)}</span>` : ''}${e.receiptAttached ? '<br><span class="muted-text">Receipt attached</span>' : ''}`, esc((e.fund && e.fund.name) || '—'), esc((e.project && e.project.name) || '—'), esc(e.paidTo) || '—', esc(e.paymentMethod) || '—',
           e.paymentVoucher ? `<a class="btn-link" href="/finance/vouchers/${e.paymentVoucher.id}/print">${esc(e.paymentVoucher.voucherNo)}</a>` : '—',
           ...(canWrite || canApprove ? [expenseActions(e, { canWrite, canApprove, user: res.locals.user, limitSettings })] : [])]), { keyCols: 3 })
@@ -2684,7 +2685,7 @@ function register(app) {
     // the payment for it.
     await db.expense.create({
       data: {
-        expenseCatId: cat ? cat.id : null, category: categoryName, amount: Number(b.amount), spentOn: new Date(b.spentOn),
+        expenseCatId: cat ? cat.id : null, category: categoryName, subcategory: readChoice(b, 'subcategory') || null, amount: Number(b.amount), spentOn: new Date(b.spentOn),
         description: b.description || null, paidTo: b.paidTo || null, paymentMethod: b.paymentMethod || null,
         referenceNumber: b.referenceNumber || null, receiptAttached: !!b.receiptAttached, notes: String(b.notes || '').trim().slice(0, 500) || null, fundId, projectId: projectCheck.projectId,
         approvalStatus: 'SUBMITTED', submittedAt: new Date(), recordedBy: res.locals.user.id,
@@ -2960,6 +2961,7 @@ function register(app) {
       <form class="form" method="post" action="/finance/expenses/${e.id}/edit">
         <label>Date<input type="date" name="spentOn" required value="${esc(e.spentOn.toISOString().slice(0, 10))}" ${lock}></label>
         <label>Category<select name="expenseCatId" ${lock}>${cats.map((c) => `<option value="${c.id}" ${c.id === e.expenseCatId ? 'selected' : ''}>${esc(c.categoryName)}</option>`).join('')}</select></label>
+        ${choiceField({ name: 'subcategory', label: 'Subcategory', options: expenseSubcategoryOptions(cats), value: e.subcategory || '', groupFrom: 'expenseCatId', noneLabel: '— none —', otherPlaceholder: 'e.g. Generator servicing' })}
         <label>Amount (GH₵)<input type="number" step="0.01" min="0.01" name="amount" required value="${esc(e.amount)}" ${lock}></label>
         <label>Payment method<select name="paymentMethod">${['Cash', 'Bank Transfer', 'Cheque', 'Mobile Money', 'Other'].map((m) => `<option ${m === e.paymentMethod ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
         <label>Fund<select name="fundId" ${lock}>${await fundOptions(db, e.fundId, false)}</select></label>
@@ -2985,6 +2987,7 @@ function register(app) {
       description: String(b.description || '').trim() || null, paidTo: b.paidTo || null, paymentMethod: b.paymentMethod || null,
       referenceNumber: b.referenceNumber || null, receiptAttached: !!b.receiptAttached,
       notes: String(b.notes || '').trim().slice(0, 500) || null,
+      subcategory: readChoice(b, 'subcategory') || null,
     };
     if (!descriptive.description) { flash(req, 'Enter a description.'); return res.redirect(back); }
 

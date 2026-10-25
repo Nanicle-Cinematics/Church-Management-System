@@ -7,7 +7,7 @@ const { createTenantApp } = require('../lib/tenant-http');
 const { db } = require('../lib/tenant');
 const { signupChurch } = require('../lib/provision');
 const { choiceField, readChoice, OTHER } = require('../lib/choice');
-const { incomeSubcategoryOptions, INCOME_SUBCATEGORIES } = require('../lib/choice-lists');
+const { incomeSubcategoryOptions, INCOME_SUBCATEGORIES, expenseSubcategoryOptions } = require('../lib/choice-lists');
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -37,7 +37,7 @@ test.before(async () => {
 test.after(async () => {
   server.close();
   const where = { churchId: { in: churchIds } };
-  for (const m of ['journalLine', 'journalEntry', 'financeReceipt', 'incomeRecord', 'preachingPlan', 'allowance', 'activityLog', 'securityAuditLog', 'fund', 'account', 'user', 'specialCategory', 'serviceType', 'expenseCategory']) {
+  for (const m of ['paymentVoucher', 'expense', 'journalLine', 'journalEntry', 'financeReceipt', 'incomeRecord', 'preachingPlan', 'allowance', 'activityLog', 'securityAuditLog', 'fund', 'account', 'user', 'specialCategory', 'serviceType', 'expenseCategory']) {
     if (db[m]) await db[m].deleteMany({ where }).catch(() => {});
   }
   await db.church.deleteMany({ where: { id: { in: churchIds } } }).catch(() => {});
@@ -103,4 +103,35 @@ test('the forms show drop-downs, and what is chosen or typed is what gets saved'
   const typed = (await admin.page(`/preaching/${plans[1].id}/edit`)).text;
   assert.match(typed, new RegExp(`<option value="${OTHER}" selected>`));
   assert.match(typed, /value="9:00 AM service"/);
+});
+
+test('Utilities has its own subcategories, and an expense keeps the one chosen or typed', async () => {
+  const opts = expenseSubcategoryOptions([{ id: 7, categoryName: 'Utilities' }, { id: 8, categoryName: 'Transport' }]);
+  assert.ok(['Electricity', 'Water', 'Internet and data', 'Telephone and airtime', 'Gas (LPG)', 'Refuse collection'].every((v) => opts.some((o) => o.value === v && o.group === '7')));
+  assert.ok(!opts.some((o) => o.group === '8'), 'only Utilities has a list; other categories use Other…');
+
+  const email = `util-${process.pid}-${Date.now()}@example.test`;
+  const { church } = await signupChurch({ churchName: 'Utilities Church', name: 'Owner', email, password: PASSWORD });
+  churchIds.push(church.id);
+  const admin = client();
+  await admin.form('/login', { email, password: PASSWORD }, '/login');
+  const utilities = await db.expenseCategory.findFirst({ where: { churchId: church.id, categoryName: 'Utilities' } });
+  assert.ok(utilities, 'a new church starts with a Utilities category');
+
+  const page = await admin.page('/finance/expenses');
+  assert.match(page.text, /<select name="subcategory"[^>]*data-group-from="expenseCatId"/);
+  assert.match(page.text, new RegExp(`<option value="Electricity" data-group="${utilities.id}">`));
+
+  const base = { spentOn: '2026-10-20', expenseCatId: String(utilities.id), amount: '120', paymentMethod: 'Cash', description: 'Bill' };
+  await admin.form('/finance/expenses', { ...base, description: 'ECG', subcategory: 'Electricity' }, '/finance/expenses');
+  await admin.form('/finance/expenses', { ...base, description: 'Borehole', subcategory: OTHER, subcategory_other: 'Borehole pump repair' }, '/finance/expenses');
+  const rows = await db.expense.findMany({ where: { churchId: church.id }, orderBy: { id: 'asc' } });
+  assert.deepStrictEqual(rows.map((r) => [r.category, r.subcategory]), [['Utilities', 'Electricity'], ['Utilities', 'Borehole pump repair']]);
+  const list = (await admin.page('/finance/expenses')).text;
+  assert.ok(list.includes('Electricity') && list.includes('Borehole pump repair'), 'the list shows each expense\'s subcategory');
+
+  // editing keeps it, and changing it saves
+  assert.match((await admin.page(`/finance/expenses/${rows[0].id}/edit`)).text, /<option value="Electricity" data-group="\d+" selected>/);
+  await admin.form(`/finance/expenses/${rows[0].id}/edit`, { ...base, description: 'ECG', subcategory: 'Water' }, `/finance/expenses/${rows[0].id}/edit`);
+  assert.strictEqual((await db.expense.findUnique({ where: { id: rows[0].id } })).subcategory, 'Water');
 });
