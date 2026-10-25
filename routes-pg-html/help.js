@@ -11,6 +11,7 @@
 const { esc } = require('../lib/format');
 const { pageHero } = require('../lib/views');
 const { hasFinanceAccess } = require('../lib/access');
+const { exampleFor } = require('../lib/help-examples');
 
 const ROLE_LABELS = { ADMIN: 'Administrator', EDITOR: 'Editor', VIEWER: 'Viewer' };
 const ROLE_MEANING = {
@@ -28,11 +29,13 @@ const FINANCE_MEANING = {
 };
 
 function section(id, title, summary, steps) {
+  const example = exampleFor(id);
   return `
     <section class="card help-card" id="${id}">
       <div class="card-head"><h2>${esc(title)}</h2></div>
       <p>${summary}</p>
       ${steps && steps.length ? `<ol class="help-steps">${steps.map((s) => `<li>${s}</li>`).join('')}</ol>` : ''}
+      ${example}
     </section>`;
 }
 
