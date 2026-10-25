@@ -9,6 +9,8 @@
        data-prompt-field="name"          and puts the answer in the form field with this name
      data-autosubmit                     on a <select> / input: submits its form when it changes
      data-disable-unless="field=VALUE"   on a <select>: disables the form field unless this one equals VALUE
+     data-other-for="x_other"            on a <select>: shows the text box with that name only while "Other…" is chosen
+     data-group-from="category"          on a <select>: offers only the options whose data-group matches that field's value
      data-print                          on a link / button: opens the print dialog
      data-reload                         on a link / button: reloads the page
      data-refresh="4000"                 anywhere: reloads the page after that many milliseconds
@@ -43,6 +45,38 @@
     if (el.form && el.form.elements[rule[0]]) el.form.elements[rule[0]].disabled = el.value !== rule[1];
   });
 
+  // A drop-down with an "Other…" choice: the box for typing it appears only for that choice.
+  function syncOther(sel) {
+    var box = sel.form && sel.form.elements[sel.getAttribute('data-other-for')];
+    if (!box) return;
+    var other = sel.value === '__other';
+    box.hidden = !other;
+    box.required = other && sel.hasAttribute('data-required');
+    return other ? box : null;
+  }
+  on('change', 'select[data-other-for]', function (event, sel) { var box = syncOther(sel); if (box) box.focus(); });
+  // A drop-down whose choices depend on another field (an income subcategory follows its category).
+  function syncGroup(sel) {
+    var source = sel.form && sel.form.elements[sel.getAttribute('data-group-from')];
+    if (!source) return;
+    if (!sel._all) sel._all = Array.prototype.slice.call(sel.options).map(function (o) { return o.cloneNode(true); });
+    var keep = sel.value;
+    while (sel.options.length) sel.remove(0);
+    sel._all.forEach(function (o) {
+      var group = o.getAttribute('data-group');
+      if (!group || group === source.value) sel.add(o.cloneNode(true));
+    });
+    sel.value = keep;
+    if (sel.value !== keep) sel.selectedIndex = 0;
+    syncOther(sel);
+  }
+  on('change', 'select', function (event, el) {
+    if (!el.form || !el.name) return;
+    Array.prototype.forEach.call(el.form.querySelectorAll('select[data-group-from]'), function (sel) {
+      if (sel.getAttribute('data-group-from') === el.name) syncGroup(sel);
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('select[data-group-from]'), syncGroup);
   on('click', '[data-print]', function (event) { event.preventDefault(); window.print(); });
   on('click', '[data-reload]', function (event) { event.preventDefault(); window.location.reload(); });
 

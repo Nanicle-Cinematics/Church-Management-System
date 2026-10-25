@@ -23,6 +23,8 @@
 // settings and the finance audit trail.
 
 const asyncHandler = require('../lib/async-handler');
+const { choiceField, readChoice } = require('../lib/choice');
+const { incomeSubcategoryOptions } = require('../lib/choice-lists');
 const { esc, fmtMoney, fmtOutstanding, todayISO, isMoneyPositive, isMoneyNonNeg, isValidDate, DAYS_OF_WEEK } = require('../lib/format');
 const { pageHero, statsRow, listCard, table } = require('../lib/views');
 const { scriptTag } = require('../lib/style-tags');
@@ -1085,7 +1087,7 @@ function register(app) {
            <form class="form" method="post" action="/finance/income" style="margin-top:0.75rem">
              <label>Date<input type="date" name="transactionDate" required value="${todayISO()}"></label>
              <label>Category<select name="category" required>${incomeCategoryOptions('other')}</select></label>
-             <label>Subcategory<input name="subcategory" placeholder="e.g. Thanksgiving, hall rental"></label>
+             ${choiceField({ name: 'subcategory', label: 'Subcategory', options: incomeSubcategoryOptions(), groupFrom: 'category', noneLabel: '— none —', otherPlaceholder: 'e.g. Thanksgiving, hall rental' })}
              <label>Member<select name="memberId">${await memberOptions(db)}</select></label>
              <label>Received from<input name="receivedFrom" placeholder="if not a member"></label>
              <label>Amount (GH₵)<input type="number" step="0.01" min="0.01" name="amount" required></label>
@@ -1134,7 +1136,7 @@ function register(app) {
 
     const income = await db.incomeRecord.create({
       data: {
-        transactionDate: new Date(b.transactionDate), category, subcategory: b.subcategory || null,
+        transactionDate: new Date(b.transactionDate), category, subcategory: readChoice(b, 'subcategory') || null,
         receivedFrom, memberId: member ? member.id : null, amount: Number(b.amount),
         paymentMethod: b.paymentMethod || 'Cash', fundId, projectId: projectCheck.projectId, referenceNumber: b.referenceNumber || null,
         description: b.description || null, recordedBy: res.locals.user.id,

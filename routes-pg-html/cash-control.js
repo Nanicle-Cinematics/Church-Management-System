@@ -19,6 +19,8 @@
 // is refused centrally (assertNotBanked in lib/ledger-pg.js).
 
 const asyncHandler = require('../lib/async-handler');
+const { choiceField, readChoice } = require('../lib/choice');
+const { serviceNames, BANKS } = require('../lib/choice-lists');
 const { esc, fmtMoney, todayISO, isMoneyPositive, isMoneyNonNeg, isValidDate } = require('../lib/format');
 const { pageHero, statsRow, table } = require('../lib/views');
 const { scriptTag } = require('../lib/style-tags');
@@ -99,7 +101,7 @@ function register(app) {
         <summary><strong>+ New cash count</strong></summary>
         <form class="form" method="post" action="/finance/cash-counts" data-cash-count style="margin-top:0.75rem">
           <label>Service date<input type="date" name="serviceDate" required value="${todayISO()}"></label>
-          <label>Service<input name="serviceLabel" placeholder="e.g. Sunday 1st service"></label>
+          ${choiceField({ name: 'serviceLabel', label: 'Service', options: await serviceNames(db), noneLabel: '— choose the service —', otherPlaceholder: 'e.g. Sunday 1st service' })}
           <label>Collection counted<select name="collection" required>${COLLECTIONS.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
           <label>Fund<select name="fundId">${await fundOptions(db, '', true)}</select></label>
           <label>Expected amount (GH₵)<input type="number" step="0.01" min="0" name="expectedAmount" placeholder="Leave blank if not known"></label>
@@ -171,7 +173,7 @@ function register(app) {
     const expected = expectedRaw ? Math.round(Number(expectedRaw) * 100) / 100 : null;
     const sheet = await db.$transaction(async (tx) => {
       const created = await createNumbered(tx, res.locals.churchId, tx.cashCountSheet, 'sheetNo', 'CC', b.serviceDate.slice(0, 4), {
-        serviceDate: new Date(b.serviceDate), serviceLabel: String(b.serviceLabel || '').trim() || null, collection,
+        serviceDate: new Date(b.serviceDate), serviceLabel: readChoice(b, 'serviceLabel', 80) || null, collection,
         fundId: fundCheck.fundId, expectedAmount: expected, countedAmount: count.total, countedBy,
         witnessedBy: String(b.witnessedBy || '').trim() || null, receivedBy: String(b.receivedBy || '').trim() || null,
         notes: String(b.notes || '').trim() || null, enteredBy: res.locals.user.id,
@@ -314,7 +316,7 @@ function register(app) {
           <label>Amount (GH₵)<input type="number" step="0.01" min="0.01" name="amount" required><small class="muted-text" data-ticked></small></label>
           <label>Deposit date<input type="date" name="depositDate" required value="${todayISO()}"></label>
           <label>Fund<select name="fundId">${await fundOptions(db, '', true)}</select></label>
-          <label>Bank<input name="bankName" required placeholder="e.g. GCB Bank, Koforidua"></label>
+          ${choiceField({ name: 'bankName', label: 'Bank', options: BANKS, required: true, noneLabel: '— choose the bank —', otherPlaceholder: 'e.g. a rural or community bank' })}
           <label>Account number<input name="accountNumber" placeholder="As written on the slip"></label>
           <label>Slip number<input name="slipNo" placeholder="Leave blank if not yet back"></label>
           <label>Deposited by<input name="depositedBy" required placeholder="Who took the money to the bank"></label>
@@ -371,7 +373,7 @@ function register(app) {
     const b = req.body || {};
     const back = '/finance/deposits?new=1';
     if (!isValidDate(b.depositDate)) { flash(req, 'Enter a valid deposit date.'); return res.redirect(back); }
-    const bankName = String(b.bankName || '').trim();
+    const bankName = readChoice(b, 'bankName', 120);
     if (!bankName) { flash(req, 'Enter the bank.'); return res.redirect(back); }
     const depositedBy = String(b.depositedBy || '').trim();
     if (!depositedBy) { flash(req, 'Name the person who took the money to the bank.'); return res.redirect(back); }

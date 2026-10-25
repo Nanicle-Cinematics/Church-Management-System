@@ -7703,3 +7703,6 @@ td small {
 .help-example-note { margin: 10px 0 6px; font-size: 0.85rem; color: var(--muted, #667); }
 .help-sample-sms { padding: 10px 12px; border-radius: 12px; background: var(--soft, #f2f4f8); max-width: 34rem; }
 .help-person { display: inline-flex; align-items: center; gap: 10px; }
+
+/* "Other…" box under a drop-down (lib/choice.js): as wide as the drop-down above it */
+.form label > select + input[name$="_other"] { width: 100%; margin-top: 6px; box-sizing: border-box; }

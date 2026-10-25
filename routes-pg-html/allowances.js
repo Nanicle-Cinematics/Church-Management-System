@@ -6,6 +6,8 @@
 // notifications on for this browser (lib/push.js, public/sw.js).
 
 const asyncHandler = require('../lib/async-handler');
+const { choiceField, readChoice } = require('../lib/choice');
+const { ALLOWANCE_ROLES } = require('../lib/choice-lists');
 const { esc, fmtMoney } = require('../lib/format');
 const { pageHero, statsRow, table } = require('../lib/views');
 const { scriptTag } = require('../lib/style-tags');
@@ -59,7 +61,7 @@ async function readForm(db, b) {
   }
   return {
     data: {
-      memberId: member ? member.id : null, payeeName, role: String(b.role || '').trim().slice(0, 80) || null,
+      memberId: member ? member.id : null, payeeName, role: readChoice(b, 'role', 80) || null,
       amount, fundId, expenseCatId, notes: String(b.notes || '').trim().slice(0, 500) || null,
     },
   };
@@ -79,7 +81,7 @@ function allowanceFields({ members, funds, cats }, a = {}) {
   return `
     <label>Member<select name="memberId"><option value="">Not a member / type a name</option>${members.map((m) => opt(m.id, `${m.firstName} ${m.lastName}`, a.memberId)).join('')}</select></label>
     <label>Name<input name="payeeName" maxlength="120" value="${esc(a.payeeName || '')}" placeholder="Taken from the member if left blank"></label>
-    <label>Role<input name="role" maxlength="80" value="${esc(a.role || '')}" placeholder="e.g. Caretaker, Organist"></label>
+    ${choiceField({ name: 'role', label: 'Role', options: ALLOWANCE_ROLES, value: a.role || '', noneLabel: '— none —', otherPlaceholder: 'e.g. Caretaker' })}
     <label>Monthly amount (GH₵)<input type="number" step="0.01" min="0.01" name="amount" required value="${a.amount != null ? esc(Number(a.amount).toFixed(2)) : ''}"></label>
     <label>Paid from fund<select name="fundId"><option value="">Default fund</option>${funds.map((f) => opt(f.id, f.name, a.fundId)).join('')}</select></label>
     <label>Expense category<select name="expenseCatId"><option value="">Allowances</option>${cats.map((c) => opt(c.id, c.categoryName, a.expenseCatId)).join('')}</select></label>

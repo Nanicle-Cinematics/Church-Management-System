@@ -25,6 +25,7 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Drop-downs instead of typed text.** Income **Subcategory** (the choices follow the category), cash count **Service**, Preaching Plan **Service / occasion** (both list the church's service types), allowance **Role**, and deposit **Bank** are now drop-downs of the usual answers. Each ends with **Other…**, which opens a box to type anything else, so nothing can be refused; existing records keep their text and reopen under Other… when it is not on the list.
 - **Sample records in Help.** Each major section of the Help page (Members, Attendance, Events, Bible Classes, Preaching Plan, Almanac, Inventory, Finance, Communications, Reports, Users & Roles) now shows an example built from made-up data and drawn by the same code as the real page, so it always matches how the app looks. Examples are framed as samples, cannot be clicked or submitted, and appear only in the sections a person can open.
 - **This Sunday on the dashboard.** Everyone sees the next Sunday's service from the Almanac (colour, theme, readings, hymns) and who is preaching, from the Preaching Plan.
 - **Almanac checks and export** (Platform › Almanac). Each half-year now lists what needs checking: Sundays with no service, and services with no readings or hymns (a teaching service is not expected to have readings). **Download as a spreadsheet** exports the half-year in the same layout as the upload, so it can be corrected and loaded again.
