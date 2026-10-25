@@ -101,6 +101,16 @@ test('Help opens for every role and only describes what they can open', async ()
   assert.ok(!sections(t.text).includes('help-admin'));
   const a = await owner.page('/help');
   assert.ok(['help-finance', 'help-reports', 'help-admin'].every((s) => sections(a.text).includes(s)));
+  // every section that has an example shows it, framed as made-up data; it only appears where the section does
+  const examples = (html) => [...html.matchAll(/aria-label="Example: ([^"]+?), with sample data"/g)].map((m) => m[1]);
+  assert.ok(examples(v.text).includes('Members') && examples(v.text).includes('The Almanac and colour prompt'), 'a viewer sees the example for what they can open');
+  assert.ok(!examples(v.text).some((n) => ['Finance', 'Communications', 'Reports', 'Users & Roles'].some((x) => n.includes(x.replace('&', '&amp;')))), 'and none for what they cannot');
+  assert.ok(examples(t.text).includes('Finance') && !examples(t.text).some((n) => n.includes('Users')));
+  assert.ok(examples(a.text).includes('Finance') && examples(a.text).some((n) => n.includes('Users')));
+  assert.match(a.text, /made-up sample data/);
+  const frames = [...a.text.matchAll(/<figure class="help-example"[\s\S]*?<\/figure>/g)].map((m) => m[0]);
+  assert.ok(frames.length >= 10, 'the examples are on the page');
+  for (const f of frames) assert.doesNotMatch(f, /<script|\son[a-z]+=/, 'an example carries no script or handler');
   assert.strictEqual((await client().page('/help')).status, 302, 'signed out goes to sign in');
 });
 

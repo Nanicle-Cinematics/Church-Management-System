@@ -7693,3 +7693,13 @@ td small {
     border-radius: 14px;
   }
 }
+
+/* Help page: sample records drawn by the real renderers (lib/help-examples.js). */
+.help-example { margin: 14px 0 4px; border: 1px dashed var(--line, #c9ced8); border-radius: 12px; overflow: hidden; background: var(--bg, transparent); }
+.help-example figcaption { padding: 8px 12px; font-size: 0.82rem; color: var(--muted, #667); border-bottom: 1px dashed var(--line, #c9ced8); }
+.help-example-tag { display: inline-block; padding: 1px 8px; margin-right: 4px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; background: var(--accent-soft, #eef); color: var(--accent-dark, #335); }
+.help-example-body { padding: 12px; pointer-events: none; user-select: none; overflow-x: auto; }
+.help-example-body .card { box-shadow: none; margin-bottom: 8px; }
+.help-example-note { margin: 10px 0 6px; font-size: 0.85rem; color: var(--muted, #667); }
+.help-sample-sms { padding: 10px 12px; border-radius: 12px; background: var(--soft, #f2f4f8); max-width: 34rem; }
+.help-person { display: inline-flex; align-items: center; gap: 10px; }
