@@ -1172,6 +1172,8 @@ model Expense {
   expenseCatId    Int?             @map("expense_cat_id")
   expenseCategory ExpenseCategory? @relation(fields: [expenseCatId], references: [id])
   category        String
+  /// What kind within the category, e.g. Electricity under Utilities (scripts/add-expense-subcategory.sql)
+  subcategory     String?
   amount          Float
   spentOn         DateTime         @map("spent_on") @db.Date
   description     String?
