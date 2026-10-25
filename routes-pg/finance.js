@@ -74,8 +74,9 @@ function requireAuth(req, res, next) {
   next();
 }
 
-function isMoneyPositive(v) { return Number.isFinite(Number(v)) && Number(v) > 0; }
-function isMoneyNonNeg(v) { return Number.isFinite(Number(v)) && Number(v) >= 0; }
+// numeric(14,2) columns: the database rejects 1e12 and above, so refuse it here.
+function isMoneyPositive(v) { return Number.isFinite(Number(v)) && Number(v) > 0 && Number(v) <= 999999999999.99; }
+function isMoneyNonNeg(v) { return Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 999999999999.99; }
 function isValidDate(v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')); }
 const HARVEST_TYPES = ['ORGANIZATIONAL', 'END_OF_YEAR', 'OTHER'];
 const PROJECT_STATUSES = ['PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];

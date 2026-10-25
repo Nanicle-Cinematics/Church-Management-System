@@ -31,8 +31,9 @@
 //    one as a named relation would force 10+ back-relation arrays onto User.
 //    Core domain relations (the member/fund/account/ministry/etc. a record
 //    is actually about) ARE modeled as real relations.
-//  - Money amounts stay Float (parity with SQLite's REAL — no precision
-//    change from what's live today).
+//  - Money amounts are Decimal(14,2) (exact to the pesewa). They were Float
+//    (parity with SQLite's REAL); see scripts/migrate-money-to-decimal.sql.
+//    lib/tenant.js hands them to the application as plain JS numbers.
 // =============================================================================
 
 generator client {
@@ -650,7 +651,7 @@ model Contribution {
   member        Member?             @relation(fields: [memberId], references: [id])
   fundId        Int                 @map("fund_id")
   fund          Fund                @relation(fields: [fundId], references: [id])
-  amount        Float
+  amount        Decimal             @db.Decimal(14, 2)
   contributedOn DateTime            @map("contributed_on") @db.Date
   method        ContributionMethod?
   reference     String?
@@ -705,7 +706,7 @@ model WelfareCase {
   member          Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
   category        WelfareCategory
   status          WelfareStatus   @default(OPEN)
-  amountDisbursed Float           @default(0) @map("amount_disbursed")
+  amountDisbursed Decimal         @default(0) @map("amount_disbursed") @db.Decimal(14, 2)
   openedOn        DateTime        @default(now()) @map("opened_on") @db.Date
   closedOn        DateTime?       @map("closed_on") @db.Date
   summary         String
@@ -1050,7 +1051,7 @@ model Fund {
   name               String
   fundType           FundType @default(GENERAL) @map("fund_type")
   restricted         Boolean  @default(false)
-  openingBalance     Float    @default(0) @map("opening_balance")
+  openingBalance     Decimal  @default(0) @map("opening_balance") @db.Decimal(14, 2)
   responsibleOfficer String?  @map("responsible_officer")
   notes              String?
   active             Boolean  @default(true)
@@ -1151,8 +1152,8 @@ model JournalLine {
   account   Account      @relation(fields: [accountId], references: [id])
   fundId    Int?         @map("fund_id")
   fund      Fund?        @relation(fields: [fundId], references: [id])
-  debit     Float        @default(0)
-  credit    Float        @default(0)
+  debit     Decimal      @default(0) @db.Decimal(14, 2)
+  credit    Decimal      @default(0) @db.Decimal(14, 2)
   memo      String?
 
   @@index([churchId])
@@ -1172,7 +1173,7 @@ model Expense {
   expenseCatId    Int?             @map("expense_cat_id")
   expenseCategory ExpenseCategory? @relation(fields: [expenseCatId], references: [id])
   category        String
-  amount          Float
+  amount          Decimal          @db.Decimal(14, 2)
   spentOn         DateTime         @map("spent_on") @db.Date
   description     String?
   paidTo          String?          @map("paid_to")
@@ -1217,7 +1218,7 @@ model FinanceProject {
   description        String?
   fundId             Int?          @map("fund_id")
   fund               Fund?         @relation(fields: [fundId], references: [id])
-  targetAmount       Float         @default(0) @map("target_amount")
+  targetAmount       Decimal       @default(0) @map("target_amount") @db.Decimal(14, 2)
   responsibleOfficer String?       @map("responsible_officer")
   startDate          DateTime?     @map("start_date") @db.Date
   endDate            DateTime?     @map("end_date") @db.Date
@@ -1263,7 +1264,7 @@ model FinanceBudgetLine {
   accountId Int?          @map("account_id")
   fundId    Int?          @map("fund_id")
   fund      Fund?         @relation(fields: [fundId], references: [id])
-  amount    Float
+  amount    Decimal       @db.Decimal(14, 2)
   notes     String?
 
   @@index([churchId])
@@ -1302,8 +1303,8 @@ model FinanceSetting {
   receiptPrefix        String   @default("RCT") @map("receipt_prefix")
   voucherPrefix        String   @default("PV") @map("voucher_prefix")
   memberPrefix         String   @default("MBR") @map("member_prefix")
-  smallExpenseMax      Float    @default(500) @map("small_expense_max")
-  mediumExpenseMax     Float    @default(5000) @map("medium_expense_max")
+  smallExpenseMax      Decimal  @default(500) @map("small_expense_max") @db.Decimal(14, 2)
+  mediumExpenseMax     Decimal  @default(5000) @map("medium_expense_max") @db.Decimal(14, 2)
   // Monthly allowances: the day of the month they fall due (null = off) and
   // extra numbers to text when they do (comma-separated).
   allowanceDueDay      Int?     @map("allowance_due_day")
@@ -1323,7 +1324,7 @@ model IncomeRecord {
   receivedFrom    String?         @map("received_from")
   memberId        Int?            @map("member_id")
   member          Member?         @relation(fields: [memberId], references: [id])
-  amount          Float
+  amount          Decimal         @db.Decimal(14, 2)
   paymentMethod   String          @default("Cash") @map("payment_method")
   fundId          Int?            @map("fund_id")
   fund            Fund?           @relation(fields: [fundId], references: [id])
@@ -1353,7 +1354,7 @@ model DayBornCollection {
   church          Church    @relation(fields: [churchId], references: [id])
   collectionDate  DateTime  @map("collection_date") @db.Date
   dayBorn         DayBorn   @map("day_born")
-  amount          Float
+  amount          Decimal   @db.Decimal(14, 2)
   headCount       Int       @default(0) @map("head_count")
   paymentMethod   String    @default("Cash") @map("payment_method")
   fundId          Int?      @map("fund_id")
@@ -1385,7 +1386,7 @@ model FinanceReceipt {
   sourceId      Int       @map("source_id")
   receiptDate   DateTime  @map("receipt_date") @db.Date
   receivedFrom  String?   @map("received_from")
-  amount        Float
+  amount        Decimal   @db.Decimal(14, 2)
   description   String?
   createdBy     Int?      @map("created_by")
   createdAt     DateTime  @default(now()) @map("created_at")
@@ -1406,7 +1407,7 @@ model Tithe {
   church         Church    @relation(fields: [churchId], references: [id])
   memberId       Int       @map("member_id")
   member         Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  amount         Float
+  amount         Decimal   @db.Decimal(14, 2)
   titheDate      DateTime  @map("tithe_date") @db.Date
   method         String?
   reference      String?
@@ -1452,7 +1453,7 @@ model Service {
   serviceTypeId  Int         @map("service_type_id")
   serviceType    ServiceType @relation(fields: [serviceTypeId], references: [id])
   serviceDate    DateTime    @map("service_date") @db.Date
-  totalAmount    Float       @default(0) @map("total_amount")
+  totalAmount    Decimal     @default(0) @map("total_amount") @db.Decimal(14, 2)
   recordedBy     Int?        @map("recorded_by")
   journalEntryId Int?        @map("journal_entry_id")
   notes          String?
@@ -1480,7 +1481,7 @@ model Harvest {
   theme          String?
   orgId          Int?          @map("org_id")
   organization   Organization? @relation(fields: [orgId], references: [id])
-  totalCollected Float         @default(0) @map("total_collected")
+  totalCollected Decimal       @default(0) @map("total_collected") @db.Decimal(14, 2)
   recordedBy     Int?          @map("recorded_by")
   journalEntryId Int?          @map("journal_entry_id")
   notes          String?
@@ -1504,7 +1505,7 @@ model DayBornSplit {
   harvestId Int?     @map("harvest_id")
   harvest   Harvest? @relation(fields: [harvestId], references: [id], onDelete: Cascade)
   dayBorn   DayBorn  @map("day_born")
-  amount    Float    @default(0)
+  amount    Decimal  @default(0) @db.Decimal(14, 2)
   headCount Int?     @default(0) @map("head_count")
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -1540,7 +1541,7 @@ model SpecialOffering {
   donorId         Int?            @map("donor_id")
   donor           Member?         @relation(fields: [donorId], references: [id])
   donorNameManual String?         @map("donor_name_manual")
-  amount          Float
+  amount          Decimal         @db.Decimal(14, 2)
   purpose         String?
   receiptNumber   String?         @map("receipt_number")
   recordedBy      Int?            @map("recorded_by")
@@ -1562,8 +1563,8 @@ model Pledge {
   member        Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
   harvestId     Int          @map("harvest_id")
   harvest       Harvest      @relation(fields: [harvestId], references: [id], onDelete: Cascade)
-  pledgedAmount Float        @map("pledged_amount")
-  paidAmount    Float        @default(0) @map("paid_amount")
+  pledgedAmount Decimal      @map("pledged_amount") @db.Decimal(14, 2)
+  paidAmount    Decimal      @default(0) @map("paid_amount") @db.Decimal(14, 2)
   pledgeDate    DateTime     @map("pledge_date") @db.Date
   status        PledgeStatus @default(PENDING)
   notes         String?
@@ -1581,7 +1582,7 @@ model PledgePayment {
   church         Church    @relation(fields: [churchId], references: [id])
   pledgeId       Int       @map("pledge_id")
   pledge         Pledge    @relation(fields: [pledgeId], references: [id], onDelete: Cascade)
-  amount         Float
+  amount         Decimal   @db.Decimal(14, 2)
   paidOn         DateTime  @map("paid_on") @db.Date
   receiptNumber  String    @map("receipt_number")
   recordedBy     Int?      @map("recorded_by")
@@ -1630,9 +1631,9 @@ model CashCountSheet {
   serviceLabel   String?         @map("service_label")
   collection     String
   fundId         Int?            @map("fund_id")
-  expectedAmount Float?          @map("expected_amount")
+  expectedAmount Decimal?        @map("expected_amount") @db.Decimal(14, 2)
   // Always the sum of the lines, kept so lists need no join.
-  countedAmount  Float           @map("counted_amount")
+  countedAmount  Decimal         @map("counted_amount") @db.Decimal(14, 2)
   countedBy      String          @map("counted_by") // names as written on the paper sheet
   witnessedBy    String?         @map("witnessed_by")
   receivedBy     String?         @map("received_by")
@@ -1661,9 +1662,9 @@ model CashCountLine {
   sheetId      Int            @map("sheet_id")
   sheet        CashCountSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
   kind         String // NOTE or COIN: GH₵2 and GH₵1 circulate as both
-  denomination Float // face value in GH₵, e.g. 50, 0.5
+  denomination Decimal        @db.Decimal(14, 2) // face value in GH₵, e.g. 50, 0.5
   quantity     Int
-  amount       Float
+  amount       Decimal        @db.Decimal(14, 2)
 
   @@index([churchId])
   @@index([sheetId])
@@ -1680,7 +1681,7 @@ model BankDeposit {
   church              Church            @relation(fields: [churchId], references: [id])
   depositNo           String            @map("deposit_no") // DEP-2026-0001
   depositDate         DateTime          @map("deposit_date") @db.Date
-  amount              Float
+  amount              Decimal           @db.Decimal(14, 2)
   bankName            String            @map("bank_name")
   accountNumber       String?           @map("account_number")
   slipNo              String?           @map("slip_no")

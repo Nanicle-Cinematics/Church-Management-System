@@ -25,6 +25,8 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Money is now exact.** All 26 money columns (journal debits/credits, expenses, tithes, pledges, funds, budgets, cash counts, deposits, ...) change from `Float` to `Decimal(14,2)`. The app still sees plain numbers: `lib/tenant.js` converts Decimals at the Prisma boundary (model queries, aggregates and raw SQL). Amounts are limited to 999,999,999,999.99.
+  - **Production migration (run BEFORE deploying this):** take a backup, run `psql "$DATABASE_URL" -f scripts/check-money-precision.sql` (every row should show 0), then `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/migrate-money-to-decimal.sql`. Rehearse on a copy of the database first.
 - **This Sunday on the dashboard.** Everyone sees the next Sunday's service from the Almanac (colour, theme, readings, hymns) and who is preaching, from the Preaching Plan.
 - **Almanac checks and export** (Platform › Almanac). Each half-year now lists what needs checking: Sundays with no service, and services with no readings or hymns (a teaching service is not expected to have readings). **Download as a spreadsheet** exports the half-year in the same layout as the upload, so it can be corrected and loaded again.
 - **Preacher reminders carry the Almanac.** The reminder to a preacher now includes what the Almanac sets for that day: the service, its colour and theme in the text message, and in the email also the Old Testament, Psalm, Epistle and Gospel readings and the hymns. Nothing changes when the Almanac has no entry for the date.
