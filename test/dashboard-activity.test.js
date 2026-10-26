@@ -9,6 +9,8 @@ const { Pool } = require('pg');
 const { createTenantApp } = require('../lib/tenant-http');
 const { db } = require('../lib/tenant');
 const { signupChurch } = require('../lib/provision');
+const { fmtDMY } = require('../lib/format');
+const { entryCard } = require('../lib/almanac-ui');
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -82,4 +84,36 @@ test('Recent activity shows church life only, hides housekeeping however recent,
   assert.ok(v.includes('Ama Sample') && v.includes('Harvest Thanksgiving'));
   assert.ok(!v.includes('Utilities'), 'money stays with the finance roles');
   assert.ok(!v.includes('Welcome animation'));
+});
+
+test('dates on the dashboard are dd/mm/yyyy', async () => {
+  assert.strictEqual(fmtDMY(new Date(2026, 9, 6)), '06/10/2026');
+  assert.strictEqual(fmtDMY(new Date('2026-12-25T00:00:00Z'), { utc: true }), '25/12/2026');
+  assert.strictEqual(fmtDMY('not a date'), '');
+  const e = { id: 1, serviceDate: new Date('2026-11-01T00:00:00Z'), serviceLabel: '', title: 'T', colour: 'GREEN', hymns: [] };
+  assert.match(entryCard(e, { numericDate: true }), /class="when">01\/11\/2026</);
+  assert.match(entryCard(e), /class="when">Sunday, 1 November 2026</, 'the Almanac page keeps its long form');
+
+  const email = `dmy-${process.pid}-${Date.now()}@example.test`;
+  const { church } = await signupChurch({ churchName: 'Dates Church', name: 'Owner', email, password: PASSWORD });
+  churchIds.push(church.id);
+  const admin = client();
+  await admin.form('/login', { email, password: PASSWORD }, '/login');
+  const html = (await admin.page('/')).text;
+  assert.ok(html.includes(`<p class="eyebrow">${fmtDMY(new Date())}</p>`), "today's date at the top of the dashboard is dd/mm/yyyy");
+  assert.match(html.match(/<p class="eyebrow">([^<]*)<\/p>/)[1], /^\d{2}\/\d{2}\/\d{4}$/, 'just the numbers, no month or weekday names');
+
+  // the This Sunday card
+  const today = new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()));
+  const sunday = new Date(today.getTime() + ((7 - today.getUTCDay()) % 7) * 86400000);
+  const entry = await db.almanacEntry.create({ data: { serviceDate: sunday, serviceLabel: '', title: `Date Sunday ${process.pid}`, colour: 'GREEN', hymns: ['1'] } }).catch(() => null);
+  try {
+    const card = (await admin.page('/')).text;
+    const at = card.indexOf('id="this-sunday"');
+    if (entry && at >= 0) {
+      const section = card.slice(at, at + 2500);
+      assert.ok(section.includes(fmtDMY(sunday, { utc: true })), 'the card shows the date as dd/mm/yyyy');
+      assert.doesNotMatch(section, /\b20\d\d-\d\d-\d\d\b/, 'not as 2026-11-01');
+    }
+  } finally { if (entry) await db.almanacEntry.delete({ where: { id: entry.id } }).catch(() => {}); }
 });

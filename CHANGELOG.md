@@ -25,6 +25,7 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Dashboard dates are dd/mm/yyyy.** The date at the top of the dashboard now reads 26/10/2026 (it read "Monday, 26 October 2026"), and the This Sunday card shows its date the same way. The Almanac page keeps its long form.
 - **The dashboard's Recent activity reads like church life.** It now lists people, attendance, events, Bible classes and organizations, inventory, announcements and preaching (scheduled, changed, reminders sent), and, for roles with finance access, money. Housekeeping entries no longer appear there, however recent: settings changes (such as the welcome animation), the colour of the app, the preacher list, SMS sender names, user accounts and allowance settings, plus the duplicate "Reminder sent to preacher" line. They are still recorded in the logs. Preaching and announcement entries now have their own icons.
 - **The welcome screen lasts five seconds** (it was about three). The logo drifts slowly larger while it is shown, and it fades out over the last half second. People whose device asks for less motion still get the short, calm version.
 - **The welcome screen shows the logo on its own, on plain white.** The church's uploaded logo now appears directly (bigger, with no white rounded card around it) on a plain white background, so any logo blends in; the church name is dark text. The church's colour (from its logo, or the one the administrator chose) now colours the rings and rays behind the logo.
