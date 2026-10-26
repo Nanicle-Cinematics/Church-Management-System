@@ -9,7 +9,7 @@ const { Pool } = require('pg');
 const { createTenantApp } = require('../lib/tenant-http');
 const { db } = require('../lib/tenant');
 const { signupChurch } = require('../lib/provision');
-const { fmtDMY } = require('../lib/format');
+const { fmtDMY, fmtLongDate } = require('../lib/format');
 const { entryCard } = require('../lib/almanac-ui');
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
@@ -40,7 +40,7 @@ test.before(async () => {
 test.after(async () => {
   server.close();
   const where = { churchId: { in: churchIds } };
-  for (const m of ['event', 'member', 'activityLog', 'securityAuditLog', 'account', 'user', 'specialCategory', 'serviceType', 'expenseCategory']) await db[m].deleteMany({ where }).catch(() => {});
+  for (const m of ['preachingPlan', 'event', 'member', 'activityLog', 'securityAuditLog', 'account', 'user', 'specialCategory', 'serviceType', 'expenseCategory']) await db[m].deleteMany({ where }).catch(() => {});
   await db.church.deleteMany({ where: { id: { in: churchIds } } }).catch(() => {});
   await db.$disconnect();
   await pool.end();
@@ -143,4 +143,26 @@ test('the smaller dates on the dashboard (events, older activity, birthdays) are
   // none of the day-and-month-name forms are left ("27 Oct", "Mon 27 Oct")
   assert.ok(!/\b\d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/.test(body.replace(/<style[\s\S]*?<\/style>/g, '')), 'no "27 Oct" style dates on the dashboard');
   await db.event.delete({ where: { id: ev.id } }).catch(() => {});
+});
+
+test('This Sunday without an Almanac entry: the date above the preacher is written out as 1 November, 2026', async () => {
+  assert.strictEqual(fmtLongDate(new Date('2026-11-01T00:00:00Z'), { utc: true }), '1 November, 2026');
+  assert.strictEqual(fmtLongDate(new Date('2026-12-25T00:00:00Z'), { utc: true }), '25 December, 2026');
+  assert.strictEqual(fmtLongDate('not a date'), '');
+
+  const email = `long-${process.pid}-${Date.now()}@example.test`;
+  const { church } = await signupChurch({ churchName: 'Long Date Church', name: 'Owner', email, password: PASSWORD });
+  churchIds.push(church.id);
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const sunday = new Date(today.getTime() + ((7 - today.getUTCDay()) % 7) * 86400000);
+  await db.preachingPlan.create({ data: { churchId: church.id, preachDate: sunday, preacherName: 'Mr. Boateng' } });
+
+  const admin = client();
+  await admin.form('/login', { email, password: PASSWORD }, '/login');
+  const html = (await admin.page('/')).text;
+  const card = html.slice(html.indexOf('id="this-sunday"'), html.indexOf('id="this-sunday"') + 2500);
+  if (card.includes('almanac-entry')) return; // the shared Almanac has an entry for this Sunday: the card shows that instead
+  assert.ok(card.includes(`<p><b>${fmtLongDate(sunday, { utc: true })}</b></p><p class="preaching"><b>Preaching:</b> Mr. Boateng`), 'the written-out date sits directly above the preaching line');
+  assert.ok(card.includes(`<p class="sub">${fmtDMY(sunday, { utc: true })}</p>`), 'the small date under the heading stays dd/mm/yyyy');
 });
