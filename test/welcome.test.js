@@ -9,7 +9,8 @@ const { Pool } = require('pg');
 const { createTenantApp } = require('../lib/tenant-http');
 const { db } = require('../lib/tenant');
 const { signupChurch } = require('../lib/provision');
-const { welcomePage, STYLES } = require('../lib/welcome');
+const vm = require('vm');
+const { welcomePage, STYLES, safeNext } = require('../lib/welcome');
 const W = require('../lib/welcome-colours');
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
@@ -116,6 +117,25 @@ test('right after signing in the welcome screen is shown once; the dashboard is 
   assert.match(prev.text, /data-next="\/settings"/);
   assert.strictEqual((await c.page('/welcome')).location, '/', 'but a plain visit still goes to the dashboard');
 
+  // opened afresh: the page carries the launch script while the animation is on, and /welcome?launch=1 shows it
+  await c.form('/settings/welcome', { welcomeStyle: 'rise', colourMode: 'logo' }, '/settings');
+  const dash = (await c.page('/')).text;
+  assert.match(dash, /<script src="\/static\/app-launch\.js\?v=[^"]+"><\/script>/, 'the launch script is in the head of the app pages');
+  assert.ok(dash.indexOf('app-launch.js') < dash.indexOf('styles.css'), 'before anything paints');
+  const launched = await c.page('/welcome?launch=1&next=%2Fmembers%3Fq%3Dama');
+  assert.strictEqual(launched.status, 200);
+  assert.match(launched.text, /welcome-rise/);
+  assert.match(launched.text, /data-next="\/members\?q=ama"/, 'it goes on to the page that was asked for');
+  assert.match((await c.page('/welcome?launch=1&next=https%3A%2F%2Fevil.example%2F')).text, /data-next="\/"/, 'never to another site');
+  assert.match((await c.page('/welcome?launch=1&next=%2F%2Fevil.example')).text, /data-next="\/"/);
+  assert.match((await c.page('/welcome?launch=1')).text, /data-next="\/"/);
+  assert.strictEqual((await client().page('/welcome?launch=1')).location, '/login', 'signed out: to sign in');
+  // turned off: no script on the pages, and a launch visit goes straight on
+  await c.form('/settings/welcome', { welcomeStyle: 'off', colourMode: 'logo' }, '/settings');
+  assert.doesNotMatch((await c.page('/')).text, /app-launch\.js/);
+  assert.strictEqual((await c.page('/welcome?launch=1&next=%2Fmembers')).location, '/members');
+  await c.form('/settings/welcome', { welcomeStyle: 'pop', colourMode: 'logo' }, '/settings');
+
   // only the admin can change it
   await db.user.create({ data: { churchId: church.id, username: `ed-${Date.now()}`, email: `ed-${process.pid}-${Date.now()}@example.test`, passwordHash: require('bcryptjs').hashSync(PASSWORD, 4), role: 'EDITOR', financeRole: 'NONE', emailVerifiedAt: new Date() } });
   const editorEmail = (await db.user.findFirst({ where: { churchId: church.id, role: 'EDITOR' } })).email;
@@ -163,4 +183,31 @@ test('the colour is taken from the logo\'s most vivid colour, ignoring paper, in
   const blank = path.join(require('os').tmpdir(), `grey-${process.pid}.png`);
   fs.writeFileSync(blank, await sharp({ create: { width: 20, height: 20, channels: 3, background: { r: 120, g: 120, b: 120 } } }).png().toBuffer());
   try { assert.strictEqual(await W.dominantColour(blank), null, 'a logo with no colour in it: null, so the app colour is used'); } finally { fs.unlinkSync(blank); }
+});
+
+test('safeNext keeps to pages of this app', () => {
+  for (const ok of ['/', '/members', '/members?q=ama', '/finance/income#top']) assert.strictEqual(safeNext(ok), ok, ok);
+  for (const bad of ['//evil.example', '/\\evil', 'https://evil.example', 'javascript:alert(1)', '/welcome', '/welcome?x=1', '/a b', '/<x>', '', null, undefined, 5]) assert.strictEqual(safeNext(bad), '/', String(bad));
+});
+
+test('the relaunch script: opened afresh it shows the welcome screen once; moving around, reloads and blocked storage do not', () => {
+  const code = fs.readFileSync(path.join(__dirname, '..', 'public', 'app-launch.js'), 'utf8');
+  const run = ({ referrer = '', pathname = '/finance', search = '', hash = '', store = {}, blocked = false } = {}) => {
+    const replaced = [];
+    const sessionStorage = blocked
+      ? { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } }
+      : { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } };
+    vm.runInNewContext(code, { window: { sessionStorage }, document: { referrer }, location: { origin: 'https://app.example', pathname, search, hash, replace: (u) => replaced.push(u) }, URL, encodeURIComponent });
+    return { replaced, store };
+  };
+  const fresh = run({ pathname: '/finance/income', search: '?x=1', hash: '#top' });
+  assert.deepStrictEqual(fresh.replaced, ['/welcome?launch=1&next=' + encodeURIComponent('/finance/income?x=1#top')], 'a fresh launch goes to the welcome screen, then on to where it was going');
+  assert.strictEqual(fresh.store.welcomed, '1');
+  assert.deepStrictEqual(run({ store: fresh.store }).replaced, [], 'the same window does not show it again (reloads, later pages)');
+  const inside = run({ referrer: 'https://app.example/members' });
+  assert.deepStrictEqual(inside.replaced, [], 'a link opened from inside the app (a new tab) is not a relaunch');
+  assert.strictEqual(inside.store.welcomed, '1');
+  assert.strictEqual(run({ referrer: 'https://other.example/page' }).replaced.length, 1, 'arriving from another site is a launch');
+  assert.deepStrictEqual(run({ pathname: '/welcome' }).replaced, [], 'never on the welcome page itself');
+  assert.deepStrictEqual(run({ blocked: true }).replaced, [], 'storage blocked: nothing happens, nothing breaks');
 });

@@ -155,7 +155,7 @@ function register(app) {
       </section>
       <section class="card" style="margin-bottom:1rem">
         <div class="card-head"><h2>Welcome animation</h2><span class="meta">${church.welcomeAnimation ? esc((STYLES[styleOf(church.welcomeStyle)] || [])[0] || '') : 'Off'}</span></div>
-        <p>After anyone in your church signs in, your logo appears big on the screen for a few seconds before the dashboard opens. Choose how it moves, and its colour.</p>
+        <p>When anyone in your church signs in, and each time the app is opened afresh on a phone or computer (after it was closed), your logo appears big on the screen for a few seconds before the page opens. Choose how it moves, and its colour.</p>
         <form class="form" method="post" action="/settings/welcome">
           <fieldset class="wide-cell"><legend>Style</legend>
             ${Object.entries(STYLES).map(([key, [label, blurb]]) => `<label class="check"><input type="radio" name="welcomeStyle" value="${key}" ${church.welcomeAnimation && styleOf(church.welcomeStyle) === key ? 'checked' : ''}> <span><b>${esc(label)}</b> · ${esc(blurb)} <a href="/welcome?preview=1&amp;style=${key}" target="_blank" rel="noopener">Preview</a></span></label>`).join('')}
