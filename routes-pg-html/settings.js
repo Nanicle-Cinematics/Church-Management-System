@@ -31,6 +31,8 @@ const { icon } = require('../lib/icons');
 const { LOGO_DIR, tenantLogoPath, deleteTenantLogo } = require('../lib/church-logo');
 const { manifestFor, serveAppIcon } = require('../lib/app-icon');
 const { accessOpen, DURATIONS } = require('../lib/support-view');
+const { STYLES, styleOf } = require('../lib/welcome');
+const { HEX } = require('../lib/welcome-colours');
 
 // 128px copy of the default logo: the original is ~840 KB and was sent on every page.
 const DEFAULT_LOGO = path.join(__dirname, '..', 'public', 'logo-128.png');
@@ -152,10 +154,17 @@ function register(app) {
         </form>
       </section>
       <section class="card" style="margin-bottom:1rem">
-        <div class="card-head"><h2>Welcome animation</h2><span class="meta">${church.welcomeAnimation ? 'On' : 'Off'}</span></div>
-        <p>After anyone in your church signs in, your logo appears big on the screen for a few seconds before the dashboard opens.</p>
+        <div class="card-head"><h2>Welcome animation</h2><span class="meta">${church.welcomeAnimation ? esc((STYLES[styleOf(church.welcomeStyle)] || [])[0] || '') : 'Off'}</span></div>
+        <p>After anyone in your church signs in, your logo appears big on the screen for a few seconds before the dashboard opens. Choose how it moves, and its colour.</p>
         <form class="form" method="post" action="/settings/welcome">
-          <label class="check"><input type="checkbox" name="welcomeAnimation" value="1" ${church.welcomeAnimation ? 'checked' : ''}> Show the logo animation after sign-in</label>
+          <fieldset class="wide-cell"><legend>Style</legend>
+            ${Object.entries(STYLES).map(([key, [label, blurb]]) => `<label class="check"><input type="radio" name="welcomeStyle" value="${key}" ${church.welcomeAnimation && styleOf(church.welcomeStyle) === key ? 'checked' : ''}> <span><b>${esc(label)}</b> · ${esc(blurb)} <a href="/welcome?preview=1&amp;style=${key}" target="_blank" rel="noopener">Preview</a></span></label>`).join('')}
+            <label class="check"><input type="radio" name="welcomeStyle" value="off" ${church.welcomeAnimation ? '' : 'checked'}> <span><b>Off</b> · Go straight to the dashboard after signing in.</span></label>
+          </fieldset>
+          <fieldset class="wide-cell"><legend>Colour</legend>
+            <label class="check"><input type="radio" name="colourMode" value="logo" ${HEX.test(church.welcomeColour || '') ? '' : 'checked'}> <span>Use the colours of my logo ${church.welcomeColour || !tenantLogoPath(church.id) ? '' : '(picked automatically)'}${tenantLogoPath(church.id) ? '' : '<small class="muted-text"> · upload a logo below to use its colours; until then the app colour is used</small>'}</span></label>
+            <label class="check"><input type="radio" name="colourMode" value="custom" ${HEX.test(church.welcomeColour || '') ? 'checked' : ''}> <span>Choose a colour <input type="color" name="welcomeColour" value="${HEX.test(church.welcomeColour || '') ? esc(church.welcomeColour) : '#534ab7'}" aria-label="Welcome screen colour"></span></label>
+          </fieldset>
           <div class="actions"><button type="submit">Save</button></div>
         </form>
       </section>
@@ -208,10 +217,14 @@ function register(app) {
   }));
 
   app.post('/settings/welcome', requireOwner, asyncHandler(async (req, res) => {
-    const on = Boolean(req.body && req.body.welcomeAnimation);
-    await res.locals.db.church.update({ where: { id: res.locals.churchId }, data: { welcomeAnimation: on } });
-    await logActivity(res.locals.db, 'settings_updated', `Welcome animation turned ${on ? 'on' : 'off'}`, '/settings', res.locals.user.id);
-    flash(req, on ? 'The welcome animation is on.' : 'The welcome animation is off. People now go straight to the dashboard after signing in.', 'success');
+    const b = req.body || {};
+    const on = b.welcomeStyle !== 'off';
+    const data = { welcomeAnimation: on };
+    if (on) data.welcomeStyle = styleOf(b.welcomeStyle);
+    data.welcomeColour = b.colourMode === 'custom' && HEX.test(String(b.welcomeColour || '')) ? String(b.welcomeColour).toLowerCase() : null;
+    await res.locals.db.church.update({ where: { id: res.locals.churchId }, data });
+    await logActivity(res.locals.db, 'settings_updated', `Welcome animation ${on ? `set to ${STYLES[data.welcomeStyle][0]}` : 'turned off'}`, '/settings', res.locals.user.id);
+    flash(req, on ? 'The welcome animation is saved.' : 'The welcome animation is off. People now go straight to the dashboard after signing in.', 'success');
     res.redirect('/settings');
   }));
 

@@ -9,7 +9,8 @@ const { Pool } = require('pg');
 const { createTenantApp } = require('../lib/tenant-http');
 const { db } = require('../lib/tenant');
 const { signupChurch } = require('../lib/provision');
-const { welcomePage } = require('../lib/welcome');
+const { welcomePage, STYLES } = require('../lib/welcome');
+const W = require('../lib/welcome-colours');
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -82,30 +83,84 @@ test('right after signing in the welcome screen is shown once; the dashboard is 
   assert.ok(!home.text.includes('welcome-name'));
 
   // an admin can turn it off in Settings: sign-in then goes straight to the dashboard, for everyone
-  assert.match((await c.page('/settings')).text, /name="welcomeAnimation" value="1" checked/, 'on by default');
-  await c.form('/settings/welcome', {}, '/settings');
+  assert.match((await c.page('/settings')).text, /name="welcomeStyle" value="pop" checked/, 'Pop and rings by default');
+  await c.form('/settings/welcome', { welcomeStyle: 'off', colourMode: 'logo' }, '/settings');
   assert.strictEqual((await db.church.findUnique({ where: { id: church.id } })).welcomeAnimation, false);
   const c2 = client();
   assert.strictEqual((await c2.form('/login', { email, password: PASSWORD }, '/login')).location, '/welcome');
   assert.strictEqual((await c2.page('/welcome')).location, '/', 'off: no animation');
   assert.strictEqual((await c2.page('/')).status, 200);
-  assert.doesNotMatch((await c.page('/settings')).text, /name="welcomeAnimation" value="1" checked/);
+  assert.match((await c.page('/settings')).text, /name="welcomeStyle" value="off" checked/);
 
-  // and back on
-  await c.form('/settings/welcome', { welcomeAnimation: '1' }, '/settings');
+  // back on, in another style and a colour the church chose
+  await c.form('/settings/welcome', { welcomeStyle: 'sunburst', colourMode: 'custom', welcomeColour: '#1E7F4A' }, '/settings');
+  const saved = await db.church.findUnique({ where: { id: church.id } });
+  assert.deepStrictEqual([saved.welcomeAnimation, saved.welcomeStyle, saved.welcomeColour], [true, 'sunburst', '#1e7f4a']);
   const c3 = client();
   await c3.form('/login', { email, password: PASSWORD }, '/login');
-  assert.strictEqual((await c3.page('/welcome')).status, 200, 'on again: the animation is back');
+  const shown = await c3.page('/welcome');
+  assert.strictEqual(shown.status, 200);
+  assert.match(shown.text, /class="welcome welcome-sunburst"/);
+  assert.match(shown.text, /class="welcome-rays"/);
+  assert.match(shown.text, /--w1:#[0-9a-f]{6};--w2:#[0-9a-f]{6};--w3:#[0-9a-f]{6}/, 'the church colour reaches the page');
+
+  // bad input is ignored: an unknown style falls back, a bad colour means "use my logo"
+  await c.form('/settings/welcome', { welcomeStyle: 'confetti', colourMode: 'custom', welcomeColour: 'red; background:url(x)' }, '/settings');
+  const fallback = await db.church.findUnique({ where: { id: church.id } });
+  assert.deepStrictEqual([fallback.welcomeStyle, fallback.welcomeColour], ['pop', null]);
+
+  // an admin can preview any style from Settings; it returns to Settings and does not need a fresh sign-in
+  const prev = await c.page('/welcome?preview=1&style=rise');
+  assert.strictEqual(prev.status, 200);
+  assert.match(prev.text, /welcome-rise/);
+  assert.match(prev.text, /data-next="\/settings"/);
+  assert.strictEqual((await c.page('/welcome')).location, '/', 'but a plain visit still goes to the dashboard');
 
   // only the admin can change it
   await db.user.create({ data: { churchId: church.id, username: `ed-${Date.now()}`, email: `ed-${process.pid}-${Date.now()}@example.test`, passwordHash: require('bcryptjs').hashSync(PASSWORD, 4), role: 'EDITOR', financeRole: 'NONE', emailVerifiedAt: new Date() } });
   const editorEmail = (await db.user.findFirst({ where: { churchId: church.id, role: 'EDITOR' } })).email;
   const ed = client();
   await ed.form('/login', { email: editorEmail, password: PASSWORD }, '/login');
-  assert.strictEqual((await ed.form('/settings/welcome', {}, '/profile')).status, 403);
+  assert.strictEqual((await ed.form('/settings/welcome', { welcomeStyle: 'off' }, '/profile')).status, 403);
   assert.strictEqual((await db.church.findUnique({ where: { id: church.id } })).welcomeAnimation, true);
+  await ed.page('/welcome'); // their own welcome screen, used up
+  assert.strictEqual((await ed.page('/welcome?preview=1&style=rise')).location, '/', 'only an admin can preview');
 
   // the logo it shows is served
   const logo = await fetch(`${base}/branding/logo`, { headers: { cookie: '' } });
   assert.strictEqual(logo.status, 200);
+});
+
+test('the four styles each get their own markup, and a church colour becomes three readable stops', () => {
+  assert.deepStrictEqual(Object.keys(STYLES), ['pop', 'rise', 'reveal', 'sunburst']);
+  for (const key of Object.keys(STYLES)) assert.match(welcomePage({ churchName: 'X', style: key }), new RegExp(`class="welcome welcome-${key}"`));
+  assert.match(welcomePage({ churchName: 'X', style: 'pop' }), /welcome-rings/);
+  assert.match(welcomePage({ churchName: 'X', style: 'sunburst' }), /welcome-rays/);
+  assert.doesNotMatch(welcomePage({ churchName: 'X', style: 'rise' }), /welcome-rings|welcome-rays/);
+  assert.match(welcomePage({ churchName: 'X', style: 'nonsense' }), /welcome-pop/, 'unknown style: the default');
+  assert.doesNotMatch(welcomePage({ churchName: 'X' }), /--w1/, 'no colour: the app\'s own accent');
+
+  for (const hex of ['#1e7f4a', '#b42318', '#f5c518', '#6a3fa0', '#ffffff', '#000000', '#7fffd4']) {
+    const p = W.palette(hex);
+    assert.ok(W.whiteContrast(W.hexToRgb(p.deep)) >= 4.5 && W.whiteContrast(W.hexToRgb(p.mid)) >= 4.5, `${hex}: white text reads on the background`);
+  }
+  assert.strictEqual(W.palette('red'), null);
+  assert.strictEqual(W.palette('#12345'), null);
+  assert.deepStrictEqual(W.palette('#808080').deep.slice(1).match(/../g).filter((v, i, a) => v === a[0]).length, 3, 'a grey stays grey');
+});
+
+test('the colour is taken from the logo\'s most vivid colour, ignoring paper, ink and transparency', async () => {
+  const sharp = require('sharp');
+  const png = await sharp({ create: { width: 40, height: 40, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } })
+    .composite([{ input: await sharp({ create: { width: 24, height: 24, channels: 3, background: { r: 200, g: 30, b: 40 } } }).png().toBuffer(), left: 8, top: 8 }, { input: await sharp({ create: { width: 6, height: 6, channels: 3, background: { r: 0, g: 0, b: 0 } } }).png().toBuffer(), left: 0, top: 0 }])
+    .png().toBuffer();
+  const file = path.join(require('os').tmpdir(), `logo-${process.pid}.png`);
+  fs.writeFileSync(file, png);
+  try {
+    const c = W.hexToRgb(await W.dominantColour(file));
+    assert.ok(c[0] > 150 && c[1] < 80 && c[2] < 90, 'the red square, not the white page or the black corner');
+  } finally { fs.unlinkSync(file); }
+  const blank = path.join(require('os').tmpdir(), `grey-${process.pid}.png`);
+  fs.writeFileSync(blank, await sharp({ create: { width: 20, height: 20, channels: 3, background: { r: 120, g: 120, b: 120 } } }).png().toBuffer());
+  try { assert.strictEqual(await W.dominantColour(blank), null, 'a logo with no colour in it: null, so the app colour is used'); } finally { fs.unlinkSync(blank); }
 });

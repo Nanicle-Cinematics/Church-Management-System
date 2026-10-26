@@ -10,7 +10,7 @@
   function go() {
     if (gone) return;
     gone = true;
-    window.location.replace('/');
+    window.location.replace(screen.getAttribute('data-next') === '/settings' ? '/settings' : '/');
   }
   setTimeout(go, ms);
   screen.addEventListener('click', go);

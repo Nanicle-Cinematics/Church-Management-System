@@ -323,6 +323,10 @@ model Church {
   suspensionReason       String?   @map("suspension_reason")
   /// Show the church's logo for a few seconds after sign-in (lib/welcome.js); an admin can turn it off in Settings
   welcomeAnimation       Boolean   @default(true) @map("welcome_animation")
+  /// pop | rise | reveal | sunburst (lib/welcome.js STYLES)
+  welcomeStyle           String    @default("pop") @map("welcome_style")
+  /// a #rrggbb the admin chose for the welcome screen; null = the colour of the church's logo
+  welcomeColour          String?   @map("welcome_colour")
   deletedAt              DateTime? @map("deleted_at")
   deletionReason         String?   @map("deletion_reason")
   deletionPurgeAfter     DateTime? @map("deletion_purge_after")
