@@ -40,7 +40,7 @@ test.before(async () => {
 test.after(async () => {
   server.close();
   const where = { churchId: { in: churchIds } };
-  for (const m of ['activityLog', 'securityAuditLog', 'account', 'user', 'specialCategory', 'serviceType', 'expenseCategory']) await db[m].deleteMany({ where }).catch(() => {});
+  for (const m of ['event', 'member', 'activityLog', 'securityAuditLog', 'account', 'user', 'specialCategory', 'serviceType', 'expenseCategory']) await db[m].deleteMany({ where }).catch(() => {});
   await db.church.deleteMany({ where: { id: { in: churchIds } } }).catch(() => {});
   await db.$disconnect();
   await pool.end();
@@ -116,4 +116,31 @@ test('dates on the dashboard are dd/mm/yyyy', async () => {
       assert.doesNotMatch(section, /\b20\d\d-\d\d-\d\d\b/, 'not as 2026-11-01');
     }
   } finally { if (entry) await db.almanacEntry.delete({ where: { id: entry.id } }).catch(() => {}); }
+});
+
+test('the smaller dates on the dashboard (events, older activity, birthdays) are dd/mm/yyyy too', async () => {
+  const email = `dmy2-${process.pid}-${Date.now()}@example.test`;
+  const { church } = await signupChurch({ churchName: 'Compact Dates Church', name: 'Owner', email, password: PASSWORD });
+  churchIds.push(church.id);
+  const inDays = (n) => { const d = new Date(); d.setHours(10, 30, 0, 0); d.setDate(d.getDate() + n); return d; };
+
+  const ev = await db.event.create({ data: { churchId: church.id, title: 'Harvest Service', eventType: 'SERVICE', startsAt: inDays(3), location: 'Main hall' } });
+  await db.activityLog.create({ data: { churchId: church.id, kind: 'member_added', description: 'New member added: Old Entry', occurredAt: inDays(-12) } });
+  const bday = inDays(2);
+  await db.member.create({ data: { churchId: church.id, firstName: 'Bola', lastName: 'Birthday', mobilePhone: '0240000000', membershipStatus: 'MEMBER', dateOfBirth: new Date(Date.UTC(1990, bday.getMonth(), bday.getDate())) } });
+
+  const admin = client();
+  await admin.form('/login', { email, password: PASSWORD }, '/login');
+  const html = (await admin.page('/')).text;
+  const body = html.slice(html.indexOf('class="pd"'));
+
+  assert.ok(body.includes(`${fmtDMY(inDays(3))} · 10:30`), 'an upcoming event: dd/mm/yyyy · time, with the place after it');
+  assert.ok(!/class="pd-date"><small>/.test(body), 'the month-name tile is gone');
+  const feed = body.slice(body.indexOf('Recent activity'), body.indexOf('Recent activity') + 3000);
+  assert.ok(feed.includes(fmtDMY(inDays(-12))), 'an activity entry older than a week shows dd/mm/yyyy');
+  assert.ok(body.includes('Bola Birthday'), 'the birthday is listed');
+  assert.ok(body.includes(fmtDMY(bday)), 'a birthday coming up shows dd/mm/yyyy');
+  // none of the day-and-month-name forms are left ("27 Oct", "Mon 27 Oct")
+  assert.ok(!/\b\d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/.test(body.replace(/<style[\s\S]*?<\/style>/g, '')), 'no "27 Oct" style dates on the dashboard');
+  await db.event.delete({ where: { id: ev.id } }).catch(() => {});
 });
