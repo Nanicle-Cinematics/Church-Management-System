@@ -7,10 +7,11 @@
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var ms = Number(screen.getAttribute(reduced ? 'data-reduced-ms' : 'data-ms')) || 3200;
   var gone = false;
+  try { window.sessionStorage.setItem('welcomed', '1'); } catch (e) { /* not remembered: nothing else changes */ }
   function go() {
     if (gone) return;
     gone = true;
-    window.location.replace('/');
+    window.location.replace(screen.getAttribute('data-next') || '/');
   }
   setTimeout(go, ms);
   screen.addEventListener('click', go);
