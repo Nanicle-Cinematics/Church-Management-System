@@ -151,6 +151,14 @@ function register(app) {
           <div class="actions"><button type="submit">Save changes</button></div>
         </form>
       </section>
+      <section class="card" style="margin-bottom:1rem">
+        <div class="card-head"><h2>Welcome animation</h2><span class="meta">${church.welcomeAnimation ? 'On' : 'Off'}</span></div>
+        <p>After anyone in your church signs in, your logo appears big on the screen for a few seconds before the dashboard opens.</p>
+        <form class="form" method="post" action="/settings/welcome">
+          <label class="check"><input type="checkbox" name="welcomeAnimation" value="1" ${church.welcomeAnimation ? 'checked' : ''}> Show the logo animation after sign-in</label>
+          <div class="actions"><button type="submit">Save</button></div>
+        </form>
+      </section>
       <section class="card church-branding-card" style="margin-bottom:1rem">
         <div class="card-head"><h2>Church logo</h2><span class="meta">${tenantLogoPath(church.id) ? 'Custom logo' : 'Default platform logo'}</span></div>
         <div class="church-logo-settings">
@@ -196,6 +204,14 @@ function register(app) {
     await res.locals.db.church.update({ where: { id: res.locals.churchId }, data: { name } });
     await logActivity(res.locals.db, 'settings_updated', `Church name set to: ${name}`, '/settings', res.locals.user.id);
     flash(req, 'Settings saved.', 'success');
+    res.redirect('/settings');
+  }));
+
+  app.post('/settings/welcome', requireOwner, asyncHandler(async (req, res) => {
+    const on = Boolean(req.body && req.body.welcomeAnimation);
+    await res.locals.db.church.update({ where: { id: res.locals.churchId }, data: { welcomeAnimation: on } });
+    await logActivity(res.locals.db, 'settings_updated', `Welcome animation turned ${on ? 'on' : 'off'}`, '/settings', res.locals.user.id);
+    flash(req, on ? 'The welcome animation is on.' : 'The welcome animation is off. People now go straight to the dashboard after signing in.', 'success');
     res.redirect('/settings');
   }));
 
