@@ -514,6 +514,7 @@ a.pd-row:hover, li.pd-row:hover { background: var(--pc-hover); }
 .pd-date { width: 40px; height: 44px; border-radius: 9px; border: 1px solid var(--pc-line); background: var(--pc-panel); display: flex; flex-direction: column; align-items: center; justify-content: center; flex: none; overflow: hidden; }
 .pd-date small { font-size: 10.5px !important; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--pc-bad) !important; line-height: 1.2; }
 .pd-date b { font-size: 16px !important; font-weight: 650 !important; line-height: 1.1 !important; }
+.pd-date svg { width: 18px; height: 18px; color: var(--pc-text-3); }
 .pd-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 500; background: var(--pc-hover); color: var(--pc-text-2); white-space: nowrap; }
 .pd-av { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; flex: none; overflow: hidden; font-size: 11.5px; font-weight: 600; background: var(--pc-accent-soft); color: var(--pc-accent-ink); }
 .pd-av img { width: 100%; height: 100%; object-fit: cover; }
