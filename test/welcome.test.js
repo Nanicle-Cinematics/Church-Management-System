@@ -211,3 +211,15 @@ test('the relaunch script: opened afresh it shows the welcome screen once; movin
   assert.deepStrictEqual(run({ pathname: '/welcome' }).replaced, [], 'never on the welcome page itself');
   assert.deepStrictEqual(run({ blocked: true }).replaced, [], 'storage blocked: nothing happens, nothing breaks');
 });
+
+test('the logo is shown on its own on plain white: no card around it, dark text, and the church colour only as the accent', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8');
+  const block = css.slice(css.indexOf('/* Welcome screen (lib/welcome.js)'));
+  const logoRule = block.match(/\.welcome-logo \{[^}]*\}/)[0];
+  assert.ok(!/background|border-radius|box-shadow|padding/.test(logoRule), 'no white card, rounding, shadow or padding around the logo');
+  assert.match(block, /\.welcome-body \{[^}]*background: #fff/);
+  assert.match(block, /\.welcome \{[^}]*background: #fff/, 'a plain white screen, so any logo blends in');
+  assert.match(block, /\.welcome-name \{[^}]*color: #1d1d24/, 'dark name on white');
+  assert.ok(!/linear-gradient|radial-gradient/.test(block.slice(0, block.indexOf('/* Pop and rings */'))), 'no gradient behind the logo');
+  assert.match(block, /color-mix\(in srgb, var\(--accent\)/, 'the church colour shows in the rings and rays');
+});

@@ -7707,34 +7707,28 @@ td small {
 /* "Other…" box under a drop-down (lib/choice.js): as wide as the drop-down above it */
 .form label > select + input[name$="_other"] { width: 100%; margin-top: 6px; box-sizing: border-box; }
 
-/* Welcome screen (lib/welcome.js): the church's logo, big, in the church's colours, for a few seconds after sign-in.
-   --w1 / --w2 / --w3 are the church's colour in three stops (deep, middle, bright), set inline from its logo or
-   the colour its admin chose; without them the screen wears the app's accent (or the liturgical colour). */
-.welcome-body { margin: 0; background: #0b0b0f; overflow: hidden; }
+/* Welcome screen (lib/welcome.js): the church's own logo, big, on plain white, for a few seconds after sign-in.
+   White so any logo (a transparent PNG or a JPEG with a white page) blends in with no frame around it.
+   The church's colour (--w2: from its logo, or the one its admin chose) is the accent: the rings and rays. */
+.welcome-body { margin: 0; background: #fff; overflow: hidden; }
 .welcome {
-  --a1: var(--w1, var(--lit-1, color-mix(in srgb, var(--pc-accent, #6d4aff) 55%, #000)));
-  --a2: var(--w2, var(--lit-2, var(--pc-accent, #6d4aff)));
-  --a3: var(--w3, var(--lit-3, color-mix(in srgb, var(--pc-accent, #6d4aff) 70%, #fff)));
+  --accent: var(--w2, var(--lit-2, var(--pc-accent, #6d4aff)));
   position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px; text-align: center; cursor: pointer; overflow: hidden;
-  color: #fff; font-family: inherit;
-  background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--a3) 55%, transparent), transparent 62%), linear-gradient(145deg, var(--a1) 0%, var(--a2) 60%, var(--a3) 100%);
+  color: #1d1d24; font-family: inherit; background: #fff;
   animation: welcome-in .45s ease-out both, welcome-out .55s ease-in 2.65s forwards;
 }
-.welcome-logo {
-  position: relative; z-index: 1; width: min(52vmin, 340px); aspect-ratio: 1; display: grid; place-items: center; padding: 7%;
-  background: #fff; border-radius: 26%; box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .55), 0 0 0 10px rgba(255, 255, 255, .16);
-}
+.welcome-logo { position: relative; z-index: 1; width: min(62vmin, 400px); aspect-ratio: 1; display: grid; place-items: center; }
 .welcome-logo img { width: 100%; height: 100%; object-fit: contain; }
-.welcome-name { position: relative; z-index: 1; margin: 6px 0 0; font-size: clamp(1.4rem, 5vw, 2.4rem); font-weight: 800; letter-spacing: .01em; text-shadow: 0 2px 14px rgba(0, 0, 0, .35); }
-.welcome-hello { position: relative; z-index: 1; margin: 0; font-size: clamp(1rem, 3.2vw, 1.3rem); opacity: .92; }
-.welcome-skip { position: absolute; bottom: 22px; color: rgba(255, 255, 255, .78); font-size: .85rem; text-decoration: none; animation: welcome-rise .6s ease-out 1.3s both; }
+.welcome-name { position: relative; z-index: 1; margin: 6px 0 0; font-size: clamp(1.4rem, 5vw, 2.4rem); font-weight: 800; letter-spacing: .01em; color: #1d1d24; }
+.welcome-hello { position: relative; z-index: 1; margin: 0; font-size: clamp(1rem, 3.2vw, 1.3rem); color: #5a5b66; }
+.welcome-skip { position: absolute; bottom: 22px; color: #7a7b86; font-size: .85rem; text-decoration: none; animation: welcome-rise .6s ease-out 1.3s both; }
 .welcome-rings, .welcome-rays { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 
 /* Pop and rings */
-.welcome-pop .welcome-logo { animation: welcome-pop .95s cubic-bezier(.2, 1.35, .35, 1) .15s both, welcome-glow 1.6s ease-in-out 1.1s infinite; }
+.welcome-pop .welcome-logo { animation: welcome-pop .95s cubic-bezier(.2, 1.35, .35, 1) .15s both, welcome-breathe 1.6s ease-in-out 1.1s infinite; }
 .welcome-pop .welcome-name { animation: welcome-rise .7s ease-out .75s both; }
 .welcome-pop .welcome-hello { animation: welcome-rise .7s ease-out 1s both; }
-.welcome-rings i { grid-area: 1 / 1; width: min(52vmin, 340px); aspect-ratio: 1; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .55); opacity: 0; animation: welcome-ring 1.9s ease-out infinite; }
+.welcome-rings i { grid-area: 1 / 1; width: min(62vmin, 400px); aspect-ratio: 1; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); opacity: 0; animation: welcome-ring 1.9s ease-out infinite; }
 .welcome-rings i:nth-child(2) { animation-delay: .55s; }
 .welcome-rings i:nth-child(3) { animation-delay: 1.1s; }
 
@@ -7749,7 +7743,7 @@ td small {
 .welcome-reveal .welcome-hello { animation: welcome-slide .7s ease-out 1.1s both; }
 
 /* Sunburst */
-.welcome-rays::before { content: ""; width: 170vmax; height: 170vmax; flex: none; border-radius: 50%; background: repeating-conic-gradient(rgba(255, 255, 255, .17) 0 7deg, transparent 7deg 20deg); animation: welcome-spin 14s linear infinite, welcome-in .8s ease-out both; }
+.welcome-rays::before { content: ""; width: 170vmax; height: 170vmax; flex: none; border-radius: 50%; background: repeating-conic-gradient(color-mix(in srgb, var(--accent) 14%, transparent) 0 7deg, transparent 7deg 20deg); animation: welcome-spin 14s linear infinite, welcome-in .8s ease-out both; }
 .welcome-sunburst .welcome-logo { animation: welcome-drop 1s cubic-bezier(.3, 1.5, .5, 1) .1s both; }
 .welcome-sunburst .welcome-name { animation: welcome-rise .7s ease-out .9s both; }
 .welcome-sunburst .welcome-hello { animation: welcome-rise .7s ease-out 1.15s both; }
@@ -7757,13 +7751,13 @@ td small {
 @keyframes welcome-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes welcome-out { to { opacity: 0; } }
 @keyframes welcome-pop { from { opacity: 0; transform: scale(.35) rotate(-6deg); } to { opacity: 1; transform: none; } }
-@keyframes welcome-glow { 0%, 100% { box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .55), 0 0 0 10px rgba(255, 255, 255, .16); } 50% { box-shadow: 0 30px 90px -18px rgba(0, 0, 0, .6), 0 0 0 22px rgba(255, 255, 255, .08); } }
+@keyframes welcome-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
 @keyframes welcome-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
 @keyframes welcome-lift { from { opacity: 0; transform: translateY(34px); } to { opacity: 1; transform: none; } }
 @keyframes welcome-lens { from { opacity: 1; clip-path: circle(0% at 50% 50%); transform: scale(1.6); } to { opacity: 1; clip-path: circle(75% at 50% 50%); transform: none; } }
 @keyframes welcome-slide { from { opacity: 0; transform: translateX(-34px); } to { opacity: 1; transform: none; } }
 @keyframes welcome-drop { 0% { opacity: 0; transform: translateY(-120%); } 60% { opacity: 1; transform: translateY(6%); } 100% { opacity: 1; transform: none; } }
-@keyframes welcome-ring { 0% { opacity: .65; transform: scale(1); } 100% { opacity: 0; transform: scale(2.3); } }
+@keyframes welcome-ring { 0% { opacity: .7; transform: scale(1); } 100% { opacity: 0; transform: scale(2.1); } }
 @keyframes welcome-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .welcome { animation: welcome-in .3s ease-out both, welcome-out .3s ease-in .95s forwards; }
