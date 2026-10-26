@@ -413,7 +413,7 @@ async function dashboardReal() {
     activityLog: { findMany: async () => [
       { description: 'Sunday offering posted: GH₵ 1,842.50 (1st Service)', link: '/finance/income', occurredAt: ago(0.1), kind: 'income_recorded' },
       { description: 'New member added: Kofi Adjei (MBR-1285)', link: '/members/1', occurredAt: ago(1), kind: 'member_added' },
-      { description: 'November preaching plan published', link: null, occurredAt: ago(1), kind: 'preaching_published' },
+      { description: 'November preaching plan published', link: null, occurredAt: ago(1), kind: 'preaching_scheduled' },
       { description: 'Attendance recorded for Class 4', link: null, occurredAt: ago(2), kind: 'attendance_recorded' },
       { description: 'Harvest planning meeting scheduled', link: '/events/5', occurredAt: ago(3), kind: 'event_created' },
       { description: 'Cash count for Sunday verified', link: null, occurredAt: ago(6), kind: 'expense_approved' },
