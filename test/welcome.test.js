@@ -55,7 +55,7 @@ test('the page carries the church\'s logo and name, escapes them, runs no inline
   assert.match(html, /Welcome, Ama/);
   assert.match(html, /data-liturgical="green"/);
   assert.match(html, /<meta http-equiv="refresh" content="\d+;url=\/">/, 'moves on even if scripts cannot run');
-  assert.match(html, /data-ms="3200"/);
+  assert.match(html, /data-ms="5000"/);
   assert.ok(!/<script(?![^>]*\ssrc=)[^>]*>/i.test(html) && !/\son[a-z]+=/i.test(html), 'no inline script or handler');
   assert.match(welcomePage({ churchName: 'X' }), />Welcome</, 'no name: just Welcome');
   assert.ok(fs.existsSync(path.join(__dirname, '..', 'public', 'js', 'welcome.js')));

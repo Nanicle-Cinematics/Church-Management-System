@@ -7715,10 +7715,10 @@ td small {
   --accent: var(--w2, var(--lit-2, var(--pc-accent, #6d4aff)));
   position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px; text-align: center; cursor: pointer; overflow: hidden;
   color: #1d1d24; font-family: inherit; background: #fff;
-  animation: welcome-in .45s ease-out both, welcome-out .55s ease-in 2.65s forwards;
+  animation: welcome-in .45s ease-out both, welcome-out .55s ease-in 4.45s forwards;
 }
 .welcome-logo { position: relative; z-index: 1; width: min(62vmin, 400px); aspect-ratio: 1; display: grid; place-items: center; }
-.welcome-logo img { width: 100%; height: 100%; object-fit: contain; }
+.welcome-logo img { width: 100%; height: 100%; object-fit: contain; animation: welcome-drift 5s ease-out both; }
 .welcome-name { position: relative; z-index: 1; margin: 6px 0 0; font-size: clamp(1.4rem, 5vw, 2.4rem); font-weight: 800; letter-spacing: .01em; color: #1d1d24; }
 .welcome-hello { position: relative; z-index: 1; margin: 0; font-size: clamp(1rem, 3.2vw, 1.3rem); color: #5a5b66; }
 .welcome-skip { position: absolute; bottom: 22px; color: #7a7b86; font-size: .85rem; text-decoration: none; animation: welcome-rise .6s ease-out 1.3s both; }
@@ -7749,6 +7749,7 @@ td small {
 .welcome-sunburst .welcome-hello { animation: welcome-rise .7s ease-out 1.15s both; }
 
 @keyframes welcome-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes welcome-drift { from { transform: scale(1); } to { transform: scale(1.05); } }
 @keyframes welcome-out { to { opacity: 0; } }
 @keyframes welcome-pop { from { opacity: 0; transform: scale(.35) rotate(-6deg); } to { opacity: 1; transform: none; } }
 @keyframes welcome-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
@@ -7762,5 +7763,6 @@ td small {
 @media (prefers-reduced-motion: reduce) {
   .welcome { animation: welcome-in .3s ease-out both, welcome-out .3s ease-in .95s forwards; }
   .welcome-logo, .welcome-name, .welcome-hello, .welcome-skip { animation: welcome-in .3s ease-out both !important; }
+  .welcome-logo img { animation: none; }
   .welcome-rings, .welcome-rays { display: none; }
 }
