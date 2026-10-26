@@ -5,7 +5,7 @@
   var screen = document.getElementById('welcome');
   if (!screen) return;
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var ms = Number(screen.getAttribute(reduced ? 'data-reduced-ms' : 'data-ms')) || 3200;
+  var ms = Number(screen.getAttribute(reduced ? 'data-reduced-ms' : 'data-ms')) || 5000;
   var gone = false;
   try { window.sessionStorage.setItem('welcomed', '1'); } catch (e) { /* not remembered: nothing else changes */ }
   function go() {
