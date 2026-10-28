@@ -539,10 +539,11 @@ model Organization {
   meetsOn     String? @map("meets_on")
   active      Boolean @default(true)
 
-  ministries  Ministry[]
-  memberships OrganizationMembership[]
-  harvests    Harvest[]
-  broadcasts  Broadcast[]
+  ministries       Ministry[]
+  memberships      OrganizationMembership[]
+  harvests         Harvest[]
+  broadcasts       Broadcast[]
+  attendanceEvents Event[]
 
   @@unique([churchId, name])
   @@index([churchId])
@@ -585,22 +586,27 @@ model MinistryMembership {
 // ---------------------------------------------------------------------------
 
 model Event {
-  id                 Int       @id @default(autoincrement()) @map("event_id")
-  churchId           String    @map("church_id")
-  church             Church    @relation(fields: [churchId], references: [id])
+  id                 Int           @id @default(autoincrement()) @map("event_id")
+  churchId           String        @map("church_id")
+  church             Church        @relation(fields: [churchId], references: [id])
   title              String
-  eventType          EventType @default(SERVICE) @map("event_type")
-  startsAt           DateTime  @map("starts_at")
-  endsAt             DateTime? @map("ends_at")
+  eventType          EventType     @default(SERVICE) @map("event_type")
+  startsAt           DateTime      @map("starts_at")
+  endsAt             DateTime?     @map("ends_at")
   location           String?
-  ministryId         Int?      @map("ministry_id")
-  ministry           Ministry? @relation(fields: [ministryId], references: [id])
+  ministryId         Int?          @map("ministry_id")
+  ministry           Ministry?     @relation(fields: [ministryId], references: [id])
   notes              String?
-  checkinToken       String?   @unique @map("checkin_token")
-  attendanceMen      Int?      @map("attendance_men")
-  attendanceWomen    Int?      @map("attendance_women")
-  attendanceChildren Int?      @map("attendance_children")
-  attendanceTotal    Int?      @map("attendance_total")
+  checkinToken       String?       @unique @map("checkin_token")
+  attendanceMen      Int?          @map("attendance_men")
+  attendanceWomen    Int?          @map("attendance_women")
+  attendanceChildren Int?          @map("attendance_children")
+  attendanceTotal    Int?          @map("attendance_total")
+  /// Who the counts are for: both null = the whole church; otherwise one
+  /// day-born group or one organization.
+  attendanceDayBorn  DayBorn?      @map("attendance_day_born")
+  attendanceOrgId    Int?          @map("attendance_org_id")
+  attendanceOrg      Organization? @relation(fields: [attendanceOrgId], references: [id], onDelete: SetNull)
 
   attendance Attendance[]
   rsvps      EventRsvp[]
