@@ -187,7 +187,7 @@ function register(app) {
     const fopt = (value, label) => `<option value="${esc(value)}"${value === filter ? ' selected' : ''}>${esc(label)}</option>`;
     const filterBar = `<form method="get" action="/attendance" class="form" style="margin:0 0 1rem">
       <label><span>Show attendance for</span>
-        <select name="for" onchange="this.form.submit()">
+        <select name="for" data-autosubmit>
           ${fopt('', 'Everything')}${fopt('church', 'Whole church')}
           <optgroup label="Day-born">${DAY_BORNS.map((d) => fopt(`day:${d}`, `${dayLabel(d)}-born`)).join('')}</optgroup>
           ${orgs.length ? `<optgroup label="Organization">${orgs.map((o) => fopt(`org:${o.id}`, o.name)).join('')}</optgroup>` : ''}
