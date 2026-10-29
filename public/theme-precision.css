@@ -937,7 +937,8 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
 [data-sec="ministry"] { --tc: var(--pc-gold); }
 [data-sec="insights"] { --tc: var(--pc-rose); }
 [data-sec="admin"] { --tc: var(--pc-accent); }
-[data-sec="more"], [data-sec="tool"] { --tc: var(--pc-text-2); }
+[data-sec="tool"] { --tc: var(--pc-text-2); }
+[data-sec="more"] { --tc: var(--pc-accent); }
 @media (max-width: 900px) {
   .pc-hamb { display: none !important; }
   .pc-top .pc-newwrap, .pc-top #pcTheme, .pc-top .pc-signout { display: none !important; }
@@ -960,6 +961,9 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
   .pc-tabbar span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pc-tabbar a[aria-current], body.pc .pc-tabbar button[aria-current] { color: var(--tc) !important; background: linear-gradient(180deg, rgba(255, 255, 255, .42), rgba(255, 255, 255, .16)) !important; box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .75), inset 0 1px 0 rgba(255, 255, 255, .95), inset 0 0 10px rgba(255, 255, 255, .3), 0 3px 10px -4px rgba(20, 20, 60, .22) !important; }
   .pc-tabbar a:active, .pc-tabbar button:active { transform: scale(.94); }
+  /* More is the way to every other section, so it is drawn as a filled badge, not another flat icon. */
+  body.pc .pc-tabbar button[data-sec="more"] { color: var(--pc-accent-ink) !important; font-weight: 700; }
+  .pc-tabbar button[data-sec="more"] svg { box-sizing: content-box; width: 16px; height: 16px; padding: 3px; border-radius: 999px; background: var(--pc-accent); color: var(--pc-on-accent); filter: none; box-shadow: 0 3px 8px -2px color-mix(in srgb, var(--pc-accent) 70%, transparent), inset 0 1px 0 rgba(255, 255, 255, .35); }
   body.pc button.pc-fab { right: 16px; bottom: calc(92px + env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 7px; height: 46px; padding: 0 18px 0 14px; border-radius: 23px !important; color: var(--pc-accent-ink) !important; font: 600 14px var(--pc-font); text-shadow: 0 0 6px rgba(255, 255, 255, .9); cursor: pointer; }
   .pc-fab svg { width: 18px; height: 18px; }
   .pc-sheet-scrim { display: block; position: fixed; inset: 0; z-index: 60; background: rgba(10, 10, 20, .4); opacity: 0; transition: opacity .2s; }
@@ -985,6 +989,8 @@ tr:nth-child(6n+6) .m-avatar-fallback { background: var(--pc-ok-soft); color: va
   body.pm-bulk-on .pc-fab { display: none !important; }
   :root[data-theme="dark"] .pc-tabbar::before, :root[data-theme="dark"] .pc-fab::before { background: radial-gradient(70% 55% at 22% 0%, rgba(255, 255, 255, .14), transparent 62%), linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .03)); border-color: rgba(255, 255, 255, .2); -webkit-backdrop-filter: blur(4px) saturate(1.7) !important; backdrop-filter: blur(4px) saturate(1.7) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), inset 0 0 16px rgba(255, 255, 255, .07), inset 0 -10px 18px -14px rgba(255, 255, 255, .3), 0 14px 34px -12px rgba(0, 0, 0, .7); }
   :root[data-theme="dark"] .pc-tabbar a, :root[data-theme="dark"] body.pc .pc-tabbar button, :root[data-theme="dark"] body.pc button.pc-fab { text-shadow: 0 0 6px rgba(0, 0, 0, .85), 0 0 2px rgba(0, 0, 0, .7); }
+  :root[data-theme="dark"] body.pc .pc-tabbar button[data-sec="more"] { color: var(--pc-accent-ink) !important; }
+  :root[data-theme="dark"] .pc-tabbar button[data-sec="more"] svg { filter: none; }
   :root[data-theme="dark"] .pc-tabbar svg, :root[data-theme="dark"] .pc-fab svg { filter: drop-shadow(0 0 3px rgba(0, 0, 0, .8)); }
   :root[data-theme="dark"] .pc-tabbar a[aria-current], :root[data-theme="dark"] body.pc .pc-tabbar button[aria-current] { color: #fff !important; background: linear-gradient(180deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .07)) !important; box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .3), inset 0 1px 0 rgba(255, 255, 255, .4) !important; }
   :root[data-theme="dark"] .pc-tabbar a[aria-current] svg, :root[data-theme="dark"] .pc-tabbar button[aria-current] svg { color: color-mix(in srgb, var(--tc) 60%, #fff); }
