@@ -134,7 +134,11 @@ test('attendance: a service can be for a day-born or an organization, and the li
   const other = await signedInClient('html-att-groups-other');
   const foreignOrg = await db.organization.create({ data: { churchId: other.churchId, name: 'Foreign Band' } });
 
-  const csrf = extractCsrf((await client.getHtml('/attendance/new')).text);
+  const form = await client.getHtml('/attendance/new');
+  assert.match(form.text, /<select name="title"[^>]*>[\s\S]*Sunday Service[\s\S]*Other…/, 'the service title is a drop-down of the church\'s services');
+  assert.match(form.text, /name="attendanceMen" data-sum-to="attendanceTotal"/);
+  assert.match(form.text, /name="attendanceTotal" data-sum-total/);
+  const csrf = extractCsrf(form.text);
   const post = (title, attendanceFor) => client.postForm('/attendance', { title, startsAt: '2026-08-16T09:00', attendanceMen: '5', attendanceFor, _csrf: csrf });
   assert.strictEqual((await post('Monday Group', 'day:MONDAY')).status, 302);
   assert.strictEqual((await post('Choir Rehearsal', `org:${org.id}`)).status, 302);
