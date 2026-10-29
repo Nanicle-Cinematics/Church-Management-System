@@ -31,6 +31,7 @@ test.after(async () => {
     await db.eventRsvp.deleteMany({ where });
     await db.attendance.deleteMany({ where });
     await db.event.deleteMany({ where });
+    await db.organization.deleteMany({ where });
     await db.member.deleteMany({ where });
     await db.account.deleteMany({ where });
     await db.user.deleteMany({ where });
@@ -125,6 +126,42 @@ test('attendance: create a service without CSRF is rejected, with CSRF succeeds,
   assert.strictEqual(deleted.status, 302);
   const afterDelete = await client.getHtml('/attendance');
   assert.doesNotMatch(afterDelete.text, /Sunday Worship/);
+});
+
+test('attendance: a service can be for a day-born or an organization, and the list filters by it', async () => {
+  const { client, churchId } = await signedInClient('html-att-groups');
+  const org = await db.organization.create({ data: { churchId, name: 'Sunshine Choir' } });
+  const other = await signedInClient('html-att-groups-other');
+  const foreignOrg = await db.organization.create({ data: { churchId: other.churchId, name: 'Foreign Band' } });
+
+  const csrf = extractCsrf((await client.getHtml('/attendance/new')).text);
+  const post = (title, attendanceFor) => client.postForm('/attendance', { title, startsAt: '2026-08-16T09:00', attendanceMen: '5', attendanceFor, _csrf: csrf });
+  assert.strictEqual((await post('Monday Group', 'day:MONDAY')).status, 302);
+  assert.strictEqual((await post('Choir Rehearsal', `org:${org.id}`)).status, 302);
+  assert.strictEqual((await post('Stolen Org', `org:${foreignOrg.id}`)).status, 302);
+  assert.strictEqual((await post('Whole Church', '')).status, 302);
+
+  const rows = await db.event.findMany({ where: { churchId } });
+  const by = (t) => rows.find((r) => r.title === t);
+  assert.strictEqual(by('Monday Group').attendanceDayBorn, 'MONDAY');
+  assert.strictEqual(by('Monday Group').attendanceOrgId, null);
+  assert.strictEqual(by('Choir Rehearsal').attendanceOrgId, org.id);
+  assert.strictEqual(by('Stolen Org').attendanceOrgId, null, "another church's organization is dropped");
+  assert.strictEqual(by('Whole Church').attendanceDayBorn, null);
+
+  const all = await client.getHtml('/attendance');
+  assert.match(all.text, /Monday-born/);
+  assert.match(all.text, /Sunshine Choir/);
+
+  const day = await client.getHtml('/attendance?for=day:MONDAY');
+  assert.match(day.text, /Monday Group/);
+  assert.doesNotMatch(day.text, /Choir Rehearsal/);
+  const byOrg = await client.getHtml(`/attendance?for=org:${org.id}`);
+  assert.match(byOrg.text, /Choir Rehearsal/);
+  assert.doesNotMatch(byOrg.text, /Monday Group/);
+  const church = await client.getHtml('/attendance?for=church');
+  assert.match(church.text, /Whole Church/);
+  assert.doesNotMatch(church.text, /Monday Group|Choir Rehearsal/);
 });
 
 test('communications: post an announcement, then load broadcast composer', async () => {
