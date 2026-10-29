@@ -11,6 +11,8 @@
      data-disable-unless="field=VALUE"   on a <select>: disables the form field unless this one equals VALUE
      data-other-for="x_other"            on a <select>: shows the text box with that name only while "Other…" is chosen
      data-group-from="category"          on a <select>: offers only the options whose data-group matches that field's value
+     data-sum-to="total"                 on a number input: adds up every input pointing at that field into it,
+                                         until someone types a different figure there
      data-print                          on a link / button: opens the print dialog
      data-reload                         on a link / button: reloads the page
      data-refresh="4000"                 anywhere: reloads the page after that many milliseconds
@@ -77,6 +79,24 @@
     });
   });
   Array.prototype.forEach.call(document.querySelectorAll('select[data-group-from]'), syncGroup);
+  // Men + Women + Children fill the Total as they are typed; typing in the Total itself takes over.
+  function sumTargets(form, name) { return Array.prototype.slice.call(form.querySelectorAll('[data-sum-to="' + name + '"]')); }
+  function sumTotal(total) {
+    var parts = sumTargets(total.form, total.name), filled = false, sum = 0;
+    parts.forEach(function (p) { if (p.value !== '') { filled = true; sum += Number(p.value) || 0; } });
+    total.value = filled ? String(sum) : '';
+  }
+  on('input', '[data-sum-to]', function (event, el) {
+    var total = el.form && el.form.elements[el.getAttribute('data-sum-to')];
+    if (total && total.getAttribute('data-manual') !== '1') sumTotal(total);
+  });
+  on('input', 'input[data-sum-total]', function (event, total) { total.setAttribute('data-manual', total.value === '' ? '0' : '1'); });
+  Array.prototype.forEach.call(document.querySelectorAll('input[data-sum-total]'), function (total) {
+    var parts = sumTargets(total.form, total.name), sum = 0;
+    parts.forEach(function (p) { sum += Number(p.value) || 0; });
+    // an existing total that differs from the sum was typed by hand: leave it alone
+    total.setAttribute('data-manual', total.value !== '' && Number(total.value) !== sum ? '1' : '0');
+  });
   on('click', '[data-print]', function (event) { event.preventDefault(); window.print(); });
   on('click', '[data-reload]', function (event) { event.preventDefault(); window.location.reload(); });
 

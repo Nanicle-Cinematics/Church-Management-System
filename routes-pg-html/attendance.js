@@ -15,6 +15,8 @@ const { sparkline } = require('../lib/charts');
 const { flash } = require('../lib/tenant-flash');
 const { logActivity } = require('../lib/tenant-activity');
 const { icon } = require('../lib/icons');
+const { choiceField, readChoice } = require('../lib/choice');
+const { serviceNames } = require('../lib/choice-lists');
 
 function requireAdmin(req, res, next) {
   if (res.locals.user && res.locals.user.role === 'ADMIN') return next();
@@ -62,7 +64,7 @@ function parseServiceBody(b) {
   const children = toIntOrNull(b.attendanceChildren);
   const total = deriveTotal(men, women, children, toIntOrNull(b.attendanceTotal));
   return {
-    title: (b.title || '').trim(),
+    title: readChoice(b, 'title'),
     startsAt: b.startsAt ? new Date(b.startsAt) : null,
     location: (b.location || '').trim() || null,
     notes: (b.notes || '').trim() || null,
@@ -85,10 +87,7 @@ function serviceForm(ev, action, opts = {}) {
   const current = e.attendanceDayBorn ? `day:${e.attendanceDayBorn}` : e.attendanceOrgId ? `org:${e.attendanceOrgId}` : '';
   const opt = (value, label) => `<option value="${esc(value)}"${value === current ? ' selected' : ''}>${esc(label)}</option>`;
   return `<form class="form attendance-service-form" method="post" action="${action}">
-    <label class="wide">
-      <span>Service title <span class="req-star">*</span></span>
-      <input name="title" required value="${esc(e.title || '')}" placeholder="e.g. Sunday Worship">
-    </label>
+    ${choiceField({ name: 'title', label: 'Service title', options: opts.services || [], value: e.title || '', required: true, noneLabel: '— choose the service —', otherPlaceholder: 'e.g. Easter Sunrise Service', wide: true })}
     <label>
       <span>Date &amp; time <span class="req-star">*</span></span>
       <input type="datetime-local" name="startsAt" required value="${esc(isoLocal(e.startsAt))}">
@@ -108,19 +107,19 @@ function serviceForm(ev, action, opts = {}) {
     <div class="wide-cell">
       <h3 class="form-section">Attendance counts</h3>
       <p class="muted-text" style="margin:0 0 0.6rem;font-size:0.86rem">
-        Leave Total blank to let the system add Men + Women + Children for you.
+        Total adds up Men + Women + Children as you type. Type over it to enter a different total.
       </p>
     </div>
     <div class="wide-cell attendance-counts-card" style="padding:0;border:0;box-shadow:none;background:transparent">
       <div class="counts-form">
         <label class="counts-field"><span>Men</span>
-          <input type="number" name="attendanceMen" min="0" step="1" value="${esc(e.attendanceMen ?? '')}"></label>
+          <input type="number" name="attendanceMen" data-sum-to="attendanceTotal" min="0" step="1" value="${esc(e.attendanceMen ?? '')}"></label>
         <label class="counts-field"><span>Women</span>
-          <input type="number" name="attendanceWomen" min="0" step="1" value="${esc(e.attendanceWomen ?? '')}"></label>
+          <input type="number" name="attendanceWomen" data-sum-to="attendanceTotal" min="0" step="1" value="${esc(e.attendanceWomen ?? '')}"></label>
         <label class="counts-field"><span>Children</span>
-          <input type="number" name="attendanceChildren" min="0" step="1" value="${esc(e.attendanceChildren ?? '')}"></label>
+          <input type="number" name="attendanceChildren" data-sum-to="attendanceTotal" min="0" step="1" value="${esc(e.attendanceChildren ?? '')}"></label>
         <label class="counts-field counts-total"><span>Total</span>
-          <input type="number" name="attendanceTotal" min="0" step="1" value="${esc(e.attendanceTotal ?? '')}" placeholder="auto">
+          <input type="number" name="attendanceTotal" data-sum-total min="0" step="1" value="${esc(e.attendanceTotal ?? '')}" placeholder="auto">
         </label>
       </div>
     </div>
@@ -219,7 +218,7 @@ function register(app) {
 
   app.get('/attendance/new', requireEditor, asyncHandler(async (req, res) => {
     const orgs = await res.locals.db.organization.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } });
-    res.page({ title: 'New service', active: '/attendance', noHeader: true, body: `${pageHero('New service', '')}${serviceForm(null, '/attendance', { orgs })}` });
+    res.page({ title: 'New service', active: '/attendance', noHeader: true, body: `${pageHero('New service', '')}${serviceForm(null, '/attendance', { orgs, services: await serviceNames(res.locals.db) })}` });
   }));
 
   app.post('/attendance', requireEditor, asyncHandler(async (req, res) => {
@@ -251,7 +250,7 @@ function register(app) {
     </div>` : '';
     res.page({
       title: `Edit service · ${ev.title}`, active: '/attendance', noHeader: true,
-      body: `${pageHero(`Edit service · ${ev.title}`, '')}${serviceForm(ev, `/attendance/${id}`, { extraButtons: extra, orgs })}`,
+      body: `${pageHero(`Edit service · ${ev.title}`, '')}${serviceForm(ev, `/attendance/${id}`, { extraButtons: extra, orgs, services: await serviceNames(res.locals.db) })}`,
     });
   }));
 
