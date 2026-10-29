@@ -357,6 +357,7 @@ model Church {
   ministryMemberships     MinistryMembership[]
   events                  Event[]
   attendance              Attendance[]
+  eventGroupAttendance    EventGroupAttendance[]
   eventRsvps              EventRsvp[]
   contributions           Contribution[]
   sacraments              Sacrament[]
@@ -544,6 +545,7 @@ model Organization {
   harvests         Harvest[]
   broadcasts       Broadcast[]
   attendanceEvents Event[]
+  eventCounts      EventGroupAttendance[]
 
   @@unique([churchId, name])
   @@index([churchId])
@@ -608,8 +610,9 @@ model Event {
   attendanceOrgId    Int?          @map("attendance_org_id")
   attendanceOrg      Organization? @relation(fields: [attendanceOrgId], references: [id], onDelete: SetNull)
 
-  attendance Attendance[]
-  rsvps      EventRsvp[]
+  attendance  Attendance[]
+  rsvps       EventRsvp[]
+  groupCounts EventGroupAttendance[]
 
   @@index([churchId])
   @@index([startsAt])
@@ -628,6 +631,26 @@ model Attendance {
   @@id([eventId, memberId])
   @@index([churchId])
   @@map("attendance")
+}
+
+/// Head-count of one day-born group or one organization at a service. These are
+/// breakdowns (a person is in a day-born AND an organization), so they never add
+/// to Event.attendanceTotal.
+model EventGroupAttendance {
+  id           Int           @id @default(autoincrement())
+  churchId     String        @map("church_id")
+  church       Church        @relation(fields: [churchId], references: [id])
+  eventId      Int           @map("event_id")
+  event        Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  dayBorn      DayBorn?      @map("day_born")
+  orgId        Int?          @map("org_id")
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  count        Int
+
+  @@unique([eventId, dayBorn])
+  @@unique([eventId, orgId])
+  @@index([churchId])
+  @@map("event_group_attendance")
 }
 
 /// A member's intended response to an event (added via server.js bootstrap,

@@ -128,7 +128,7 @@ test('attendance: create a service without CSRF is rejected, with CSRF succeeds,
   assert.doesNotMatch(afterDelete.text, /Sunday Worship/);
 });
 
-test('attendance: a service can be for a day-born or an organization, and the list filters by it', async () => {
+test('attendance: counts can be recorded per day-born and per organization, kept apart from the Total', async () => {
   const { client, churchId } = await signedInClient('html-att-groups');
   const org = await db.organization.create({ data: { churchId, name: 'Sunshine Choir' } });
   const other = await signedInClient('html-att-groups-other');
@@ -138,34 +138,37 @@ test('attendance: a service can be for a day-born or an organization, and the li
   assert.match(form.text, /<select name="title"[^>]*>[\s\S]*Sunday Service[\s\S]*Other…/, 'the service title is a drop-down of the church\'s services');
   assert.match(form.text, /name="attendanceMen" data-sum-to="attendanceTotal"/);
   assert.match(form.text, /name="attendanceTotal" data-sum-total/);
+  assert.match(form.text, /name="dayborn_MONDAY"/);
+  assert.match(form.text, new RegExp(`name="org_${org.id}"`));
+  assert.doesNotMatch(form.text, new RegExp(`name="org_${foreignOrg.id}"`), "another church's organization is not offered");
   const csrf = extractCsrf(form.text);
-  const post = (title, attendanceFor) => client.postForm('/attendance', { title, startsAt: '2026-08-16T09:00', attendanceMen: '5', attendanceFor, _csrf: csrf });
-  assert.strictEqual((await post('Monday Group', 'day:MONDAY')).status, 302);
-  assert.strictEqual((await post('Choir Rehearsal', `org:${org.id}`)).status, 302);
-  assert.strictEqual((await post('Stolen Org', `org:${foreignOrg.id}`)).status, 302);
-  assert.strictEqual((await post('Whole Church', '')).status, 302);
 
-  const rows = await db.event.findMany({ where: { churchId } });
-  const by = (t) => rows.find((r) => r.title === t);
-  assert.strictEqual(by('Monday Group').attendanceDayBorn, 'MONDAY');
-  assert.strictEqual(by('Monday Group').attendanceOrgId, null);
-  assert.strictEqual(by('Choir Rehearsal').attendanceOrgId, org.id);
-  assert.strictEqual(by('Stolen Org').attendanceOrgId, null, "another church's organization is dropped");
-  assert.strictEqual(by('Whole Church').attendanceDayBorn, null);
+  const created = await client.postForm('/attendance', {
+    title: 'Sunday Worship', startsAt: '2026-08-16T09:00', attendanceMen: '10', attendanceWomen: '20',
+    dayborn_MONDAY: '7', dayborn_FRIDAY: '0', [`org_${org.id}`]: '12', [`org_${foreignOrg.id}`]: '99', _csrf: csrf,
+  });
+  assert.strictEqual(created.status, 302);
 
-  const all = await client.getHtml('/attendance');
-  assert.match(all.text, /Monday-born/);
-  assert.match(all.text, /Sunshine Choir/);
+  const ev = await db.event.findFirst({ where: { churchId, title: 'Sunday Worship' }, include: { groupCounts: true } });
+  assert.strictEqual(ev.attendanceTotal, 30, 'group counts do not change the Total');
+  const rows = ev.groupCounts.map((g) => `${g.dayBorn || 'org' + g.orgId}=${g.count}`).sort();
+  assert.deepStrictEqual(rows, [`FRIDAY=0`, `MONDAY=7`, `org${org.id}=12`].sort());
 
-  const day = await client.getHtml('/attendance?for=day:MONDAY');
-  assert.match(day.text, /Monday Group/);
-  assert.doesNotMatch(day.text, /Choir Rehearsal/);
-  const byOrg = await client.getHtml(`/attendance?for=org:${org.id}`);
-  assert.match(byOrg.text, /Choir Rehearsal/);
-  assert.doesNotMatch(byOrg.text, /Monday Group/);
-  const church = await client.getHtml('/attendance?for=church');
-  assert.match(church.text, /Whole Church/);
-  assert.doesNotMatch(church.text, /Monday Group|Choir Rehearsal/);
+  const list = await client.getHtml('/attendance');
+  assert.match(list.text, /Attendance by group/);
+  assert.match(list.text, /Mon 7/);
+  assert.match(list.text, /Sunshine Choir 12/);
+
+  // editing shows the saved counts, and saving again replaces them
+  const edit = await client.getHtml(`/attendance/${ev.id}/edit`);
+  assert.match(edit.text, /name="dayborn_MONDAY"[^>]*value="7"/);
+  const saved = await client.postForm(`/attendance/${ev.id}`, {
+    title: 'Sunday Worship', startsAt: '2026-08-16T09:00', attendanceMen: '10', attendanceWomen: '20',
+    dayborn_MONDAY: '9', _csrf: extractCsrf(edit.text),
+  });
+  assert.strictEqual(saved.status, 302);
+  const after = await db.eventGroupAttendance.findMany({ where: { eventId: ev.id } });
+  assert.deepStrictEqual(after.map((g) => `${g.dayBorn}=${g.count}`), ['MONDAY=9']);
 });
 
 test('communications: post an announcement, then load broadcast composer', async () => {
