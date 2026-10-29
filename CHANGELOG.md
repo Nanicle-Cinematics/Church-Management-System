@@ -93,6 +93,7 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **`/healthz` says which build is live** (`{"status":"ok","commit":"6f149e0"}`), so the uptime monitor can mark each deploy on its charts. It reads Fly's `FLY_IMAGE_REF`, which the deploy workflow now labels with the git commit; a manual `fly deploy` reports Fly's own `deployment-…` label instead. Still no database access.
 - SMS sender names may have spaces between words, e.g. "DUNWELL MC", as the SMS provider accepts them ("CHURCH MGMT" was approved). The rule is still 3–11 characters, spaces included: letters and numbers, no symbols, and no space at either end. Extra spaces are tidied when a name is requested.
 - Member form: the emergency contact's Relationship is picked from a list: Spouse, Parent, Child, Sibling, Other relative, Guardian, Friend or Other. A relationship typed before the list existed ("uncle") is kept and shown as the current choice until someone picks another. A typed value that matches the list in another case ("spouse") selects that option. No database changes.
 - Bible classes and organizations: "Meets" is now **Meeting days**, picked from a list of days (Sunday to Saturday) with an optional time, and saved as e.g. "Sunday, 8:00 AM". It can now be changed after creation: in each Bible class's row, and under Manage on an organization's page (it could only be set when creating them). An older free-text value such as "Saturday 5pm" is kept and shown until someone picks a day. Bible Classes shows meeting days in their own column.

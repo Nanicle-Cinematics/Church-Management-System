@@ -38,10 +38,14 @@ jobs:
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@1.5
 
+      # The image label becomes FLY_IMAGE_REF's tag, which /healthz reports
+      # (lib/build-version.js) so the uptime monitor can mark this deploy.
+      # Passed through env, never interpolated into the script.
       - name: Deploy to Fly
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl deploy --remote-only
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: flyctl deploy --remote-only --image-label "$DEPLOY_SHA"
 
       - name: Health check
         env:
