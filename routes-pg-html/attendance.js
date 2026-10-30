@@ -113,7 +113,7 @@ function serviceForm(ev, action, opts = {}) {
         Total adds up Men + Women + Children as you type. Type over it to enter a different total.
       </p>
     </div>
-    <div class="wide-cell attendance-counts-card" style="padding:0;border:0;box-shadow:none;background:transparent">
+    <div class="wide-cell">
       <div class="counts-form">
         <label class="counts-field"><span>Men</span>
           <input type="number" name="attendanceMen" data-sum-to="attendanceTotal" min="0" step="1" value="${esc(e.attendanceMen ?? '')}"></label>
@@ -131,14 +131,14 @@ function serviceForm(ev, action, opts = {}) {
       <p class="muted-text" style="margin:0 0 0.6rem;font-size:0.86rem">
         How many came from each day-born group. Leave a box empty if you did not count it. These are a separate breakdown and do not change the Total above.
       </p>
-      <div class="attendance-counts-card" style="padding:0;border:0;box-shadow:none;background:transparent"><div class="counts-form">${DAY_BORNS.map((d) => groupField(dayKey(d), `${dayLabel(d)}-born`, `day:${d}`)).join('')}</div></div>
+      <div class="counts-form">${DAY_BORNS.map((d) => groupField(dayKey(d), `${dayLabel(d)}-born`, `day:${d}`)).join('')}</div>
     </div>
     ${orgs.length ? `<div class="wide-cell">
       <h3 class="form-section">By organization</h3>
       <p class="muted-text" style="margin:0 0 0.6rem;font-size:0.86rem">
         How many came from each organization. Leave a box empty if you did not count it.
       </p>
-      <div class="attendance-counts-card" style="padding:0;border:0;box-shadow:none;background:transparent"><div class="counts-form">${orgs.map((o) => groupField(orgKey(o), o.name, `org:${o.id}`)).join('')}</div></div>
+      <div class="counts-form">${orgs.map((o) => groupField(orgKey(o), o.name, `org:${o.id}`)).join('')}</div>
     </div>` : ''}
     <label class="wide">
       <span>Notes</span>
