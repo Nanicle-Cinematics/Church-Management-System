@@ -50,11 +50,3 @@
   document.querySelector('.pm-sheet-foot button').addEventListener('click', function (e) { if (window.matchMedia('(max-width: 900px)').matches) { e.preventDefault(); set(false); } });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') set(false); });
 })();
-// Bible class and day born filter one at a time: ticking a box unticks the
-// others in its group, and ticking it again clears it. Runs before the live
-// search reads the form, which waits for the change to settle.
-document.getElementById('pmFacets').addEventListener('change', function (e) {
-  var box = e.target, group = box.closest && box.closest('[data-pick-one]');
-  if (!group || !box.checked) return;
-  group.querySelectorAll('input[type="checkbox"]').forEach(function (other) { if (other !== box) other.checked = false; });
-});

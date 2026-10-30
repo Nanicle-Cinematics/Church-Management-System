@@ -255,8 +255,7 @@ function selectedIds(raw) {
 
 function register(app) {
   // Members directory, Precision layout: status tabs over a filter panel
-  // (status and organisation multi-select; Bible class and day born one at a
-  // time, by the panel script) and a
+  // (status, organisation, Bible class, day born — each multi-select) and a
   // dense table. Everything is a plain GET form, so filters are shareable
   // links and work without JavaScript; the shell's live search swaps the
   // results in place when it is available.
@@ -335,8 +334,8 @@ function register(app) {
         <div class="pm-fh" id="pmFh" data-live-sync><b>Filters</b>${filtered ? '<a href="/members">Clear all</a>' : '<span class="muted-text">None applied</span>'}</div>
         <div class="pm-fg"><h3>Status</h3>${checks('status', ['MEMBER', 'VISITOR', 'DISTANT', 'TRANSFERRED', 'DECEASED', 'REGULAR', 'INACTIVE', 'OTHER'].filter((s) => count[s] || statuses.includes(s)).map((s) => [s, MEMBER_STATUS_LABELS[s], count[s] || 0]), statuses)}</div>
         ${orgs.length ? `<div class="pm-fg"><h3>Organisations</h3>${checks('org', orgs.map((o) => [String(o.id), o.name, orgN[o.id] || 0]), orgIds.map(String))}</div>` : ''}
-        ${classes.length ? `<div class="pm-fg" data-pick-one><h3>Bible class</h3>${checks('class', classes.map((c) => [String(c.id), c.name, classN[c.id] || 0]), classIds.map(String))}</div>` : ''}
-        <div class="pm-fg" data-pick-one><h3>Day born</h3>${checks('day_born', DAYS_OF_WEEK.map((d) => [d, d, dayN[d] || 0, `${d}-born · ${AKAN_NAMES[d]}`]), daysBorn)}</div>
+        ${classes.length ? `<div class="pm-fg"><h3>Bible class</h3>${checks('class', classes.map((c) => [String(c.id), c.name, classN[c.id] || 0]), classIds.map(String))}</div>` : ''}
+        <div class="pm-fg"><h3>Day born</h3>${checks('day_born', DAYS_OF_WEEK.map((d) => [d, d, dayN[d] || 0, `${d}-born · ${AKAN_NAMES[d]}`]), daysBorn)}</div>
         <div class="pm-sheet-foot"><button type="submit">Show results</button></div>
         <noscript><div class="pm-fg"><button type="submit">Apply filters</button></div></noscript>
       </aside>`;
