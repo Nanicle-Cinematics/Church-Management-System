@@ -4234,25 +4234,25 @@ body {
   letter-spacing: -0.034em;
 }
 
-/* Attendance counts form (event detail) */
-.attendance-counts-card .counts-form {
+/* Attendance counts form (event detail and the add/edit service form) */
+.counts-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.9rem 1rem;
   align-items: end;
 }
-.attendance-counts-card .counts-field {
+.counts-form .counts-field {
   display: flex; flex-direction: column; gap: 0.35rem;
   min-width: 0;
 }
-.attendance-counts-card .counts-field span {
+.counts-form .counts-field span {
   font-size: 0.72rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-weight: 700;
   color: var(--muted);
 }
-.attendance-counts-card .counts-field input {
+.counts-form .counts-field input {
   height: 44px;
   font-family: var(--p-font-display);
   font-weight: 800;
@@ -4263,7 +4263,7 @@ body {
   border: 1px solid var(--p-border-strong);
   background: var(--field);
 }
-.attendance-counts-card .counts-field.counts-total input {
+.counts-form .counts-field.counts-total input {
   background: linear-gradient(180deg, var(--gold-soft), #fff8e0);
   border-color: rgba(212, 160, 23, 0.4);
   color: var(--gold-deep);
@@ -4302,7 +4302,7 @@ body {
 }
 
 @media (max-width: 720px) {
-  .attendance-counts-card .counts-form,
+  .counts-form,
   .attendance-counts-card .counts-readonly {
     grid-template-columns: repeat(2, 1fr);
   }

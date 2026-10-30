@@ -126,6 +126,10 @@ test('members: profile panel is church-scoped, and the directory filters take se
   assert.doesNotMatch((await client.getHtml('/members?status=VISITOR')).text, /Esi Quaye/);
   assert.match((await client.getHtml('/members?day_born=Monday&day_born=Sunday')).text, /Esi Quaye/);
   assert.doesNotMatch((await client.getHtml('/members?day_born=Monday')).text, /Esi Quaye/);
+  // Day born is a checkbox list marked pick-one, with a count beside each day.
+  const directory = (await client.getHtml('/members?day_born=Sunday')).text;
+  assert.match(directory, /<div class="pm-fg" data-pick-one><h3>Day born<\/h3>/);
+  assert.match(directory, /<input type="checkbox" name="day_born" value="Sunday" checked><span>Sunday<\/span><small>1<\/small>/);
   // Other churches' members never leak into the directory.
   assert.doesNotMatch((await other.getHtml('/members')).text, /Esi Quaye/);
 });

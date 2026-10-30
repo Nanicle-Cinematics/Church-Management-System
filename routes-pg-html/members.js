@@ -255,7 +255,8 @@ function selectedIds(raw) {
 
 function register(app) {
   // Members directory, Precision layout: status tabs over a filter panel
-  // (status, organisation, Bible class, day born — each multi-select) and a
+  // (status and organisation multi-select; Bible class and day born one at a
+  // time, by the panel script) and a
   // dense table. Everything is a plain GET form, so filters are shareable
   // links and work without JavaScript; the shell's live search swaps the
   // results in place when it is available.
@@ -271,7 +272,7 @@ function register(app) {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const where = memberWhere(filters);
 
-    const [matched, rows, byStatus, classes, orgs, orgCounts, classCounts] = await Promise.all([
+    const [matched, rows, byStatus, classes, orgs, orgCounts, classCounts, dayCounts] = await Promise.all([
       db.member.count({ where }),
       db.member.findMany({
         where, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }], take: MEMBERS_PER_PAGE, skip: (page - 1) * MEMBERS_PER_PAGE,
@@ -282,6 +283,7 @@ function register(app) {
       db.organization.findMany({ where: { active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       db.organizationMembership.groupBy({ by: ['orgId'], where: { member: { deletedAt: null } }, _count: true }),
       db.member.groupBy({ by: ['bibleClassId'], where: { deletedAt: null }, _count: true }),
+      db.member.groupBy({ by: ['dayBorn'], where: { deletedAt: null }, _count: true }),
     ]);
     const pages = Math.max(1, Math.ceil(matched / MEMBERS_PER_PAGE));
 
@@ -323,20 +325,18 @@ function register(app) {
     const tabOn = (key) => (key ? statuses.length === 1 && statuses[0] === key : statuses.length === 0);
     const tabs = `<nav class="pm-tabs" id="pmTabs" data-live-sync aria-label="Status">${TABS.map(([key, label, n]) => `<a href="${qs({ statuses: key ? [key] : [] })}"${tabOn(key) ? ' aria-current="page"' : ''}>${label}<span>${(n || 0).toLocaleString()}</span></a>`).join('')}</nav>`;
 
-    const checks = (name, items, picked) => items.map(([value, label, n]) => `<label class="pm-opt"><input type="checkbox" name="${name}" value="${esc(value)}"${picked.includes(value) ? ' checked' : ''}><span>${esc(label)}</span>${n == null ? '' : `<small>${Number(n).toLocaleString()}</small>`}</label>`).join('');
-    const chips = (name, items, picked) => `<div class="pm-chips">${items.map(([value, label, title]) => `<label${title ? ` title="${esc(title)}"` : ''}><input type="checkbox" name="${name}" value="${esc(value)}"${picked.includes(value) ? ' checked' : ''}><span>${esc(label)}</span></label>`).join('')}</div>`;
+    const checks = (name, items, picked) => items.map(([value, label, n, title]) => `<label class="pm-opt"${title ? ` title="${esc(title)}"` : ''}><input type="checkbox" name="${name}" value="${esc(value)}"${picked.includes(value) ? ' checked' : ''}><span>${esc(label)}</span>${n == null ? '' : `<small>${Number(n).toLocaleString()}</small>`}</label>`).join('');
     const orgN = Object.fromEntries(orgCounts.map((o) => [o.orgId, o._count]));
     const classN = Object.fromEntries(classCounts.map((c) => [c.bibleClassId, c._count]));
+    const dayN = Object.fromEntries(dayCounts.map((d) => [d.dayBorn, d._count]));
     const nFilters = statuses.length + orgIds.length + classIds.length + daysBorn.length;
     const filtered = Boolean(q || nFilters);
     const panel = `<aside class="card pm-facets" id="pmFacets" aria-label="Filters">
         <div class="pm-fh" id="pmFh" data-live-sync><b>Filters</b>${filtered ? '<a href="/members">Clear all</a>' : '<span class="muted-text">None applied</span>'}</div>
         <div class="pm-fg"><h3>Status</h3>${checks('status', ['MEMBER', 'VISITOR', 'DISTANT', 'TRANSFERRED', 'DECEASED', 'REGULAR', 'INACTIVE', 'OTHER'].filter((s) => count[s] || statuses.includes(s)).map((s) => [s, MEMBER_STATUS_LABELS[s], count[s] || 0]), statuses)}</div>
         ${orgs.length ? `<div class="pm-fg"><h3>Organisations</h3>${checks('org', orgs.map((o) => [String(o.id), o.name, orgN[o.id] || 0]), orgIds.map(String))}</div>` : ''}
-        ${classes.length ? `<div class="pm-fg"><h3>Bible class</h3>${classes.length <= 12
-          ? chips('class', classes.map((c) => [String(c.id), c.name, `${(classN[c.id] || 0).toLocaleString()} people`]), classIds.map(String))
-          : checks('class', classes.map((c) => [String(c.id), c.name, classN[c.id] || 0]), classIds.map(String))}</div>` : ''}
-        <div class="pm-fg"><h3>Day born</h3>${chips('day_born', DAYS_OF_WEEK.map((d) => [d, d.slice(0, 3), `${d}-born · ${AKAN_NAMES[d]}`]), daysBorn)}</div>
+        ${classes.length ? `<div class="pm-fg" data-pick-one><h3>Bible class</h3>${checks('class', classes.map((c) => [String(c.id), c.name, classN[c.id] || 0]), classIds.map(String))}</div>` : ''}
+        <div class="pm-fg" data-pick-one><h3>Day born</h3>${checks('day_born', DAYS_OF_WEEK.map((d) => [d, d, dayN[d] || 0, `${d}-born · ${AKAN_NAMES[d]}`]), daysBorn)}</div>
         <div class="pm-sheet-foot"><button type="submit">Show results</button></div>
         <noscript><div class="pm-fg"><button type="submit">Apply filters</button></div></noscript>
       </aside>`;
